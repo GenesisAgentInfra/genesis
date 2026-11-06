@@ -10,6 +10,36 @@ from test_git_snapshot import commit, write
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_action_without_key_stays_offline_instead_of_using_trial(source_repo, tmp_path):
+    write(source_repo, "app.py", "def run(): return 1\n")
+    base = commit(source_repo)
+    write(source_repo, "app.py", "def run(): return 2\n")
+    summary, outputs = tmp_path / "summary.md", tmp_path / "outputs"
+    env = dict(
+        os.environ,
+        GITHUB_EVENT_NAME="push",
+        GENESIS_ACTION_REPO=str(source_repo),
+        GENESIS_ACTION_BASE=base,
+        GENESIS_SERVICE_URL="http://127.0.0.1:1",
+        RUNNER_TEMP=str(tmp_path),
+        GITHUB_STEP_SUMMARY=str(summary),
+        GITHUB_OUTPUT=str(outputs),
+        XDG_CONFIG_HOME=str(tmp_path / "empty-config"),
+    )
+    env.pop("GENESIS_API_KEY", None)
+    result = subprocess.run(
+        [sys.executable, "-I", str(ROOT / "action/run.py")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "analysis-status=partial" in outputs.read_text()
+    assert "本次只做了本地静态检查" in summary.read_text()
+    assert "公共试用" not in result.stdout + result.stderr
+
+
 def test_action_installer_cannot_import_customer_pip_module(tmp_path):
     import yaml
 

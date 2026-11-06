@@ -23,6 +23,23 @@ FIXTURE_NAMES = (
 )
 
 
+def _connection_notice(connection) -> None:
+    if connection.public_trial:
+        typer.echo(
+            f"使用官方公共试用：{connection.service_url}（无需 auth，额度由所有试用用户共享）。"
+        )
+    elif connection.service_url:
+        typer.echo(f"使用已配置的 Genesis 服务：{connection.service_url}")
+
+
+def _semantic_failure_message(code: str, *, public_trial: bool) -> str:
+    from .public_trial import trial_failure_message
+
+    if not public_trial:
+        return "Semantic analysis unavailable; local facts, findings and estimates retained."
+    return trial_failure_message(code)
+
+
 @app.command()
 def version() -> None:
     """Show the collaboration-base version."""
@@ -62,7 +79,7 @@ def flows_init(
     from genesis_contracts.snapshot import SnapshotSpec
 
     from .client import SemanticClient, SemanticFailure
-    from .config import load_settings, resolve_connection
+    from .config import load_settings, resolve_service_connection
     from .context import ContextOptions, preview_request
     from .flow_draft import prepare_draft, save_draft, static_drafts
     from .git_snapshot import capture_snapshot
@@ -96,7 +113,9 @@ def flows_init(
         mode = "offline"
         if not offline and not reason:
             try:
-                url, key = resolve_connection(service_url)
+                connection = resolve_service_connection(service_url)
+                url, key = connection.service_url, connection.api_key
+                _connection_notice(connection)
                 reason = "No semantic service/key configured; static candidates only."
             except (OSError, ValueError):
                 url = key = None
@@ -131,6 +150,8 @@ def flows_init(
                         )
                     except SemanticFailure as error:
                         reason = f"{error.code}: retained static entry drafts."
+                        if connection.public_trial:
+                            reason += " " + _semantic_failure_message(error.code, public_trial=True)
                 else:
                     reason = "Send not confirmed; retained static entry drafts."
         output = output or repo / ".genesis" / "flows.draft.yaml"
@@ -343,7 +364,7 @@ def analyze_command(
     from genesis_contracts.snapshot import SnapshotInput, SnapshotSpec
 
     from .client import SemanticClient, SemanticFailure
-    from .config import load_settings, resolve_connection
+    from .config import load_settings, resolve_service_connection
     from .git_snapshot import SnapshotError, capture_snapshot
     from .pipeline import analyze_snapshot
     from .snapshot_store import load_snapshot
@@ -437,7 +458,9 @@ def analyze_command(
 
             connection_failed = False
             try:
-                url, key = resolve_connection(service_url)
+                connection = resolve_service_connection(service_url)
+                url, key = connection.service_url, connection.api_key
+                _connection_notice(connection)
             except (OSError, ValueError):
                 connection_failed = True
                 url = key = None
@@ -517,13 +540,19 @@ def analyze_command(
                                 semantic = client.analyze(request)
                                 result = with_semantic(result, request, semantic)
                             except SemanticFailure as error:
+                                if connection.public_trial:
+                                    typer.echo(
+                                        _semantic_failure_message(error.code, public_trial=True)
+                                    )
                                 result = with_semantic(
                                     result,
                                     request,
                                     None,
                                     failure(
                                         error.code,
-                                        "Semantic analysis unavailable; local facts, findings and estimates retained.",
+                                        _semantic_failure_message(
+                                            error.code, public_trial=connection.public_trial
+                                        ),
                                     ),
                                 )
                         else:

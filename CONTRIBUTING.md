@@ -19,6 +19,12 @@ Tests use synthetic repositories and scripted HTTP responses. They do not need
 a Genesis key, a model key, a database or access to private source. Their success
 does not establish real-model reasoning quality.
 
+Do not consume shared trial quota in automated tests. Use mocked HTTP transports.
+The only intentionally distributed live credential is the dedicated public trial
+asset; its exact file hash is pinned in `scripts/check_public_boundary.py`. A
+rotation must update that asset and pin together, never add an unrestricted
+secret-scanner exception. See [repository ownership](docs/repository-boundary.md).
+
 The Python contracts in `packages/genesis_contracts` are authoritative. For
 protocol changes, clone the public `code-intelligence-protocol` repository beside
 this one, check out `protocol-revision.txt`, and run `scripts/check_contracts.py`.

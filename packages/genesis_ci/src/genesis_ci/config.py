@@ -7,10 +7,20 @@ import os
 import stat
 import tempfile
 import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from .public_trial import OFFICIAL_SERVICE_URL, public_trial_key
+
+
+@dataclass(frozen=True)
+class Connection:
+    service_url: str | None
+    api_key: str | None = field(repr=False)
+    public_trial: bool = False
 
 
 class Settings(BaseModel):
@@ -77,10 +87,10 @@ def save_credentials(api_key: str, service_url: str) -> None:
 
 def read_credentials() -> dict[str, str]:
     path = credentials_path()
-    if not path.exists():
-        return {}
     if path.is_symlink() or path.parent.is_symlink():
         raise ValueError("Credential storage must not be a symbolic link.")
+    if not path.exists():
+        return {}
     if os.name != "nt" and stat.S_IMODE(path.stat().st_mode) & 0o077:
         raise ValueError("Credential permissions must be owner-only; run genesis auth again.")
     if path.stat().st_size > 16384:
@@ -91,18 +101,43 @@ def read_credentials() -> dict[str, str]:
     return value
 
 
-def resolve_connection(explicit_url: str | None) -> tuple[str | None, str | None]:
-    selected_url = explicit_url or os.environ.get("GENESIS_SERVICE_URL")
+def _validate_key(value: str) -> str:
+    if not value.strip() or "\n" in value or "\r" in value:
+        raise ValueError("API key must be a nonempty single line.")
+    return value
+
+
+def resolve_service_connection(explicit_url: str | None) -> Connection:
+    """Use public trial only when no personal connection settings exist."""
+    selected_url = (
+        explicit_url if explicit_url is not None else os.environ.get("GENESIS_SERVICE_URL")
+    )
     env_key = os.environ.get("GENESIS_API_KEY")
-    if selected_url and env_key:
-        return normalize_service_url(selected_url), env_key
+    if selected_url is not None:
+        selected_url = normalize_service_url(selected_url)
+    if env_key is not None:
+        env_key = _validate_key(env_key)
+    if selected_url is not None and env_key is not None:
+        return Connection(selected_url, env_key)
     stored = read_credentials()
-    selected_url = selected_url or stored.get("service_url")
-    url = normalize_service_url(selected_url) if selected_url else None
-    if env_key:
-        return url, env_key
+    path = credentials_path()
+    saved = path.exists() or path.is_symlink()
+    stored_url = stored_key = None
+    if saved:
+        if not stored.get("service_url") or not stored.get("api_key"):
+            raise ValueError("Incomplete credential file; run genesis auth again.")
+        stored_url = normalize_service_url(stored["service_url"])
+        stored_key = _validate_key(stored["api_key"])
+    url = selected_url or stored_url
+    if env_key is not None:
+        return Connection(url or OFFICIAL_SERVICE_URL, env_key)
     # A saved key is never forwarded to a different origin.
-    stored_url = stored.get("service_url")
-    if url and stored_url and url == normalize_service_url(stored_url):
-        return url, stored.get("api_key")
-    return url, None
+    if selected_url is not None or saved:
+        return Connection(url, stored_key if url == stored_url else None)
+    return Connection(OFFICIAL_SERVICE_URL, public_trial_key(), public_trial=True)
+
+
+def resolve_connection(explicit_url: str | None) -> tuple[str | None, str | None]:
+    """Compatibility wrapper for callers that only need the URL and key."""
+    connection = resolve_service_connection(explicit_url)
+    return connection.service_url, connection.api_key
