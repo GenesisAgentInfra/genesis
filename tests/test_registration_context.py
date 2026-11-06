@@ -149,3 +149,35 @@ def test_large_auxiliary_prompt_does_not_displace_workflow_callbacks(source_repo
         for side in ("base", "head")
         for name in ("review", "remember", "generate", "route")
     } <= selected
+
+
+def test_small_model_tool_binding_survives_large_prompt_dependency(source_repo):
+    base = (
+        application()
+        .replace(
+            "model = Model()",
+            "PROMPT = "
+            + repr("Auxiliary instructions. " * 300)
+            + "\ntools = ['deliver', 'stop']\nmodel = Model().bind_tools(tools)",
+        )
+        .replace("return model.invoke(value)", "return model.invoke(PROMPT + str(value))")
+    )
+    result = captured(
+        source_repo,
+        {"app.py": base},
+        {"app.py": base.replace("return remember(value)", "return remember(value + 1)")},
+    )
+    request = build_context(
+        result.local,
+        result.reader,
+        request_id="binding-before-text",
+        options=ContextOptions(input_token_budget=9000),
+    )
+    validate_request_against_local(result.local, request)
+    for side in ("base", "head"):
+        text = "\n".join(
+            e.text for r, e in zip(request.evidence, request.excerpts) if r.side == side
+        )
+        assert "tools = ['deliver', 'stop']" in text
+        assert "model = Model().bind_tools(tools)" in text
+        assert "def generate" in text

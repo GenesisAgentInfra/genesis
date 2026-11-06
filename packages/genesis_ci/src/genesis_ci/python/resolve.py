@@ -150,6 +150,16 @@ class Resolver:
                     )
                 results.append(result)
             elif origin.source == "builtin":
+                if origin.name.removeprefix("builtins.").split(".")[0] in {
+                    "None",
+                    "True",
+                    "False",
+                    "Ellipsis",
+                    "NotImplemented",
+                    "__debug__",
+                }:
+                    results.append(unknown("Builtin constant metadata is not a callable target"))
+                    continue
                 results.append(
                     Resolution(
                         status="resolved",
@@ -319,7 +329,13 @@ class Resolver:
             return self._origins(expr.origins, side, path, seen)
         if expr.kind == "attribute":
             # Full qualified origins preserve imports, scopes and shadowing.
-            if expr.origins:
+            # QualifiedNameProvider can attach builtin None to attributes of
+            # unsupported expressions. Only a syntactic name/attribute chain
+            # supports direct qualified lookup; other receivers stay uncertain.
+            receiver = expr.children[0]
+            while receiver.kind == "attribute" and receiver.children:
+                receiver = receiver.children[0]
+            if expr.origins and receiver.kind == "name":
                 direct = self._origins(expr.origins, side, path, seen)
                 if direct.targets:
                     return direct
