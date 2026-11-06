@@ -120,3 +120,32 @@ def test_registration_bound_is_explicit_and_never_executes_source(source_repo):
     bundles, _ = registration_bundles(result.local, result.reader, {"app.py#review"}, missing)
     assert bundles
     assert "Callback registration context reached its 32-statement limit." in missing
+
+
+def test_large_auxiliary_prompt_does_not_displace_workflow_callbacks(source_repo):
+    base = (
+        application()
+        .replace(
+            "model = Model()",
+            "PROMPT = " + repr("Auxiliary instructions. " * 300) + "\nmodel = Model()",
+        )
+        .replace("return model.invoke(value)", "return model.invoke(PROMPT + str(value))")
+    )
+    result = captured(
+        source_repo,
+        {"app.py": base},
+        {"app.py": base.replace("return remember(value)", "return remember(value + 1)")},
+    )
+    request = build_context(
+        result.local,
+        result.reader,
+        request_id="entry-before-prompt",
+        options=ContextOptions(input_token_budget=9000),
+    )
+    validate_request_against_local(result.local, request)
+    selected = {(f.side, f.symbol_id) for f in request.facts.functions}
+    assert {
+        (side, "app.py#" + name)
+        for side in ("base", "head")
+        for name in ("review", "remember", "generate", "route")
+    } <= selected

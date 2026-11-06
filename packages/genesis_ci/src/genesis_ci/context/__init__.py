@@ -216,11 +216,23 @@ def _source_bundles(local, reader=None, missing=None):
         if reader is not None
         else []
     )
+    # Follow direct callable helpers before orchestration, then auxiliary values.
+    # Large unchanged prompt strings must not crowd out entry/route callbacks.
+    # Constants remain before tail facts (and retain their existing paired spans).
+    callable_ids = {
+        ident
+        for fact in local.facts.functions
+        if fact.kind == "function"
+        for ident in fact.evidence_ids
+    }
+    helper_dependencies = [bundle for bundle in dependencies if set(bundle) & callable_ids]
+    value_dependencies = [bundle for bundle in dependencies if not set(bundle) & callable_ids]
     return [
         *primary,
         *supporting,
-        *dependencies,
+        *helper_dependencies,
         *registrations,
+        *value_dependencies,
         *callback_dependencies,
         *_import_context_bundles(local, changed_functions | changed_classes),
         *(tuple(dict.fromkeys(bodies[symbol])) for symbol in sorted(class_members - callers)),
