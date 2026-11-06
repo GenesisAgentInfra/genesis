@@ -1,8 +1,9 @@
 # Repository ownership
 
 This repository owns the CLI, static analysis, context selection, report rendering,
-HTTP wire contracts, shared tokenizer, and composite Action. The private service
-consumes a pinned revision of these packages. Do not copy them back into the server.
+HTTP wire contracts, shared tokenizer, coding-agent skill/setup, and composite
+Action. The private service consumes a pinned revision of these packages. Do not
+copy them back into the server.
 
 `genesis_contracts` is the authoritative Python contract implementation. The
 `code-intelligence-protocol` repository holds generated versioned JSON Schemas

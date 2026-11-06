@@ -9,18 +9,60 @@ from genesis_contracts import AnalysisRequest, LocalAnalysis, SemanticAnalysisRe
 from genesis_contracts.models import Limitation, ServiceError
 from genesis_contracts.validation import validate_request_against_local
 
+from .agent_setup import Agent, Scope
 from .report import assemble_report, render_markdown
 from .snapshot import FrozenSnapshotReader
 
 app = typer.Typer(no_args_is_help=True)
 flows_app = typer.Typer(no_args_is_help=True)
 app.add_typer(flows_app, name="flows")
+agent_app = typer.Typer(no_args_is_help=True)
+app.add_typer(agent_app, name="agent")
 FIXTURE_NAMES = (
     "normal-five-sections",
     "dynamic-call-unresolved",
     "missing-intent-and-tests",
     "flow-entry-invalid",
 )
+
+
+@agent_app.command("install")
+def agent_install(
+    agent: Agent = typer.Option(..., "--agent", help="codex, claude, or both"),
+    scope: Scope = typer.Option(Scope.user, "--scope", help="user or project"),
+    repo: Path | None = typer.Option(None, "--repo", help="Application Git root for project scope"),
+    update: bool = typer.Option(False, "--update", help="Refresh an unmodified managed install"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show destinations without writing"),
+) -> None:
+    """Make Genesis discoverable in your coding agent; no analysis or upload."""
+    from .agent_setup import install_skills
+
+    try:
+        for path, action in install_skills(agent, scope, repo, update=update, dry_run=dry_run):
+            typer.echo(f"{'Would ' if dry_run else ''}{action}: {path}")
+    except (OSError, ValueError) as error:
+        typer.echo(f"Cannot install Genesis skill: {error}", err=True)
+        raise typer.Exit(1) from error
+    typer.echo("Codex: $genesis-review | Claude Code: /genesis-review")
+    typer.echo("If the skill is missing from the agent, open a new session or restart it.")
+    typer.echo("Setup does not authorize source upload. No credentials or agent policies changed.")
+
+
+@agent_app.command("status")
+def agent_status(
+    agent: Agent = typer.Option(Agent.both, "--agent"),
+    scope: Scope = typer.Option(Scope.user, "--scope"),
+    repo: Path | None = typer.Option(None, "--repo"),
+) -> None:
+    """Inspect installed skill files; agent discovery still needs a session check."""
+    from .agent_setup import skill_status
+
+    try:
+        for path, state in skill_status(agent, scope, repo):
+            typer.echo(f"{state}: {path}")
+    except (OSError, ValueError) as error:
+        typer.echo(f"Cannot inspect Genesis skill: {error}", err=True)
+        raise typer.Exit(1) from error
 
 
 def _connection_notice(connection) -> None:

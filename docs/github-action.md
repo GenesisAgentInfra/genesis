@@ -1,5 +1,9 @@
 # GitHub Action
 
+For interactive reviews in Codex or Claude Code, use the
+[coding-agent integration](coding-agents.md). This page covers PR automation
+that runs independently of a local agent session.
+
 The composite Action lives in `action/`. It installs only this public workspace.
 Create `.github/workflows/genesis.yml` in your application's repository after
 replacing `REVIEWED_FULL_COMMIT_SHA` with an actual reviewed client commit:
@@ -26,7 +30,10 @@ jobs:
           api-key: ${{ secrets.GENESIS_API_KEY }}
 ```
 
-Set the service origin in repository Variables and the Genesis key in Secrets.
+Set repository Variable `GENESIS_SERVICE_URL` to
+`https://semantic-api-production.up.railway.app` and store a personal Genesis key
+issued by the Genesis team in Secret `GENESIS_API_KEY`. This connects to the
+Genesis team's hosted service; you do not need to deploy a server.
 The Action writes the readable report to the Job Summary and uploads only
 `summary.md`, `report.md`, and `report.json`. It does not post PR comments.
 Missing keys, forks, `pull_request_target`, or unverified PR identity force

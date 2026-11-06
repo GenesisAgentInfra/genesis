@@ -14,7 +14,10 @@ These are review questions and facts visible in the synthetic source. The offlin
 
 ## Run locally
 
-Install the checkout with the main README's `uv sync --all-packages --group dev --frozen` step. From the repository root, choose a new output directory:
+This is a developer example. For reviewing your application from an agent, see
+[coding-agent setup](../../docs/coding-agents.md). Install the checkout with
+`uv sync --all-packages --group dev --frozen` as described in
+[CONTRIBUTING.md](../../CONTRIBUTING.md). Choose a new output directory:
 
 ```sh
 uv run --all-packages --frozen python examples/submit-report/run.py \
@@ -27,6 +30,7 @@ Exit code 0 from the example runner means local artifacts were delivered. The ge
 
 ## Read the result
 
+- `report/summary.md`: readable Chinese explanation of the same findings and limits; start here.
 - `report/report.md`: five sections within each explicit flow, plus an unassigned group. Evidence links lead to anchors in the same document. No raw source excerpt appendix is included.
 - `report/report.json`: the unchanged public report schema and all findings/estimates/statuses.
 - `report/local-analysis.json`: classified task/PR intent, confirmed flow map, static test definitions and other local facts.
@@ -45,4 +49,4 @@ uv run --all-packages --frozen python examples/submit-report/run.py \
 
 This adds `report/review-with-source.md`, which contains original code and intent text. The default Action artifact list does not upload it. Before/after tables align only the same path and evidence type; they do not infer renamed-function equivalence or invent a missing side.
 
-Model-backed analysis is a separate, explicitly approved operation using a configured Genesis service. The runner deliberately remains offline and does not synthesize model findings. The four pinned contract fixtures remain the separate deterministic mock examples.
+Model-backed analysis is a separate, explicitly approved operation using the hosted Genesis service. The runner deliberately remains offline and does not synthesize model findings. The four pinned contract fixtures remain the separate deterministic mock examples.
