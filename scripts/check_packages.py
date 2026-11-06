@@ -1,5 +1,6 @@
 """Check wheel isolation without importing the server or publishing packages."""
 
+from email.parser import Parser
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -34,6 +35,27 @@ def main():
             metadata = wheel.read(
                 next(name for name in names if name.endswith("/METADATA"))
             ).decode()
+            parsed = Parser().parsestr(metadata)
+            expected_license = (
+                "Apache-2.0 AND MIT" if package == "genesis_tokenizer" else "Apache-2.0"
+            )
+            if parsed["License-Expression"] != expected_license:
+                raise SystemExit(f"Wrong license metadata in {wheels[0].name}")
+            license_files = set(parsed.get_all("License-File", []))
+            if not {"LICENSE", "NOTICE"} <= license_files:
+                raise SystemExit("Distribution omits first-party license notices")
+            for filename in ("LICENSE", "NOTICE"):
+                expected = (ROOT / filename).read_bytes()
+                if (ROOT / "packages" / package / filename).read_bytes() != expected:
+                    raise SystemExit(f"Stale {filename} in {package}")
+                suffix = ".dist-info/licenses/" + filename
+                matching = [name for name in names if name.endswith(suffix)]
+                if len(matching) != 1 or wheel.read(matching[0]) != expected:
+                    raise SystemExit(f"Missing or changed {filename} in {package} wheel")
+            if package == "genesis_tokenizer" and not any(
+                name.endswith("TIKTOKEN_LICENSE.txt") for name in license_files
+            ):
+                raise SystemExit("Tokenizer metadata omits its upstream MIT notice")
             dependencies = [
                 line for line in metadata.splitlines() if line.startswith("Requires-Dist:")
             ]

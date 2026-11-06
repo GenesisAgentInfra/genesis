@@ -93,9 +93,13 @@ negotiation preserves legacy report v0.1.0 and enables v0.2.0 when supported.
 - [Repository ownership](docs/repository-boundary.md)
 - [Versioned report schemas](https://github.com/GenesisAgentInfra/code-intelligence-protocol)
 
-## License status
+## License
 
-This is a local publication candidate. The proposed source-available terms in
-[LICENSE-DRAFT.md](LICENSE-DRAFT.md) are under owner review and are not an
-operative license. It is not published as MIT or OSI-approved open source.
-Third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Original Genesis CLI code is licensed under [Apache-2.0](LICENSE). You may use,
+modify and redistribute it, including commercially, subject to the license terms.
+The license does not grant trademark rights or access to the separately operated
+Genesis service. The private service implementation is not part of this repository.
+
+Bundled third-party components retain their own licenses, including the MIT
+notice for the tokenizer assets. See [NOTICE](NOTICE) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

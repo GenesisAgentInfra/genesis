@@ -1,0 +1,8 @@
+Genesis CLI
+Copyright 2026 Genesis CLI contributors
+
+Original Genesis CLI code is licensed under the Apache License, Version 2.0.
+Bundled third-party components retain their respective copyrights and licenses.
+The genesis-tokenizer package includes o200k tokenizer assets with the upstream
+MIT notice in src/genesis_tokenizer/assets/TIKTOKEN_LICENSE.txt.
+See THIRD_PARTY_NOTICES.md in the source repository for provenance.

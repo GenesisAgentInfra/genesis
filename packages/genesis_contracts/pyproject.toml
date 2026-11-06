@@ -5,6 +5,8 @@ build-backend = "hatchling.build"
 [project]
 name = "genesis-contracts"
 version = "0.1.0"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2.10,<3"]
 

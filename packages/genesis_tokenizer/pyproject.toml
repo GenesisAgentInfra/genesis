@@ -5,6 +5,8 @@ build-backend = "hatchling.build"
 [project]
 name = "genesis-tokenizer"
 version = "0.1.0"
+license = "Apache-2.0 AND MIT"
+license-files = ["LICENSE", "NOTICE", "src/genesis_tokenizer/assets/TIKTOKEN_LICENSE.txt"]
 requires-python = ">=3.12"
 dependencies = ["tiktoken==0.14.0"]
 

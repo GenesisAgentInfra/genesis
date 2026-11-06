@@ -32,5 +32,6 @@ tokenization and compatibility tests. After a reviewed client commit, update
 the private pin and run its full suite before deploying. Never edit the vendored
 client checkout inside the service without contributing the change here.
 
-Keep third-party license notices with bundled assets. Publication/license terms
-are pending owner review; see LICENSE-DRAFT.md.
+Keep third-party license notices with bundled assets. Original contributions are
+provided under Apache-2.0; see LICENSE and NOTICE. Changes to license notices
+must also be reflected in the package copies checked by scripts/check_packages.py.
