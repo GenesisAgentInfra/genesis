@@ -192,6 +192,7 @@ def _source_bundles(local, reader=None, missing=None):
         for symbol in sorted(symbols)
     ]
     from .dependencies import lexical_bundles
+    from .registration import registration_bundles
     from .related import related_bundles
 
     supporting, related = (
@@ -200,8 +201,18 @@ def _source_bundles(local, reader=None, missing=None):
         else ([], set())
     )
 
+    registrations, callbacks = (
+        registration_bundles(local, reader, changed_functions | callers | related, missing)
+        if reader is not None
+        else ([], set())
+    )
     dependencies = (
         lexical_bundles(local, reader, changed_functions | callers | related, missing)
+        if reader is not None
+        else []
+    )
+    callback_dependencies = (
+        lexical_bundles(local, reader, callbacks - changed_functions - callers - related, missing)
         if reader is not None
         else []
     )
@@ -209,6 +220,8 @@ def _source_bundles(local, reader=None, missing=None):
         *primary,
         *supporting,
         *dependencies,
+        *registrations,
+        *callback_dependencies,
         *_import_context_bundles(local, changed_functions | changed_classes),
         *(tuple(dict.fromkeys(bodies[symbol])) for symbol in sorted(class_members - callers)),
     ]
