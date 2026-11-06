@@ -24,6 +24,27 @@ def calls(result, path="app.py", side=HEAD):
     return [call for call in result.analysis.calls if call.path == path and call.side == side]
 
 
+def test_expression_receiver_metadata_never_resolves_to_builtin_constant(source_repo):
+    result = analyze(
+        source_repo,
+        {
+            "app.py": """def normalize(value, flag):
+    (value or '').lower()
+    (value if flag else '').strip()
+    ''.upper()
+    return len(str(value))
+"""
+        },
+    )
+    found = calls(result)
+    methods = [call for call in found if call.callee.kind == "attribute"]
+    assert methods and all(call.target.status == "unknown" for call in methods)
+    assert all("builtin:None" not in call.target.targets for call in found)
+    assert next(call for call in found if call.callee.text == "len").target.targets == (
+        "builtin:len",
+    )
+
+
 def test_direct_alias_relative_import_reexport_and_unchanged_caller(source_repo):
     files = {
         "src/pkg/__init__.py": "from .helper import work as exported\n",

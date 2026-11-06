@@ -192,6 +192,7 @@ def _source_bundles(local, reader=None, missing=None):
         for symbol in sorted(symbols)
     ]
     from .dependencies import lexical_bundles
+    from .registration import registration_bundles
     from .related import related_bundles
 
     supporting, related = (
@@ -200,15 +201,54 @@ def _source_bundles(local, reader=None, missing=None):
         else ([], set())
     )
 
+    registrations, callbacks = (
+        registration_bundles(local, reader, changed_functions | callers | related, missing)
+        if reader is not None
+        else ([], set())
+    )
     dependencies = (
         lexical_bundles(local, reader, changed_functions | callers | related, missing)
         if reader is not None
         else []
     )
+    callback_dependencies = (
+        lexical_bundles(local, reader, callbacks - changed_functions - callers - related, missing)
+        if reader is not None
+        else []
+    )
+    # Follow direct callable helpers before orchestration, then auxiliary values.
+    # Large unchanged prompt strings must not crowd out entry/route callbacks.
+    # Constants remain before tail facts (and retain their existing paired spans).
+    callable_ids = {
+        ident
+        for fact in local.facts.functions
+        if fact.kind == "function"
+        for ident in fact.evidence_ids
+    }
+    helper_dependencies = [bundle for bundle in dependencies if set(bundle) & callable_ids]
+    value_dependencies = [bundle for bundle in dependencies if not set(bundle) & callable_ids]
+    # Small configuration/binding statements connect model nodes to their tools.
+    # Consider those from both direct and callback dependencies before large
+    # auxiliary text, so traversing a graph doesn't discard its binding contract.
+    small_values = (
+        [
+            bundle
+            for bundle in (*value_dependencies, *callback_dependencies)
+            if not set(bundle) & callable_ids
+            and all(len(reader.read_excerpt(ident).text) <= 1024 for ident in bundle)
+        ]
+        if reader is not None
+        else []
+    )
+    small_ids = {ident for bundle in small_values for ident in bundle}
     return [
         *primary,
         *supporting,
-        *dependencies,
+        *helper_dependencies,
+        *small_values,
+        *registrations,
+        *(bundle for bundle in callback_dependencies if not set(bundle) <= small_ids),
+        *(bundle for bundle in value_dependencies if not set(bundle) <= small_ids),
         *_import_context_bundles(local, changed_functions | changed_classes),
         *(tuple(dict.fromkeys(bodies[symbol])) for symbol in sorted(class_members - callers)),
     ]
