@@ -1,16 +1,46 @@
 # Client usage and data handling
 
-## Credentials
+## Default shared trial
+
+With no connection settings, `genesis analyze --repo /path/to/app --base HEAD`
+uses the official shared trial at `https://semantic-api-production.up.railway.app`.
+No `auth` is required. The CLI shows the destination and bounded payload and asks
+for upload consent before capability discovery or analysis. `--preview-only`
+saves the payload locally; `--offline` skips credential resolution and networking.
+
+The dedicated trial credential is intentionally public and packaged in
+`genesis_ci/assets/public-trial.json`. It is not a model-provider or personal key.
+The initial 10,000 admitted requests are shared by every trial user, including
+analysis and flow drafting, with no daily reset. Failed admitted requests count.
+The operator can revoke or change the trial; there is no per-user guaranteed
+allocation. On failure, the CLI keeps a partial report and does not retry.
+
+## Optional personal credentials
 
 `genesis auth --service-url https://YOUR-GENESIS-SERVICE` saves the key to
 `$XDG_CONFIG_HOME/genesis/credentials.json`, or `~/.config/genesis/credentials.json`.
-The directory/file use owner-only permissions. Do not put a key in source control.
+The directory/file use owner-only permissions. Do not put personal keys in source control.
 For CI use a repository secret exposed as `GENESIS_API_KEY` and an explicit trusted
 `GENESIS_SERVICE_URL`. A key saved for one origin is not sent to another origin.
 
-The service origin is selected by `--service-url`, then `GENESIS_SERVICE_URL`,
-then saved credentials. Repository-controlled configuration cannot choose the
-recipient of credentials. Service URLs require HTTPS outside loopback.
+Connection precedence:
+
+1. `--service-url` overrides `GENESIS_SERVICE_URL`, then the saved service URL.
+2. `GENESIS_API_KEY` overrides the saved key. With only this variable and no
+   saved URL, it targets the official service using your key, not the trial key.
+3. A saved key is usable only for its saved origin. An explicit URL alone never
+   enables trial, even if it is the official URL; supply a key for that URL.
+4. Only when no URL/key settings and no credential file exist does the CLI
+   select the bundled official trial. It does not save or overwrite credentials.
+
+Empty environment values, incomplete or malformed saved credentials, and
+authentication/quota failures do not fall back to trial. An explicit URL plus
+environment key can override a broken saved credential file. To intentionally
+return to trial, unset both environment variables and move your saved credential
+file to a safe location outside the repository; keep personal keys private.
+
+Repository-controlled configuration cannot choose the recipient of credentials.
+Service URLs require HTTPS outside loopback, and redirects are not followed.
 
 ## Optional local configuration
 
@@ -36,7 +66,9 @@ selected intent/review documents. The whole Git repository is not uploaded.
 
 An online analysis needs explicit interactive consent. `--accept-send` grants
 that consent for automation; configure it only for a trusted repository and
-service. Fork PRs and unverified PR contexts stay offline in the Action.
+service. Fork PRs and unverified PR contexts stay offline in the Action. The
+Action also remains offline without an explicit `GENESIS_API_KEY`; it does not
+automatically opt in to shared trial.
 
 Offline mode makes no semantic request. No mode executes application code or
 tests. Token counts and the dated bundled price catalog have explicit limits;
@@ -54,6 +86,10 @@ operator; the CLI source alone does not establish a hosted retention policy.
 exits 2. Review its entries before creating a confirmed `.genesis/flows.yaml`.
 It does not invent acceptance criteria or overwrite a confirmed map. No flow
 map is required for basic change review.
+
+Omit `--offline` to request semantic drafts using the same connection precedence
+and upload confirmation as analysis. With no personal settings, this uses the
+shared trial. Failure retains static draft entries and exits 2.
 
 ## Update
 

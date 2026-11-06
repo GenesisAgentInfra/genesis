@@ -21,9 +21,10 @@ def main():
             if package == "genesis_ci":
                 required = {
                     "genesis_ci/assets/prices-2026-11-04.json",
+                    "genesis_ci/assets/public-trial.json",
                 }
                 if not required <= set(names):
-                    raise SystemExit("CLI wheel lacks offline pricing assets")
+                    raise SystemExit("CLI wheel lacks required pricing/public trial assets")
             if package == "genesis_tokenizer":
                 required = {
                     "genesis_tokenizer/assets/o200k_base.tiktoken.gz",

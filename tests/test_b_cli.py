@@ -196,7 +196,9 @@ def test_config_errors_do_not_print_customer_values(source_repo, tmp_path):
     assert sentinel not in result.output
 
 
-def test_default_analysis_explains_missing_semantic_setup(source_repo, tmp_path, monkeypatch):
+def test_default_analysis_offers_trial_but_eof_keeps_local_report(
+    source_repo, tmp_path, monkeypatch
+):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty-config"))
     monkeypatch.delenv("GENESIS_API_KEY", raising=False)
     monkeypatch.delenv("GENESIS_SERVICE_URL", raising=False)
@@ -208,9 +210,9 @@ def test_default_analysis_explains_missing_semantic_setup(source_repo, tmp_path,
     )
     assert result.exit_code == 2, result.output
     report = AnalysisResponse.model_validate_json((output / "report.json").read_bytes())
-    assert any(
-        "API key" in item.message and "genesis auth" in item.message for item in report.limitations
-    )
+    assert "官方公共试用" in result.output
+    assert any(item.code == "send_not_confirmed" for item in report.limitations)
+    assert (output / "send-preview.txt").exists()
 
 
 def test_flow_draft_respects_configured_payload_budget(source_repo, tmp_path):

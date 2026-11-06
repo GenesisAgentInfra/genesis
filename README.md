@@ -26,28 +26,54 @@ Use `uv run --project /absolute/path/to/genesis-cli --package genesis-ci --no-de
 the `genesis-cli` checkout. No private repository, server package, model key or
 database is required to install the client.
 
-## First review: local only
+## First review: no signup or auth required
 
 Point `--repo` at your application's Git checkout:
 
 ```sh
-uv run --package genesis-ci --no-dev --frozen genesis analyze   --repo /absolute/path/to/your-app --base main --head HEAD --offline
+uv run --package genesis-ci --no-dev --frozen genesis analyze \
+  --repo /absolute/path/to/your-app --base main --head HEAD
 ```
+
+With no personal connection settings, the CLI uses the official shared trial at
+`https://semantic-api-production.up.railway.app`. You do not need a Genesis key,
+model-provider key, or `genesis auth`. It shows the destination and selected
+outbound material, including source excerpts, and asks before any network call.
+Answer `y` to send, or `n` to keep a local partial report.
 
 `base` is the earlier revision; `head` is the candidate revision. Omit `--head`
 to include tracked working-tree changes; add `--include-untracked` for new files.
-Choose revisions with a real diff. No upload or LLM call occurs in offline mode.
-An offline report is partial and exits with code **2**, which is expected.
+Choose revisions with a real diff. To inspect local working-tree changes from
+inside your application, use:
+
+```sh
+uv run --project /absolute/path/to/genesis-cli --package genesis-ci --no-dev --frozen \
+  genesis analyze --repo . --base HEAD
+```
+
+Add `--preview-only` to inspect the prepared payload without sending. Add
+`--offline` for static analysis only, without credentials or network access.
+Declining upload or using offline/preview mode produces a usable partial report
+and exits with code **2**, which is expected.
 
 Without an explicit output path, reports are saved in a new directory under
 `.genesis/analyses/` in the target repository. The command prints its location.
 Read `summary.md` first. Local artifacts can contain source code; do not commit
 that directory or upload the entire directory as a CI artifact.
 
-## Semantic review with the Genesis service
+The shared trial starts with **10,000 admitted requests across all users**, not
+10,000 per user. Analysis and optional flow drafting share this lifetime pool;
+admitted failures also count. It does not reset daily, and availability is not
+guaranteed. Exhaustion or revocation leaves a local partial report with an
+explanation; the CLI does not automatically retry. The intentionally public
+trial identity is bundled with the client and can be revoked by the operator.
+Personal credentials are never written into the project or replaced by it.
 
-Request a Genesis key and service origin from the project operator. Provisioning
-is currently manual; there is no self-serve signup. Do not post keys in issues.
+## Optional: use your own Genesis key or service
+
+For separate access, request a personal Genesis key and service origin from the
+project operator. Personal key provisioning is currently manual; there is no
+self-serve signup. Do not post personal keys in issues.
 A Genesis key is separate from a model provider key; provider credentials remain
 on the service. Your application does not need an embedded SDK.
 
@@ -58,9 +84,12 @@ uv run --package genesis-ci --no-dev --frozen genesis analyze   --repo /absolute
 
 `auth` prompts without echoing and saves an origin-bound key outside the project.
 It does not contact the server to validate the key; the first analysis does.
-The analysis previews selected outbound material and asks for permission before
-sending. This material includes actual source excerpts as well as static facts.
-Use `--preview-only` to save and inspect the selected request without sending.
+Explicit environment settings and saved credentials take priority over the
+shared trial. Invalid or incomplete personal configuration does not silently
+fall back to trial. A custom service URL requires its own key; the bundled trial
+key is never selected for a custom origin. See [configuration](docs/usage.md) for
+the complete precedence rules. The GitHub Action remains offline without an
+explicit key and does not automatically consume shared trial quota.
 
 Task/requirements/PR documents and `.genesis/flows.yaml` are optional. Without
 them Genesis reviews code changes and conditional risks; it does not invent

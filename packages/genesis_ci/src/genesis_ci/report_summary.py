@@ -8,6 +8,7 @@ from collections import Counter
 from genesis_contracts.models import AnalysisResponse, LocalAnalysis
 from genesis_contracts.validation import validate_local_analysis, validate_public_response
 
+from .public_trial import trial_failure_message
 from .report_behavior import render_behavior_review
 from .report_review import _text
 
@@ -121,7 +122,9 @@ def _limits(report, local):
             continue
         if item.code == "incomplete_reachability" and calls:
             continue
-        if item.code in LIMITS:
+        if item.message == trial_failure_message(item.code):
+            messages.append(item.message)
+        elif item.code in LIMITS:
             messages.append(LIMITS[item.code])
         elif re.search(r"[\u4e00-\u9fff]", item.message):
             messages.append(item.message)
