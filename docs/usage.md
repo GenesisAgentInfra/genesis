@@ -1,5 +1,26 @@
 # Client usage and data handling
 
+For everyday use inside Codex or Claude Code, start with
+[coding-agent setup](coding-agents.md). This page is the CLI/configuration
+reference an agent or terminal user can consult. Bare `genesis` examples assume
+the CLI is on PATH; source installs can prefix them with
+`uv run --project /absolute/path/to/genesis-cli --package genesis-ci --no-dev --frozen`.
+
+## Agent integration commands
+
+```sh
+genesis agent install --agent codex
+genesis agent install --agent claude
+genesis agent install --agent both --scope project --repo /absolute/path/to/app
+genesis agent status --agent both
+genesis agent install --agent codex --update
+```
+
+Choose user scope (default) or project scope deliberately. `--dry-run` inspects
+the installation plan; `status` checks files without writing. Setup does not
+run analysis or authorize uploads. See the [agent guide](coding-agents.md) for
+discovery, natural-language examples, updates and removal.
+
 ## Default shared trial
 
 With no connection settings, `genesis analyze --repo /path/to/app --base HEAD`
@@ -87,6 +108,12 @@ Offline mode makes no semantic request. No mode executes application code or
 tests. Token counts and the dated bundled price catalog have explicit limits;
 they do not predict arbitrary model billing.
 
+For a non-interactive coding agent, prepare `--preview-only`, discuss the
+destination/material in chat, then use `--accept-send` only with upload approval.
+Replay `<preview-output>/snapshot` with `--snapshot` to retain the frozen source;
+keep the context options/configuration unchanged. Do not pass capture flags
+(`--base`, `--head`, `--include-untracked`) with `--snapshot`.
+
 Local analyses contain more than the three reports: frozen source, excerpts and
 request/audit artifacts can be present. Keep `.genesis/` out of Git and share
 reports only after reviewing their contents. Reports can themselves describe
@@ -109,3 +136,6 @@ shared trial. Failure retains static draft entries and exits 2.
 From the client checkout, fetch the desired reviewed revision and run
 `uv sync --package genesis-ci --no-dev --frozen` again. For reproducible CI,
 pin the repository/Action to a reviewed full commit SHA.
+
+Refresh installed agent skills with `genesis agent install --agent codex --update`
+(or the same agent/scope originally chosen). This does not replace local edits.

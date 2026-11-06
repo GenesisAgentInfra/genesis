@@ -1,5 +1,8 @@
 # Synthetic static acceptance corpus
 
+This page is for contributors checking analyzer behavior. For reviewing your own
+application in a coding agent, start with [coding-agent setup](../../docs/coding-agents.md).
+
 These ten cases follow the system design's first evaluation list, separately from the four fixed HTTP fixtures. Expected rule prefixes are proposed engineering labels, not human-approved business judgments or a semantic accuracy benchmark. Cases 08 and 10 are negative controls: claims alone do not create implementation facts, and a justified extra call is a factual cost signal rather than a defect.
 
 After the locked workspace setup:
@@ -64,8 +67,8 @@ Use the base/head call IDs and model values in patterns.json. Create scenario.js
 
 Expected conditional amounts: base 0.0108 USD, head 0.00216 USD, difference -0.00864 USD. These are code-calculated standard uncached text scenarios at the named catalog revision, not actual bills, inferred invocation counts or current-price guarantees. Missing quantity/price leaves amount null. Existing v1 explicit-price scenarios remain supported.
 
-## Human/B-side review
+## Human and semantic review
 
-Read each case's semantic_review and compare the same frozen inputs when evaluating B6 or a coding agent. Record reviewer, proposed/accepted/rejected labels, false positives, missed items and review time, always with numerators/denominators. The runner does not call a model, classify plan text as user intent or claim that approval/notification changes violate requirements. B3 supplies classified intent; B6 performs semantic comparison.
+Read each case's semantic_review and compare the same frozen inputs when evaluating the hosted semantic analyzer or a coding agent. Record reviewer, proposed/accepted/rejected labels, false positives, missed items and review time, always with numerators/denominators. The runner does not call a model, classify plan text as user intent or claim that approval/notification changes violate requirements. When intent is supplied, its classification remains separate from the hosted semantic comparison.
 
 Real customer samples need separate consent and storage; none are included. Passing 10/10 static cases does not establish the proposed 80% human semantic-quality threshold or production readiness.

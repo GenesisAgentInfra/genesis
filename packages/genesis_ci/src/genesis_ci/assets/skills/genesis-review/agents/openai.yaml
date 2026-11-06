@@ -1,0 +1,6 @@
+interface:
+  display_name: "Genesis Change Review"
+  short_description: "Review Python change risks with Genesis"
+  default_prompt: "Use $genesis-review to review my current Python changes and explain the evidence and remaining risks."
+policy:
+  allow_implicit_invocation: true

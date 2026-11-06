@@ -22,9 +22,14 @@ def main():
                 required = {
                     "genesis_ci/assets/prices-2026-11-04.json",
                     "genesis_ci/assets/public-trial.json",
+                    "genesis_ci/assets/skills/genesis-review/SKILL.md",
+                    "genesis_ci/assets/skills/genesis-review/agents/openai.yaml",
+                    "genesis_ci/assets/skills/genesis-review/scripts/run_genesis.py",
                 }
                 if not required <= set(names):
-                    raise SystemExit("CLI wheel lacks required pricing/public trial assets")
+                    raise SystemExit(
+                        "CLI wheel lacks required pricing, trial or agent skill assets"
+                    )
             if package == "genesis_tokenizer":
                 required = {
                     "genesis_tokenizer/assets/o200k_base.tiktoken.gz",

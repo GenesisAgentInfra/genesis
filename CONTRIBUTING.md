@@ -33,6 +33,12 @@ Regenerate schema/example changes with `scripts/export_public_schemas.py` and
 The ordinary client test suite does not require the protocol checkout.
 
 Client source, context selection, rendering and Action changes belong here.
+The bundled agent skill lives in
+`packages/genesis_ci/src/genesis_ci/assets/skills/genesis-review/`; update that
+source rather than an installed copy under a user's home. `agent_setup.py` installs
+it with a machine-local runner configuration. Keep the agent guide and installer
+aligned, and test installation plus the runner without real model calls. Agent
+guidance must preserve upload consent and report partial results honestly.
 The private service pins this repository as a submodule for shared contracts,
 tokenization and compatibility tests. After a reviewed client commit, update
 the private pin and run its full suite before deploying. Never edit the vendored

@@ -1,5 +1,9 @@
 # GitHub Action
 
+For interactive reviews in Codex or Claude Code, use the
+[coding-agent integration](coding-agents.md). This page covers PR automation
+that runs independently of a local agent session.
+
 The composite Action lives in `action/`. It installs only this public workspace.
 Create `.github/workflows/genesis.yml` in your application's repository after
 replacing `REVIEWED_FULL_COMMIT_SHA` with an actual reviewed client commit:
