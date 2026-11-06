@@ -140,7 +140,9 @@ def test_large_auxiliary_prompt_does_not_displace_workflow_callbacks(source_repo
         result.local,
         result.reader,
         request_id="entry-before-prompt",
-        options=ContextOptions(input_token_budget=9000),
+        # Leave room for token-count variation in generated Git/evidence IDs.
+        # The long auxiliary prompt still cannot fit alongside the callbacks.
+        options=ContextOptions(input_token_budget=10000),
     )
     validate_request_against_local(result.local, request)
     selected = {(f.side, f.symbol_id) for f in request.facts.functions}
