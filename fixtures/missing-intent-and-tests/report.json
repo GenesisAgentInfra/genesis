@@ -1,0 +1,228 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_id": "sha256:3488cdcbe7e4edc7a42a1e930c43d0973e0f146dbd459db32ff519018de531eb",
+  "analysis_status": "partial",
+  "section_status": {
+    "behavior_intent": {
+      "status": "insufficient_context",
+      "reason": "No user intent supplied; the PR is only an agent claim.",
+      "analyzed_scope": null
+    },
+    "flow_impact": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    },
+    "cost_risk": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    },
+    "acceptance_tests": {
+      "status": "insufficient_context",
+      "reason": "No confirmed acceptance criteria or test definitions supplied.",
+      "analyzed_scope": null
+    },
+    "verification": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    }
+  },
+  "scope": {
+    "base_revision": "fixture-missing-intent-and-tests-base",
+    "head_revision": "fixture-missing-intent-and-tests-head",
+    "analyzed_files": [
+      ".genesis/flows.yaml",
+      "intent/pr.md",
+      "src/app.py"
+    ],
+    "omitted_inputs": [],
+    "parser_limitations": [
+      "Deterministic fixture facts; no customer code was analyzed."
+    ],
+    "execution_mode": "mock"
+  },
+  "findings": [
+    {
+      "finding_id": "F-RULE-WAIT",
+      "category": "cost_risk",
+      "statement": "An awaited operation was added before returning; actual added wait is unknown.",
+      "severity": "low",
+      "basis": [
+        "code_fact"
+      ],
+      "evidence_ids": [
+        "ev_deaa85134e79af132dae2f9c",
+        "ev_2d994b07a58f8aee2e14228b"
+      ],
+      "deviation": null,
+      "condition": null,
+      "gap": null,
+      "recommendation": null,
+      "flow_ids": [],
+      "estimate_ids": [
+        "wait-1"
+      ]
+    },
+    {
+      "finding_id": "F-SEM-BEHAVIOR",
+      "category": "behavior_intent",
+      "statement": "The head function awaits notify(result) before returning; the base function returns submission directly.",
+      "severity": "info",
+      "basis": [
+        "code_fact"
+      ],
+      "evidence_ids": [
+        "ev_deaa85134e79af132dae2f9c",
+        "ev_2d994b07a58f8aee2e14228b"
+      ],
+      "deviation": null,
+      "condition": null,
+      "gap": null,
+      "recommendation": null,
+      "flow_ids": [],
+      "estimate_ids": []
+    }
+  ],
+  "estimates": [
+    {
+      "estimate_id": "wait-1",
+      "flow_ids": [],
+      "structural_signals": [
+        "One additional serial await"
+      ],
+      "parameters": [
+        {
+          "name": "added_wait",
+          "value": null,
+          "unit": "ms",
+          "source": null,
+          "unknown_reason": "No runtime measurements or external implementation supplied"
+        }
+      ],
+      "formula": null,
+      "amount": null,
+      "currency": null,
+      "price_source": null,
+      "price_date": null,
+      "assumptions": [],
+      "unknowns": [
+        "Actual latency and failure rate"
+      ],
+      "evidence_ids": [
+        "ev_deaa85134e79af132dae2f9c",
+        "ev_2d994b07a58f8aee2e14228b"
+      ]
+    }
+  ],
+  "suggestions": [
+    {
+      "suggestion_id": "V-001",
+      "scenario": "Review the new awaited operation's failure behavior.",
+      "conditions": [
+        "Submission returns a failure value",
+        "Submission raises an exception"
+      ],
+      "suggested_assertions": [],
+      "existing_test_evidence_ids": [],
+      "rationale": "Missing intent prevents deriving business acceptance.",
+      "questions_for_user": [
+        "Which values mean submission failed?",
+        "Should an awaited operation's failure change the return behavior?"
+      ],
+      "evidence_ids": [
+        "ev_2d994b07a58f8aee2e14228b"
+      ]
+    }
+  ],
+  "limitations": [
+    {
+      "code": "mock_fixture",
+      "message": "Synthetic contract example, not a customer analysis.",
+      "evidence_ids": [],
+      "affects_completeness": false
+    },
+    {
+      "code": "context_incomplete",
+      "message": "Selected context is truncated or missing: user intent, test definitions",
+      "evidence_ids": [],
+      "affects_completeness": true
+    }
+  ],
+  "analyzer_version": "0.1.0-mock",
+  "rule_version": "0.1.0-mock",
+  "semantic_version": "mock-v1",
+  "evidence": [
+    {
+      "evidence_id": "ev_deaa85134e79af132dae2f9c",
+      "snapshot_id": "sha256:3488cdcbe7e4edc7a42a1e930c43d0973e0f146dbd459db32ff519018de531eb",
+      "side": "base",
+      "path": "src/app.py",
+      "range": {
+        "start_line": 1,
+        "end_line": 2,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:37b82a7da7a16b0788e23b4481e4f79fdac7b17ecaf2e99cb643878a0178751e",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_2d994b07a58f8aee2e14228b",
+      "snapshot_id": "sha256:3488cdcbe7e4edc7a42a1e930c43d0973e0f146dbd459db32ff519018de531eb",
+      "side": "head",
+      "path": "src/app.py",
+      "range": {
+        "start_line": 1,
+        "end_line": 4,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:bfb2ed982e86a11e90c1e514342e5378eaac2b75437d1c6332fb9cc990b5ace7",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_b12c911f2d0a02a5c1ef79f1",
+      "snapshot_id": "sha256:3488cdcbe7e4edc7a42a1e930c43d0973e0f146dbd459db32ff519018de531eb",
+      "side": "base",
+      "path": ".genesis/flows.yaml",
+      "range": {
+        "start_line": 1,
+        "end_line": 8,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:3ef8de26aa82beb56b698021832a46aaa2321b8e6123617904886cb8cc523de7",
+      "kind": "flow"
+    },
+    {
+      "evidence_id": "ev_53f0ee7647de9a9bbe4cf8c7",
+      "snapshot_id": "sha256:3488cdcbe7e4edc7a42a1e930c43d0973e0f146dbd459db32ff519018de531eb",
+      "side": "head",
+      "path": ".genesis/flows.yaml",
+      "range": {
+        "start_line": 1,
+        "end_line": 8,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:3ef8de26aa82beb56b698021832a46aaa2321b8e6123617904886cb8cc523de7",
+      "kind": "flow"
+    },
+    {
+      "evidence_id": "ev_071b06db3f9f7436c9afb324",
+      "snapshot_id": "sha256:3488cdcbe7e4edc7a42a1e930c43d0973e0f146dbd459db32ff519018de531eb",
+      "side": "head",
+      "path": "intent/pr.md",
+      "range": {
+        "start_line": 1,
+        "end_line": 1,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:9929b358104171c1c3c15fa719949cc0fa90baa9dc76a3aca2a807f486ad2084",
+      "kind": "intent"
+    }
+  ]
+}

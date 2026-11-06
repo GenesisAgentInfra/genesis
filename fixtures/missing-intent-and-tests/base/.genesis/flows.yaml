@@ -1,0 +1,8 @@
+schema_version: 1
+flows:
+- id: submit-report
+  name: 提交报告
+  status: draft
+  entries:
+  - src/app.py#submit_report
+  acceptance: []

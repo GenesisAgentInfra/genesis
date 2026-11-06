@@ -1,0 +1,12 @@
+{
+  "source": "Extracted client code; fresh public history",
+  "packages": [
+    "genesis_ci",
+    "genesis_contracts",
+    "genesis_tokenizer"
+  ],
+  "synthetic_data_directories": [
+    "fixtures",
+    "examples"
+  ]
+}

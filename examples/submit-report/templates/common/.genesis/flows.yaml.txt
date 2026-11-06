@@ -1,0 +1,10 @@
+schema_version: 1
+flows:
+  - id: submit-report
+    name: 提交报告
+    status: confirmed
+    entries:
+      - app.py#submit_report
+    acceptance:
+      - 审批拒绝时不向第三方提交报告。
+      - 提交失败时不发送成功通知。

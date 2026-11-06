@@ -1,0 +1,301 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+  "analysis_status": "complete",
+  "section_status": {
+    "behavior_intent": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    },
+    "flow_impact": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    },
+    "cost_risk": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    },
+    "acceptance_tests": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    },
+    "verification": {
+      "status": "analyzed",
+      "reason": null,
+      "analyzed_scope": "Synthetic submit_report example only"
+    }
+  },
+  "scope": {
+    "base_revision": "fixture-normal-five-sections-base",
+    "head_revision": "fixture-normal-five-sections-head",
+    "analyzed_files": [
+      ".genesis/flows.yaml",
+      "intent/pr.md",
+      "intent/task.md",
+      "src/app.py",
+      "tests/test_submit.py"
+    ],
+    "omitted_inputs": [],
+    "parser_limitations": [
+      "Deterministic fixture facts; no customer code was analyzed."
+    ],
+    "execution_mode": "mock"
+  },
+  "findings": [
+    {
+      "finding_id": "F-RULE-WAIT",
+      "category": "cost_risk",
+      "statement": "An awaited operation was added before returning; actual added wait is unknown.",
+      "severity": "low",
+      "basis": [
+        "code_fact"
+      ],
+      "evidence_ids": [
+        "ev_89e203f9043afb89b9068091",
+        "ev_6df63ca95d3cb58b96f6d1f7"
+      ],
+      "deviation": null,
+      "condition": null,
+      "gap": null,
+      "recommendation": null,
+      "flow_ids": [],
+      "estimate_ids": [
+        "wait-1"
+      ]
+    },
+    {
+      "finding_id": "F-SEM-BEHAVIOR",
+      "category": "behavior_intent",
+      "statement": "The head function awaits notify(result) before returning; the base function returns submission directly.",
+      "severity": "info",
+      "basis": [
+        "code_fact"
+      ],
+      "evidence_ids": [
+        "ev_89e203f9043afb89b9068091",
+        "ev_6df63ca95d3cb58b96f6d1f7"
+      ],
+      "deviation": null,
+      "condition": null,
+      "gap": null,
+      "recommendation": null,
+      "flow_ids": [],
+      "estimate_ids": []
+    },
+    {
+      "finding_id": "F-SEM-CLAIM",
+      "category": "behavior_intent",
+      "statement": "No success-value check appears before notify in the visible function. If submit returns a failure value instead of raising, the PR's claim is unverified.",
+      "severity": "medium",
+      "basis": [
+        "code_fact",
+        "user_intent",
+        "agent_claim",
+        "semantic_inference"
+      ],
+      "evidence_ids": [
+        "ev_6df63ca95d3cb58b96f6d1f7",
+        "ev_1e751d22d466cffdc5bcb9c1",
+        "ev_5dd9203ab8839a14297b8fa5"
+      ],
+      "deviation": "unverified_claim",
+      "condition": "Only when submit returns a failure value; exceptions prevent the following notify call.",
+      "gap": null,
+      "recommendation": null,
+      "flow_ids": [],
+      "estimate_ids": []
+    },
+    {
+      "finding_id": "F-SEM-TEST",
+      "category": "acceptance_tests",
+      "statement": "The supplied test checks a non-null result; it contains no assertion about notification on failure.",
+      "severity": "low",
+      "basis": [
+        "code_fact",
+        "user_intent"
+      ],
+      "evidence_ids": [
+        "ev_6faad0b1bdfff9c9b6261e4d",
+        "ev_1e751d22d466cffdc5bcb9c1"
+      ],
+      "deviation": null,
+      "condition": null,
+      "gap": null,
+      "recommendation": null,
+      "flow_ids": [
+        "submit-report"
+      ],
+      "estimate_ids": []
+    }
+  ],
+  "estimates": [
+    {
+      "estimate_id": "wait-1",
+      "flow_ids": [],
+      "structural_signals": [
+        "One additional serial await"
+      ],
+      "parameters": [
+        {
+          "name": "added_wait",
+          "value": null,
+          "unit": "ms",
+          "source": null,
+          "unknown_reason": "No runtime measurements or external implementation supplied"
+        }
+      ],
+      "formula": null,
+      "amount": null,
+      "currency": null,
+      "price_source": null,
+      "price_date": null,
+      "assumptions": [],
+      "unknowns": [
+        "Actual latency and failure rate"
+      ],
+      "evidence_ids": [
+        "ev_89e203f9043afb89b9068091",
+        "ev_6df63ca95d3cb58b96f6d1f7"
+      ]
+    }
+  ],
+  "suggestions": [
+    {
+      "suggestion_id": "V-001",
+      "scenario": "Review the new awaited operation's failure behavior.",
+      "conditions": [
+        "Submission returns a failure value",
+        "Submission raises an exception"
+      ],
+      "suggested_assertions": [
+        "No success notification is sent on a failure-valued submission"
+      ],
+      "existing_test_evidence_ids": [
+        "ev_6faad0b1bdfff9c9b6261e4d"
+      ],
+      "rationale": "Distinguish return-value failures from exceptions; test definitions are not executed.",
+      "questions_for_user": [
+        "Which values mean submission failed?",
+        "Should an awaited operation's failure change the return behavior?"
+      ],
+      "evidence_ids": [
+        "ev_6df63ca95d3cb58b96f6d1f7"
+      ]
+    }
+  ],
+  "limitations": [
+    {
+      "code": "mock_fixture",
+      "message": "Synthetic contract example, not a customer analysis.",
+      "evidence_ids": [],
+      "affects_completeness": false
+    }
+  ],
+  "analyzer_version": "0.1.0-mock",
+  "rule_version": "0.1.0-mock",
+  "semantic_version": "mock-v1",
+  "evidence": [
+    {
+      "evidence_id": "ev_89e203f9043afb89b9068091",
+      "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+      "side": "base",
+      "path": "src/app.py",
+      "range": {
+        "start_line": 1,
+        "end_line": 2,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:37b82a7da7a16b0788e23b4481e4f79fdac7b17ecaf2e99cb643878a0178751e",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_6df63ca95d3cb58b96f6d1f7",
+      "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+      "side": "head",
+      "path": "src/app.py",
+      "range": {
+        "start_line": 1,
+        "end_line": 4,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:bfb2ed982e86a11e90c1e514342e5378eaac2b75437d1c6332fb9cc990b5ace7",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_17747a64e05ffff55266df1b",
+      "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+      "side": "base",
+      "path": ".genesis/flows.yaml",
+      "range": {
+        "start_line": 1,
+        "end_line": 9,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:04a254461546fece9246c49f90901dce5e7407b985dbb599a05f9d3aca706f3e",
+      "kind": "flow"
+    },
+    {
+      "evidence_id": "ev_afc8b812c5a4c2486e9283c2",
+      "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+      "side": "head",
+      "path": ".genesis/flows.yaml",
+      "range": {
+        "start_line": 1,
+        "end_line": 9,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:04a254461546fece9246c49f90901dce5e7407b985dbb599a05f9d3aca706f3e",
+      "kind": "flow"
+    },
+    {
+      "evidence_id": "ev_5dd9203ab8839a14297b8fa5",
+      "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+      "side": "head",
+      "path": "intent/pr.md",
+      "range": {
+        "start_line": 1,
+        "end_line": 1,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:9929b358104171c1c3c15fa719949cc0fa90baa9dc76a3aca2a807f486ad2084",
+      "kind": "intent"
+    },
+    {
+      "evidence_id": "ev_1e751d22d466cffdc5bcb9c1",
+      "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+      "side": "head",
+      "path": "intent/task.md",
+      "range": {
+        "start_line": 1,
+        "end_line": 1,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:4a4c4ab25ce9fae85ba0e59458dedadb0d3329f785da9fbc875538ff1a4cb5b9",
+      "kind": "intent"
+    },
+    {
+      "evidence_id": "ev_6faad0b1bdfff9c9b6261e4d",
+      "snapshot_id": "sha256:348c1be73023373ed0e1804deaf4efb2933ec349da1c0c9dd295457a56e7f83d",
+      "side": "head",
+      "path": "tests/test_submit.py",
+      "range": {
+        "start_line": 1,
+        "end_line": 3,
+        "start_column": null,
+        "end_column": null
+      },
+      "snippet_digest": "sha256:ff9704d3f8a48bd8fe000b634911b152aea5abf8870bb8b8317e9a090b20fba4",
+      "kind": "test"
+    }
+  ]
+}

@@ -1,0 +1,918 @@
+from __future__ import annotations
+
+import hashlib
+import math
+from dataclasses import dataclass, field
+
+import libcst as cst
+from genesis_contracts.models import (
+    CallFact,
+    CapabilityStatus,
+    ChangeSet,
+    EvidenceSide,
+    ExpressionFact,
+    FactPack,
+    ImportFact,
+    ReferenceRange,
+    Resolution,
+    SymbolFact,
+    UnresolvedFact,
+)
+from genesis_contracts.python import (
+    AssertionFact,
+    BindingFact,
+    BranchGuard,
+    CallArgument,
+    DictionaryEntry,
+    ExceptionHandlerFact,
+    FileCoverage,
+    LoopControl,
+    NameOrigin,
+    ParsedCall,
+    ParsedLoop,
+    PythonAnalysis,
+    PythonOptions,
+    PythonSymbol,
+    ValueExpr,
+)
+from libcst.metadata import (
+    MetadataWrapper,
+    ParentNodeProvider,
+    PositionProvider,
+    QualifiedNameProvider,
+)
+
+from genesis_ci.git_snapshot import CapturedSnapshot
+from genesis_ci.source_snapshot import EvidenceRegistry
+
+from .control import ControlExtractor
+
+ANALYZED = CapabilityStatus(status="analyzed", analyzed_scope="Supported static syntax only")
+
+
+def incomplete(reason: str) -> CapabilityStatus:
+    return CapabilityStatus(status="insufficient_context", reason=reason)
+
+
+def unknown(reason: str) -> Resolution:
+    return Resolution(status="unknown", reason=reason)
+
+
+@dataclass
+class ParsedFile:
+    side: EvidenceSide
+    path: str
+    module: cst.Module
+    raw_text: str
+    symbols: list[PythonSymbol] = field(default_factory=list)
+    bindings: list[BindingFact] = field(default_factory=list)
+    calls: list[ParsedCall] = field(default_factory=list)
+    loops: list[ParsedLoop] = field(default_factory=list)
+    loop_controls: list[LoopControl] = field(default_factory=list)
+    exception_handlers: list[ExceptionHandlerFact] = field(default_factory=list)
+    assertions: list[AssertionFact] = field(default_factory=list)
+    imports: list[ImportFact] = field(default_factory=list)
+    conditions: list[ExpressionFact] = field(default_factory=list)
+    awaits: list[ExpressionFact] = field(default_factory=list)
+    unresolved: list[UnresolvedFact] = field(default_factory=list)
+    exports: dict[str, tuple[NameOrigin, ...]] = field(default_factory=dict)
+    wildcard_import: bool = False
+    uncertain_imports: set[str] = field(default_factory=set)
+    dynamic_namespace: bool = False
+    mutable_values: bool = False
+
+
+class _Budget(cst.CSTVisitor):
+    def __init__(self, maximum: int):
+        self.maximum = maximum
+        self.count = 0
+
+    def on_visit(self, node):
+        self.count += 1
+        if self.count > self.maximum:
+            raise ValueError("Python node budget exceeded")
+        return True
+
+
+class Extractor(ControlExtractor, cst.CSTVisitor):
+    METADATA_DEPENDENCIES = (PositionProvider, QualifiedNameProvider, ParentNodeProvider)
+
+    def __init__(self, file: ParsedFile, registry: EvidenceRegistry, options: PythonOptions):
+        self.file, self.registry, self.options = file, registry, options
+        self.stack: list[tuple[cst.CSTNode, str]] = []
+        self.controls: list[tuple[cst.CSTNode, str]] = []
+        self.barriers: list[int] = []
+        self.line_count = len(file.raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n"))
+
+    def span(self, node) -> ReferenceRange:
+        position = self.get_metadata(PositionProvider, node)
+        return ReferenceRange(
+            start_line=position.start.line,
+            end_line=position.end.line,
+            start_column=position.start.column
+            + int(position.start.line == 1 and self.file.raw_text.startswith("\ufeff")),
+            end_column=position.end.column
+            + int(position.end.line == 1 and self.file.raw_text.startswith("\ufeff")),
+        )
+
+    def refs(self, node):
+        span = self.span(node)
+        if span.end_line > self.line_count and span.end_column == 0:
+            # Module's synthetic final newline is outside the frozen source.
+            return ()
+        return (self.registry.register(self.file.side, self.file.path, span).evidence_id,)
+
+    def identifier(self, prefix, node):
+        span = self.span(node)
+        encoded = f"{self.file.side}:{self.file.path}:{prefix}:{span.model_dump_json()}"
+        return prefix + "_" + hashlib.sha256(encoded.encode()).hexdigest()[:24]
+
+    @property
+    def owner(self):
+        return self.file.path + "#" + (".".join(item[1] for item in self.stack) or "<module>")
+
+    def text(self, node):
+        return self.file.module.code_for_node(node)
+
+    def origins(self, node):
+        names = self.get_metadata(QualifiedNameProvider, node, set())
+        return tuple(
+            NameOrigin(name=item.name, source=item.source.name.lower())
+            for item in sorted(names, key=lambda item: (item.source.name, item.name))
+        )
+
+    def expr(self, node, depth=0, with_evidence=True):
+        text = self.text(node)
+        refs = self.refs(node) if with_evidence else ()
+        span = self.span(node)
+        common = {
+            "text": text,
+            "evidence_ids": refs,
+            "scope": self.execution_owner(node),
+            "position": (span.start_line, span.start_column),
+        }
+        if depth >= self.options.max_expression_depth:
+            return ValueExpr(kind="unknown", reason="Expression depth budget exceeded", **common)
+
+        def child(item):
+            return self.expr(item, depth + 1, False)
+
+        if isinstance(node, cst.Name):
+            if node.value in {"True", "False", "None"}:
+                return ValueExpr(
+                    kind="literal",
+                    value={"True": True, "False": False, "None": None}[node.value],
+                    **common,
+                )
+            return ValueExpr(kind="name", origins=self.origins(node), **common)
+        if isinstance(node, cst.Attribute):
+            return ValueExpr(
+                kind="attribute",
+                origins=self.origins(node),
+                attribute=node.attr.value,
+                children=(child(node.value),),
+                **common,
+            )
+        if isinstance(node, (cst.SimpleString, cst.Integer, cst.Float)):
+            value = node.evaluated_value
+            if (
+                isinstance(value, (str, int, float))
+                and not isinstance(value, bytes)
+                and not (isinstance(value, float) and not math.isfinite(value))
+            ):
+                return ValueExpr(kind="literal", value=value, **common)
+        if (
+            isinstance(node, cst.UnaryOperation)
+            and isinstance(node.operator, (cst.Minus, cst.Plus))
+            and isinstance(node.expression, cst.Integer)
+        ):
+            value = node.expression.evaluated_value * (
+                -1 if isinstance(node.operator, cst.Minus) else 1
+            )
+            return ValueExpr(kind="literal", value=value, **common)
+        if isinstance(node, cst.Call):
+            return ValueExpr(
+                kind="call",
+                children=(child(node.func),),
+                arguments=tuple(
+                    CallArgument(
+                        name=arg.keyword.value if arg.keyword else None,
+                        spread=arg.star,
+                        value=child(arg.value),
+                    )
+                    for arg in node.args
+                ),
+                **common,
+            )
+        if isinstance(node, (cst.List, cst.Tuple)):
+            if all(isinstance(item, cst.Element) for item in node.elements):
+                return ValueExpr(
+                    kind="list" if isinstance(node, cst.List) else "tuple",
+                    children=tuple(child(item.value) for item in node.elements),
+                    **common,
+                )
+        if isinstance(node, cst.Dict):
+            return ValueExpr(
+                kind="dict",
+                entries=tuple(
+                    DictionaryEntry(
+                        key=child(item.key) if isinstance(item, cst.DictElement) else None,
+                        value=child(item.value),
+                    )
+                    for item in node.elements
+                ),
+                **common,
+            )
+        if isinstance(node, cst.Subscript):
+            indices = tuple(
+                child(element.slice.value)
+                for element in node.slice
+                if isinstance(element.slice, cst.Index)
+            )
+            return ValueExpr(kind="subscript", children=(child(node.value), *indices), **common)
+        if isinstance(node, cst.Await):
+            return ValueExpr(kind="await", children=(child(node.expression),), **common)
+        nested = []
+        if isinstance(node, cst.Comparison):
+            nested = [node.left, *(item.comparator for item in node.comparisons)]
+        elif isinstance(node, (cst.BinaryOperation, cst.BooleanOperation)):
+            nested = [node.left, node.right]
+        elif isinstance(node, (cst.UnaryOperation, cst.Await)):
+            nested = [node.expression]
+        return ValueExpr(
+            kind="unknown",
+            children=tuple(child(item) for item in nested),
+            reason="Expression requires runtime evaluation or unsupported syntax",
+            **common,
+        )
+
+    def visit_Module(self, node):
+        text = node.code
+        if text:
+            # Register the actual whole file, not LibCST's synthetic EOF.
+            raw_text = self.file.raw_text
+            from genesis_ci.snapshot import slice_source
+
+            physical = raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+            if physical[-1] == "":
+                physical.pop()
+            if physical:
+                span = ReferenceRange(
+                    start_line=1,
+                    end_line=len(physical),
+                    start_column=0,
+                    end_column=len(physical[-1]),
+                )
+                ref = self.registry.register(self.file.side, self.file.path, span)
+                self.file.symbols.append(
+                    PythonSymbol(
+                        symbol_id=self.owner,
+                        side=self.file.side,
+                        path=self.file.path,
+                        qualified_name="<module>",
+                        kind="module",
+                        source_digest=hashlib.sha256(
+                            slice_source(raw_text, span).encode()
+                        ).hexdigest(),
+                        range=span,
+                        evidence_ids=(ref.evidence_id,),
+                    )
+                )
+
+    def _enter_symbol(self, node, kind):
+        name = node.name.value
+        self.stack.append((node, name))
+        self.barriers.append(len(self.controls))
+        params = ()
+        if isinstance(node, cst.FunctionDef):
+            p = node.params
+            params = tuple(
+                item.name.value for item in (*p.posonly_params, *p.params, *p.kwonly_params)
+            )
+            if isinstance(p.star_arg, cst.Param):
+                params += (p.star_arg.name.value,)
+            if p.star_kwarg:
+                params += (p.star_kwarg.name.value,)
+        self.file.symbols.append(
+            PythonSymbol(
+                symbol_id=self.owner,
+                side=self.file.side,
+                path=self.file.path,
+                qualified_name=".".join(item[1] for item in self.stack),
+                kind=kind,
+                is_async=isinstance(node, cst.FunctionDef) and node.asynchronous is not None,
+                decorators=tuple(self.expr(d.decorator) for d in node.decorators),
+                declaration_conditions=tuple(text for _, text in self.controls),
+                parameters=params,
+                default_parameters=tuple(
+                    item.name.value
+                    for item in (
+                        *node.params.posonly_params,
+                        *node.params.params,
+                        *node.params.kwonly_params,
+                    )
+                    if item.default is not None
+                )
+                if isinstance(node, cst.FunctionDef)
+                else (),
+                variadic_parameters=tuple(
+                    item.name.value
+                    for item in (node.params.star_arg, node.params.star_kwarg)
+                    if isinstance(item, cst.Param)
+                )
+                if isinstance(node, cst.FunctionDef)
+                else (),
+                source_digest=hashlib.sha256(self.text(node).encode()).hexdigest(),
+                range=self.span(node),
+                evidence_ids=self.refs(node),
+            )
+        )
+
+    def visit_FunctionDef(self, node):
+        self._enter_symbol(node, "function")
+
+    def leave_FunctionDef(self, node):
+        self.stack.pop()
+        self.barriers.pop()
+
+    def visit_ClassDef(self, node):
+        self._enter_symbol(node, "class")
+
+    def leave_ClassDef(self, node):
+        self.stack.pop()
+        self.barriers.pop()
+
+    def _binding(self, node, target, value, *, unpacked=False):
+        # A tuple assignment only makes its assigned values unknown. It does not
+        # invalidate unrelated imports/calls throughout the entire module.
+        if isinstance(target, (cst.Tuple, cst.List)):
+            for element in target.elements:
+                if element is not None:
+                    self._binding(node, element.value, value, unpacked=True)
+            return
+        if isinstance(target, cst.Attribute):
+            for origin in self.origins(target):
+                if origin.source == "import":
+                    self.file.uncertain_imports.add(origin.name)
+        if not isinstance(target, (cst.Name, cst.Attribute)):
+            self.file.dynamic_namespace = True
+
+        self.file.bindings.append(
+            BindingFact(
+                binding_id=self.identifier("bind", target),
+                side=self.file.side,
+                path=self.file.path,
+                symbol_id=self.owner,
+                target=self.expr(target),
+                value=ValueExpr(
+                    kind="unknown",
+                    text=self.text(value),
+                    reason="Destructured value requires iteration; element types are unknown",
+                )
+                if unpacked
+                else self.expr(value),
+                conditional=bool(self.controls[self.barriers[-1] if self.barriers else 0 :]),
+                evidence_ids=self.refs(node),
+            )
+        )
+
+    def visit_Assign(self, node):
+        for target in node.targets:
+            self._binding(node, target.target, node.value)
+
+    def visit_AnnAssign(self, node):
+        if node.value:
+            self._binding(node, node.target, node.value)
+
+    def visit_AugAssign(self, node):
+        self.file.bindings.append(
+            BindingFact(
+                binding_id=self.identifier("bind", node.target),
+                side=self.file.side,
+                path=self.file.path,
+                symbol_id=self.owner,
+                target=self.expr(node.target),
+                value=ValueExpr(
+                    kind="unknown",
+                    text=self.text(node),
+                    reason="Augmented assignment is state dependent",
+                ),
+                conditional=True,
+                evidence_ids=self.refs(node),
+            )
+        )
+
+    def visit_With(self, node):
+        for item in node.items:
+            if item.asname is None:
+                continue
+            target = item.asname.name
+            self.file.bindings.append(
+                BindingFact(
+                    binding_id=self.identifier("bind", target),
+                    side=self.file.side,
+                    path=self.file.path,
+                    symbol_id=self.owner,
+                    target=self.expr(target),
+                    value=ValueExpr(
+                        kind="unknown",
+                        text=self.text(item.item),
+                        children=(self.expr(item.item),),
+                        reason="Context manager __enter__ result is unknown",
+                    ),
+                    conditional=True,
+                    evidence_ids=self.refs(item),
+                )
+            )
+
+    def visit_NamedExpr(self, node):
+        self._binding(node, node.target, node.value)
+
+    def execution_owner(self, node):
+        child = node
+        parent = self.get_metadata(ParentNodeProvider, node, None)
+        while parent is not None:
+            if isinstance(parent, (cst.FunctionDef, cst.ClassDef)) and child is parent.body:
+                index = next((i for i, item in enumerate(self.stack) if item[0] is parent), None)
+                if index is not None:
+                    return (
+                        self.file.path + "#" + ".".join(item[1] for item in self.stack[: index + 1])
+                    )
+            child, parent = parent, self.get_metadata(ParentNodeProvider, parent, None)
+        return self.file.path + "#<module>"
+
+    def branch_guards(self, node):
+        """Positive body guards only; never borrow an enclosing function's branch."""
+        result = []
+        child = node
+        parent = self.get_metadata(ParentNodeProvider, child, None)
+        while parent is not None:
+            if isinstance(parent, (cst.FunctionDef, cst.ClassDef, cst.Lambda)):
+                break
+            if isinstance(parent, cst.If) and child is parent.body:
+                test = parent.test
+                if (
+                    isinstance(test, cst.Comparison)
+                    and len(test.comparisons) == 1
+                    and isinstance(test.comparisons[0].operator, cst.Equal)
+                ):
+                    left, right = test.left, test.comparisons[0].comparator
+                    for selector, literal in ((left, right), (right, left)):
+                        if isinstance(literal, cst.SimpleString) and isinstance(
+                            literal.evaluated_value, str
+                        ):
+                            result.append(
+                                BranchGuard(
+                                    branch_id=self.identifier("branch", parent),
+                                    kind="if",
+                                    selector=self.expr(selector),
+                                    names=(literal.evaluated_value,),
+                                    evidence_ids=self.refs(test),
+                                )
+                            )
+                            break
+            if isinstance(parent, cst.MatchCase) and child is parent.body:
+                match = self.get_metadata(ParentNodeProvider, parent, None)
+                patterns = [parent.pattern]
+                if isinstance(parent.pattern, cst.MatchOr):
+                    patterns = [element.pattern for element in parent.pattern.patterns]
+                if isinstance(match, cst.Match) and all(
+                    isinstance(p, cst.MatchValue)
+                    and isinstance(p.value, cst.SimpleString)
+                    and isinstance(p.value.evaluated_value, str)
+                    for p in patterns
+                ):
+                    result.append(
+                        BranchGuard(
+                            branch_id=self.identifier("branch", parent),
+                            kind="match",
+                            selector=self.expr(match.subject),
+                            names=tuple(p.value.evaluated_value for p in patterns),
+                            evidence_ids=tuple(
+                                sorted(
+                                    {
+                                        *self.refs(match.subject),
+                                        *self.refs(parent.pattern),
+                                        *(self.refs(parent.guard) if parent.guard else ()),
+                                    }
+                                )
+                            ),
+                        )
+                    )
+            child, parent = parent, self.get_metadata(ParentNodeProvider, parent, None)
+        return tuple(result)
+
+    def visit_Call(self, node):
+        parent = self.get_metadata(ParentNodeProvider, node, None)
+        if isinstance(node.func, cst.Name) and node.func.value in {
+            "exec",
+            "eval",
+            "setattr",
+            "globals",
+            "locals",
+        }:
+            self.file.dynamic_namespace = True
+        if isinstance(node.func, cst.Attribute) and node.func.attr.value in {
+            "append",
+            "extend",
+            "insert",
+            "pop",
+            "remove",
+            "clear",
+            "update",
+            "setdefault",
+            "sort",
+            "reverse",
+            "__setitem__",
+        }:
+            self.file.mutable_values = True
+        # Defaults and decorators execute in the enclosing scope, not the function body.
+        self.file.calls.append(
+            ParsedCall(
+                call_id=self.identifier("call", node),
+                side=self.file.side,
+                path=self.file.path,
+                symbol_id=self.execution_owner(node),
+                callee=self.expr(node.func),
+                expression=self.text(node),
+                arguments=tuple(
+                    CallArgument(
+                        name=arg.keyword.value if arg.keyword else None,
+                        spread=arg.star,
+                        value=self.expr(arg.value),
+                    )
+                    for arg in node.args
+                ),
+                target=unknown("Name resolution pending"),
+                branch_guards=self.branch_guards(node),
+                lexical_conditions=self.control_context(node)[0],
+                awaited=isinstance(parent, cst.Await),
+                context_manager=isinstance(parent, cst.WithItem) and parent.item is node,
+                conditions=tuple(
+                    text for _, text in self.controls[self.barriers[-1] if self.barriers else 0 :]
+                ),
+                loop_ids=self.active_loop_ids(node),
+                evidence_ids=self.refs(node),
+            )
+        )
+
+    def visit_If(self, node):
+        self.file.conditions.append(
+            ExpressionFact(
+                fact_id=self.identifier("condition", node.test),
+                side=self.file.side,
+                symbol_id=self.owner,
+                expression=self.text(node.test),
+                evidence_ids=self.refs(node.test),
+            )
+        )
+        self.controls.append((node, "branch of: " + self.text(node.test)))
+
+    def leave_If(self, node):
+        self.controls.pop()
+
+    def visit_Try(self, node):
+        self.controls.append((node, "try/except/finally region"))
+
+    def leave_Try(self, node):
+        self.controls.pop()
+
+    def visit_TryStar(self, node):
+        self.controls.append((node, "try*/except*/finally region"))
+
+    def leave_TryStar(self, node):
+        self.controls.pop()
+
+    def _exception_handler(self, node):
+        # Only a literal pass/ellipsis-only body proves syntactic fallthrough.
+        if isinstance(node.body, cst.SimpleStatementSuite):
+            statements = tuple(node.body.body)
+        elif all(isinstance(line, cst.SimpleStatementLine) for line in node.body.body):
+            statements = tuple(s for line in node.body.body for s in line.body)
+        else:
+            statements = ()
+        fallthrough = bool(statements) and all(
+            isinstance(s, cst.Pass)
+            or (isinstance(s, cst.Expr) and isinstance(s.value, cst.Ellipsis))
+            for s in statements
+        )
+        conditions, _, refs = self.control_context(node)
+        self.file.exception_handlers.append(
+            ExceptionHandlerFact(
+                handler_id=self.identifier("handler", node),
+                side=self.file.side,
+                path=self.file.path,
+                symbol_id=self.execution_owner(node),
+                exception=self.text(node.type) if node.type else "bare except",
+                is_group=isinstance(node, cst.ExceptStarHandler),
+                simple_fallthrough=fallthrough,
+                conditions=conditions,
+                evidence_ids=tuple(sorted({*self.refs(node), *refs})),
+            )
+        )
+
+    def visit_ExceptHandler(self, node):
+        self._exception_handler(node)
+
+    def visit_ExceptStarHandler(self, node):
+        self._exception_handler(node)
+
+    def visit_Match(self, node):
+        self.controls.append((node, "match region: " + self.text(node.subject)))
+
+    def leave_Match(self, node):
+        self.controls.pop()
+
+    def _loop(self, node, expression, kind):
+        loop_id = self.identifier("loop", node)
+        self.controls.append((node, kind + ": " + self.text(expression)))
+        self.file.loops.append(
+            ParsedLoop(
+                loop_id=loop_id,
+                side=self.file.side,
+                path=self.file.path,
+                symbol_id=self.owner,
+                kind=kind,
+                expression=self.expr(expression),
+                target=self.expr(node.target) if isinstance(node, cst.For) else None,
+                is_async=isinstance(node, cst.For) and node.asynchronous is not None,
+                break_conditions=(),
+                single_pass_exit_id=self.single_pass_exit(node),
+                counter_progression=self.counter_progression(node),
+                evidence_ids=self.refs(node),
+            )
+        )
+
+    def visit_For(self, node):
+        self._loop(node, node.iter, "for")
+
+    def leave_For(self, node):
+        self.controls.pop()
+
+    def visit_While(self, node):
+        self._loop(node, node.test, "while")
+
+    def leave_While(self, node):
+        self.controls.pop()
+
+    def visit_Await(self, node):
+        self.file.awaits.append(
+            ExpressionFact(
+                fact_id=self.identifier("await", node),
+                side=self.file.side,
+                symbol_id=self.owner,
+                expression=self.text(node),
+                evidence_ids=self.refs(node),
+            )
+        )
+
+    def visit_Assert(self, node):
+        self.file.assertions.append(
+            AssertionFact(
+                assertion_id=self.identifier("assert", node),
+                side=self.file.side,
+                path=self.file.path,
+                symbol_id=self.owner,
+                expression=self.expr(node.test),
+                evidence_ids=self.refs(node),
+            )
+        )
+
+    def visit_Import(self, node):
+        for alias in node.names:
+            module = self.text(alias.name)
+            bound = alias.asname.name.value if alias.asname else module.split(".")[0]
+            if self.controls:
+                self.file.uncertain_imports.add(module if alias.asname else bound)
+            self.file.imports.append(
+                ImportFact(
+                    import_id=self.identifier("import", alias),
+                    side=self.file.side,
+                    module=module,
+                    alias=bound,
+                    evidence_ids=self.refs(node),
+                )
+            )
+            if not self.stack and not self.controls:
+                self.file.exports[bound] = (
+                    NameOrigin(name=module if alias.asname else bound, source="import"),
+                )
+
+    def visit_ImportFrom(self, node):
+        module = "." * len(node.relative) + (self.text(node.module) if node.module else "")
+        if isinstance(node.names, cst.ImportStar):
+            self.file.wildcard_import = True
+            self.file.unresolved.append(
+                UnresolvedFact(
+                    unresolved_id=self.identifier("unknown", node),
+                    feature="import",
+                    reason="Wildcard exports require runtime module semantics",
+                    evidence_ids=self.refs(node),
+                )
+            )
+            return
+        for alias in node.names:
+            name = self.text(alias.name)
+            bound = alias.asname.name.value if alias.asname else name
+            if self.controls:
+                self.file.uncertain_imports.add(
+                    module + ("" if module.endswith(".") else ".") + name
+                )
+            self.file.imports.append(
+                ImportFact(
+                    import_id=self.identifier("import", alias),
+                    side=self.file.side,
+                    module=module,
+                    imported_name=name,
+                    alias=bound,
+                    evidence_ids=self.refs(node),
+                )
+            )
+            if not self.stack and not self.controls:
+                full = module + ("" if module.endswith(".") else ".") + name
+                self.file.exports[bound] = (NameOrigin(name=full, source="import"),)
+
+    def visit_Del(self, node):
+        self.file.dynamic_namespace = True
+        self.file.unresolved.append(
+            UnresolvedFact(
+                unresolved_id=self.identifier("delete", node),
+                feature="other",
+                reason="Deletion can invalidate static name bindings",
+                evidence_ids=self.refs(node),
+            )
+        )
+
+
+@dataclass
+class Extraction:
+    analysis: PythonAnalysis
+    registry: EvidenceRegistry
+    files: dict[tuple[EvidenceSide, str], ParsedFile]
+    resolver: object
+
+
+def extract_python(snapshot: CapturedSnapshot, options: PythonOptions | None = None) -> Extraction:
+    from .resolve import Resolver
+
+    options = options or PythonOptions()
+    registry = EvidenceRegistry(snapshot.source)
+    parsed = {}
+    coverage = []
+    for file in snapshot.capture.manifest.files:
+        if not file.path.endswith((".py", ".pyi")):
+            continue
+        raw = snapshot.source.read_bytes(file.side, file.path)
+        try:
+            if len(raw) > options.max_file_bytes:
+                raise ValueError("Python file byte budget exceeded")
+            module = cst.parse_module(raw)
+            module.visit(_Budget(options.max_nodes))
+            wrapper = MetadataWrapper(module)
+            result = ParsedFile(file.side, file.path, wrapper.module, raw.decode("utf-8"))
+            wrapper.visit(Extractor(result, registry, options))
+            parsed[(file.side, file.path)] = result
+            syntax = ANALYZED
+        except (cst.ParserSyntaxError, RecursionError, ValueError) as error:
+            syntax = CapabilityStatus(
+                status="unsupported", reason=f"File not analyzed: {type(error).__name__}"
+            )
+        coverage.append(
+            FileCoverage(
+                side=file.side, path=file.path, syntax=syntax, bindings=syntax, calls=syntax
+            )
+        )
+    unavailable = {(c.side, c.path) for c in coverage if c.syntax.status != "analyzed"}
+    unavailable.update(
+        (o.side, o.path) for o in snapshot.capture.omissions if o.path.endswith((".py", ".pyi"))
+    )
+    unavailable.update(
+        (o.side, o.path + "/__init__.py")
+        for o in snapshot.capture.omissions
+        if o.reason == "submodule"
+    )
+    resolver = Resolver(parsed, options.source_roots, unavailable)
+    for file in parsed.values():
+        file.calls[:] = [
+            call.model_copy(update={"target": resolver.resolve(call.callee, file.side, file.path)})
+            for call in file.calls
+        ]
+        for call in file.calls:
+            if call.target.status != "resolved":
+                file.unresolved.append(
+                    UnresolvedFact(
+                        unresolved_id="unresolved_" + call.call_id,
+                        feature="call",
+                        reason=call.target.reason or "Candidate target",
+                        evidence_ids=call.evidence_ids,
+                    )
+                )
+    coverage = [
+        item.model_copy(
+            update={
+                "calls": incomplete("Unresolved or candidate calls remain")
+                if (item.side, item.path) in parsed and parsed[(item.side, item.path)].unresolved
+                else item.calls,
+                "bindings": incomplete(
+                    "Binding values are conservative; conditional/reassigned/dynamic values may be unknown"
+                )
+                if (item.side, item.path) in parsed
+                and any(
+                    b.conditional or b.value.kind in {"unknown", "subscript"}
+                    for b in parsed[(item.side, item.path)].bindings
+                )
+                else item.bindings,
+            }
+        )
+        for item in coverage
+    ]
+    symbols = tuple(symbol for file in parsed.values() for symbol in file.symbols)
+    symbol_map = {}
+    for symbol in symbols:
+        symbol_map.setdefault((symbol.side, symbol.symbol_id), []).append(symbol)
+    failed = {(item.side, item.path) for item in coverage if item.syntax.status != "analyzed"}
+    uncertain = {item.path for item in snapshot.capture.omissions if item.affects_completeness}
+    changed = set()
+    for sid in sorted({s.symbol_id for s in symbols}):
+        path = sid.split("#")[0]
+        if any(path == p or path.startswith(p + "/") for p in uncertain) or any(
+            (side, path) in failed for side in EvidenceSide
+        ):
+            continue
+        before, after = (
+            symbol_map.get((EvidenceSide.base, sid)),
+            symbol_map.get((EvidenceSide.head, sid)),
+        )
+        if (
+            before is None
+            or after is None
+            or tuple(s.source_digest for s in before) != tuple(s.source_digest for s in after)
+        ):
+            changed.add(sid)
+    unresolved = [f"{side.value}:{path}:syntax_unavailable" for side, path in sorted(failed)]
+    unresolved += [
+        f"{item.side.value}:{item.path}:{item.reason}"
+        for item in snapshot.capture.omissions
+        if item.affects_completeness
+    ]
+    files = list(parsed.values())
+    all_calls = tuple(call for file in files for call in file.calls)
+    fact_unresolved = tuple(item for file in files for item in file.unresolved)
+    overall = (
+        incomplete("Some input files or call targets could not be fully analyzed")
+        if not coverage or failed or unresolved or fact_unresolved
+        else ANALYZED
+    )
+    facts = FactPack(
+        coverage=overall,
+        functions=tuple(
+            SymbolFact(
+                symbol_id=s.symbol_id,
+                side=s.side,
+                kind=s.kind,
+                is_async=s.is_async,
+                evidence_ids=s.evidence_ids,
+            )
+            for s in symbols
+        ),
+        imports=tuple(item for file in files for item in file.imports),
+        calls=tuple(
+            CallFact(
+                call_id=call.call_id,
+                side=call.side,
+                caller_symbol_id=call.symbol_id,
+                expression=call.callee.text,
+                target=call.target,
+                awaited=call.awaited,
+                evidence_ids=call.evidence_ids,
+            )
+            for call in all_calls
+        ),
+        conditions=tuple(item for file in files for item in file.conditions),
+        awaits=tuple(item for file in files for item in file.awaits),
+        unresolved=fact_unresolved,
+    )
+    analysis = PythonAnalysis(
+        snapshot_id=snapshot.capture.manifest.snapshot_id,
+        options=options,
+        source_roots=options.source_roots,
+        symbols=symbols,
+        bindings=tuple(item for file in files for item in file.bindings),
+        calls=all_calls,
+        loops=tuple(item for file in files for item in file.loops),
+        assertions=tuple(item for file in files for item in file.assertions),
+        loop_controls=tuple(item for file in files for item in file.loop_controls),
+        exception_handlers=tuple(item for file in files for item in file.exception_handlers),
+        coverage=tuple(coverage),
+        facts=facts,
+        change_set=ChangeSet(
+            files=tuple(item.change for item in snapshot.capture.file_diff.changes),
+            changed_symbol_ids=tuple(sorted(changed)),
+            unresolved=tuple(unresolved),
+        ),
+        evidence=registry.freeze().evidence_catalog(),
+    )
+    from .validate import validate_python
+
+    validate_python(analysis)
+    return Extraction(analysis, registry, parsed, resolver)

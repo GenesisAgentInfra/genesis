@@ -1,0 +1,11 @@
+from integrations import send_slack, submit_to_provider
+from notification import build_notification
+
+
+async def submit_report(report, approved):
+    if not approved:
+        return {"success": False, "reason": "approval denied"}
+    result = await submit_to_provider(report)
+    summary = await build_notification(report)
+    await send_slack("Report submitted: " + summary)
+    return result
