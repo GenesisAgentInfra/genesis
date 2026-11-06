@@ -69,16 +69,22 @@ explanation; the CLI does not automatically retry. The intentionally public
 trial identity is bundled with the client and can be revoked by the operator.
 Personal credentials are never written into the project or replaced by it.
 
-## Optional: use your own Genesis key or service
+## Optional: use a personal Genesis key
 
-For separate access, request a personal Genesis key and service origin from the
-project operator. Personal key provisioning is currently manual; there is no
-self-serve signup. Do not post personal keys in issues.
-A Genesis key is separate from a model provider key; provider credentials remain
-on the service. Your application does not need an embedded SDK.
+The Genesis team operates the hosted analysis service. Both the shared trial
+and personal Genesis keys connect to that same service. This repository contains
+the public client; the server implementation is private and is not distributed
+for self-hosting. Users do not need to deploy a server.
+
+For access under a personal key instead of the shared trial, request one from
+the Genesis team. Personal key provisioning is currently manual; there is no
+self-serve signup. Do not post personal keys in issues. A Genesis key authorizes
+access to the Genesis service; it is not a model-provider key. Model-provider
+credentials remain on the server. Your application does not need an embedded SDK.
 
 ```sh
-uv run --package genesis-ci --no-dev --frozen genesis auth   --service-url https://YOUR-GENESIS-SERVICE
+uv run --package genesis-ci --no-dev --frozen genesis auth \
+  --service-url https://semantic-api-production.up.railway.app
 uv run --package genesis-ci --no-dev --frozen genesis analyze   --repo /absolute/path/to/your-app --base main --head HEAD
 ```
 
@@ -86,9 +92,8 @@ uv run --package genesis-ci --no-dev --frozen genesis analyze   --repo /absolute
 It does not contact the server to validate the key; the first analysis does.
 Explicit environment settings and saved credentials take priority over the
 shared trial. Invalid or incomplete personal configuration does not silently
-fall back to trial. A custom service URL requires its own key; the bundled trial
-key is never selected for a custom origin. See [configuration](docs/usage.md) for
-the complete precedence rules. The GitHub Action remains offline without an
+fall back to trial. Use the official service URL shown above. See
+[configuration](docs/usage.md) for the complete precedence rules. The GitHub Action remains offline without an
 explicit key and does not automatically consume shared trial quota.
 
 Task/requirements/PR documents and `.genesis/flows.yaml` are optional. Without

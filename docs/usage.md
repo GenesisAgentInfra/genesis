@@ -17,11 +17,24 @@ allocation. On failure, the CLI keeps a partial report and does not retry.
 
 ## Optional personal credentials
 
-`genesis auth --service-url https://YOUR-GENESIS-SERVICE` saves the key to
+Shared trial and personal keys both access the Genesis team's hosted private
+service. The public CLI repository does not distribute a server for self-hosting.
+Request a personal Genesis key from the Genesis team, then run:
+
+```sh
+genesis auth --service-url https://semantic-api-production.up.railway.app
+```
+
+The command prompts for your key without echoing it and saves it to
 `$XDG_CONFIG_HOME/genesis/credentials.json`, or `~/.config/genesis/credentials.json`.
 The directory/file use owner-only permissions. Do not put personal keys in source control.
 For CI use a repository secret exposed as `GENESIS_API_KEY` and an explicit trusted
 `GENESIS_SERVICE_URL`. A key saved for one origin is not sent to another origin.
+Set `GENESIS_SERVICE_URL` to `https://semantic-api-production.up.railway.app`.
+
+The URL override is retained for development/testing and endpoint changes. It
+does not imply that a self-hosted Genesis server is included or offered. Normal
+users use the official hosted endpoint above.
 
 Connection precedence:
 
