@@ -199,9 +199,14 @@ def test_review_context_retains_changed_body_pair_and_direct_caller(source_repo,
         )
     )
     request = build_context(
-        result.local, result.reader, request_id="body-context", review_directives=directives
+        result.local,
+        result.reader,
+        request_id="body-context",
+        review_directives=directives,
+        options=ContextOptions(input_token_budget=input_budget),
     )
     validate_request_against_local(result.local, request)
+    assert request.input_token_budget == input_budget
     functions = {(f.side.value, f.symbol_id) for f in request.facts.functions}
     assert {(side, "workflow.py#classify") for side in ("base", "head")} <= functions
     assert {(side, "workflow.py#dispatch") for side in ("base", "head")} <= functions
