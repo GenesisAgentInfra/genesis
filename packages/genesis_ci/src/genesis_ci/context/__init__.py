@@ -96,38 +96,10 @@ def _import_context_bundles(local, changed):
         if name and name != "<module>":
             targets[path].add(name.split(".")[0])
 
+    from .modules import local_module_path
+
     def module_path(name, side, owner):
-        if not name:
-            return None
-        if name.startswith("."):
-            dots = len(name) - len(name.lstrip("."))
-            parts = owner.split("/")[:-1]
-            if dots > len(parts):
-                return None
-            prefix = parts[: len(parts) - dots + 1]
-            suffix = "/".join([*prefix, *name[dots:].split(".")]).rstrip("/")
-            candidates = {
-                path
-                for candidate_side, path in modules
-                if candidate_side == side
-                and path
-                in {
-                    suffix + extension
-                    for extension in (".py", ".pyi", "/__init__.py", "/__init__.pyi")
-                }
-            }
-        else:
-            suffix = name.replace(".", "/")
-            endings = tuple(
-                suffix + extension for extension in (".py", ".pyi", "/__init__.py", "/__init__.pyi")
-            )
-            candidates = {
-                path
-                for candidate_side, path in modules
-                if candidate_side == side
-                and any(path == ending or path.endswith("/" + ending) for ending in endings)
-            }
-        return next(iter(candidates)) if len(candidates) == 1 else None
+        return local_module_path(name, side, owner, modules)
 
     supporting = set()
     for fact in local.facts.imports:
@@ -154,7 +126,7 @@ def _import_context_bundles(local, changed):
 
 
 def _source_bundles(local, reader=None, missing=None):
-    """Pair changed bodies first, then their statically resolved direct callers.
+    """Pair changed bodies first, then resolved local callees and direct callers.
 
     Importing modules provide registration/configuration context before other
     methods of changed classes. Added/deleted functions have only their existing
@@ -186,14 +158,32 @@ def _source_bundles(local, reader=None, missing=None):
         and nodes[edge.target_id].symbol_id in changed_functions | changed_classes
         and nodes[edge.source_id].symbol_id in bodies
     } - changed_functions
+    # A changed function's output can depend on a small cross-module helper.
+    # Admit its original body pair before many unchanged callers fill the budget.
+    # Only existing resolved call edges qualify; never infer targets from names.
+    callees = {
+        nodes[edge.target_id].symbol_id
+        for edge in local.impact_graph.edges
+        if edge.relation in {"calls", "awaits"}
+        and edge.resolution == "resolved"
+        and nodes[edge.source_id].symbol_id in changed_functions
+        and nodes[edge.target_id].symbol_id in bodies
+    } - changed_functions
     primary = [
         tuple(dict.fromkeys(bodies[symbol]))
-        for symbols in (changed_functions, callers)
+        for symbols in (changed_functions, callees)
         for symbol in sorted(symbols)
     ]
     from .dependencies import lexical_bundles
+    from .imported_values import imported_value_bundles
     from .registration import registration_bundles
     from .related import related_bundles
+
+    imported_values = (
+        imported_value_bundles(local, reader, changed_functions | callees, missing)
+        if reader is not None
+        else []
+    )
 
     supporting, related = (
         related_bundles(local, reader, changed_functions | changed_classes, missing)
@@ -243,6 +233,8 @@ def _source_bundles(local, reader=None, missing=None):
     small_ids = {ident for bundle in small_values for ident in bundle}
     return [
         *primary,
+        *imported_values,
+        *(tuple(dict.fromkeys(bodies[symbol])) for symbol in sorted(callers - callees)),
         *supporting,
         *helper_dependencies,
         *small_values,
@@ -559,16 +551,19 @@ def build_context(
     while any(seed_queues.values()):
         for queue in seed_queues.values():
             if queue:
-                seed_order.append((queue.popleft(), True))
-    ordered = [(ref, False) for ref in candidates if priorities[ref.evidence_id] < 2]
+                seed_order.append((queue.popleft(), True, None))
+    ordered = [(ref, False, None) for ref in candidates if priorities[ref.evidence_id] < 2]
     body_bundles = {}
     for bundle in _source_bundles(local, reader, missing):
         for ident in bundle:
             body_bundles[ident] = bundle
-        ordered.append((local_catalog[bundle[0]], False))
+        # Different dependency groups can share an import or body evidence ID.
+        # Keep each scheduled group intact rather than letting the final mapping
+        # for that ID silently substitute another group's source/filters.
+        ordered.append((local_catalog[bundle[0]], False, bundle))
     ordered += seed_order
     ordered += [
-        (ref, False)
+        (ref, False, None)
         for ref in candidates
         if priorities[ref.evidence_id] >= 2 and ref.evidence_id not in body_bundles
     ]
@@ -597,9 +592,10 @@ def build_context(
         "Changed source is present locally, but no changed-code evidence was selected.",
         "Complete changed/caller or supporting module context omitted by a configured budget or filter.",
     )
-    for ref, is_seed in ordered:
+    for ref, is_seed, scheduled_bundle in ordered:
         complete_bundle = all(
-            ident in selected_ids for ident in body_bundles.get(ref.evidence_id, (ref.evidence_id,))
+            ident in selected_ids
+            for ident in (scheduled_bundle or body_bundles.get(ref.evidence_id, (ref.evidence_id,)))
         )
         if complete_bundle or (is_seed and ref.side in seeded_sides):
             continue
@@ -607,7 +603,8 @@ def build_context(
             (ref.evidence_id,)
             if ref.evidence_id in options.preferred_evidence_ids
             and ref.evidence_id not in selected_ids
-            else body_bundles.get(
+            else scheduled_bundle
+            or body_bundles.get(
                 ref.evidence_id, test_bundles.get(ref.evidence_id, (ref.evidence_id,))
             )
         )
