@@ -61,14 +61,27 @@ class SemanticClient:
                         versions = []
                     if data.get("behavior_view_version") == "1":
                         versions = [*versions, "1"]
+                    review_versions = data.get("behavior_review_versions", [])
+                    if not isinstance(review_versions, list):
+                        review_versions = []
+                    if data.get("behavior_review_version") == "1":
+                        review_versions = [*review_versions, "1"]
                     return {
-                        "behavior_review_version": "1"
-                        if data.get("behavior_review_version") == "1"
-                        else None,
+                        "behavior_review_version": next(
+                            (v for v in ("2", "1") if v in review_versions), None
+                        ),
                         "behavior_view_versions": tuple(v for v in ("1", "2") if v in versions),
                     }
         except (httpx.HTTPError, ValueError, TypeError):
             return {}
+
+    @staticmethod
+    def negotiate_review_version(approved, capabilities):
+        """Only downgrade the optional output requested in the approved preview."""
+        supported = capabilities.get("behavior_review_version")
+        if approved is None or supported not in {"1", "2"}:
+            return None
+        return str(min(int(approved), int(supported)))
 
     def _post(self, path: str, request):
         try:

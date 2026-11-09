@@ -13,7 +13,7 @@ HEAD = EvidenceSide.head
 MAX_CANDIDATES = 100
 MAX_PATHS = 256
 MAX_PATH_LENGTH = 64
-SCOPE = "Unique top-level code functions with no non-module code callers except self; head unassigned changes only"
+SCOPE = "Unique top-level functions or public class methods with no non-module code callers except self; head unassigned changes only"
 LIMITATIONS = (
     "Candidates require human confirmation; no business name, acceptance criteria or runtime entry is inferred.",
     "Only supported static calls are searched. Dynamic callers, callbacks, decorators and omitted source can hide other entries.",
@@ -51,8 +51,17 @@ def candidate_graph(ir, impact, registered):
         if len(symbols) != 1:
             continue
         symbol = symbols[0]
-        if symbol.kind != "function" or "." in symbol.qualified_name or sid in registered:
+        if symbol.kind != "function" or sid in registered:
             continue
+        if "." in symbol.qualified_name:
+            # Only a declared class parent admits a method candidate. A nested
+            # function is not a root; membership itself adds no call edge.
+            parent = symbol.qualified_name.rsplit(".", 1)[0]
+            parents = groups.get(symbol.path + "#" + parent, ())
+            if len(parents) != 1 or parents[0].kind != "class":
+                continue
+            if symbol.qualified_name.rsplit(".", 1)[-1].startswith("_"):
+                continue
         if all(
             edge.source_id == node_id(HEAD, sid)
             or all(s.kind == "module" for s in groups[edge.source_id[6:]])
@@ -126,7 +135,7 @@ def discover_entries(ir, impact, unassigned, registered):
             unresolved.append(target)
     if unresolved:
         reasons.add(
-            "Some unassigned changes have no proposed entry; cycles, nested/class-only roots, registered entries or budgets may prevent a suggestion."
+            "Some unassigned changes have no proposed entry; cycles, nested/private roots, registered entries or budgets may prevent a suggestion."
         )
     if targets and (
         impact.coverage.status != "analyzed"
@@ -151,7 +160,14 @@ def discover_entries(ir, impact, unassigned, registered):
             FlowEntryCandidate(
                 candidate_id="flow_entry_" + hashlib.sha256(sid.encode()).hexdigest()[:16],
                 symbol_id=sid,
-                reason="Supported caller graph has no non-module code caller except possible self-recursion; a path reaches an unassigned change.",
+                reason=(
+                    "Supported caller graph has no non-module code caller except possible self-recursion; a path reaches an unassigned change. "
+                    + (
+                        "Class method candidate; instance construction and runtime registration are not established."
+                        if "." in groups[sid][0].qualified_name
+                        else "Top-level function candidate."
+                    )
+                ),
                 paths=tuple(entries),
                 evidence_ids=tuple(sorted(refs)),
             )
@@ -195,7 +211,7 @@ def validate_entries(ir, impact, unassigned, registered, discovery):
             or item.status != "candidate"
             or not item.paths
         ):
-            raise ValueError("Flow entry must be a unique unregistered top-level head code root")
+            raise ValueError("Flow entry must be a unique unregistered head code root")
         validate_evidence_refs(
             snapshot_id=ir.snapshot_id, evidence=ir.evidence, evidence_ids=item.evidence_ids
         )

@@ -7,6 +7,29 @@ def validate_behavior_review(review, evidence, findings):
     catalogue = {item.evidence_id: item for item in evidence}
     finding_ids = {item.finding_id for item in findings}
     seen = set()
+    path_ids = set()
+    for path in getattr(review, "paths", ()):
+        if path.path_id in path_ids:
+            raise ValueError("duplicate execution path_id")
+        path_ids.add(path.path_id)
+        for item in (*path.steps, *path.links):
+            if any(
+                ident not in catalogue
+                or catalogue[ident].kind != "code"
+                or catalogue[ident].side != path.side
+                for ident in item.evidence_ids
+            ):
+                raise ValueError("execution path must cite selected code from its described side")
+        # A symbol is an asserted location, not a name inferred from prose.
+        for step in path.steps:
+            if step.symbol is not None:
+                source_path = step.symbol.split("#", 1)[0]
+                if (
+                    "#" not in step.symbol
+                    or not step.symbol.split("#", 1)[1].strip()
+                    or not any(catalogue[ident].path == source_path for ident in step.evidence_ids)
+                ):
+                    raise ValueError("execution symbol must match its source evidence path")
     for change in review.changes:
         if change.change_id in seen:
             raise ValueError("duplicate behavior change_id")

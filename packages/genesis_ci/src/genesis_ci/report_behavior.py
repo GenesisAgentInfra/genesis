@@ -56,4 +56,58 @@ def render_behavior_review(report, *, detailed=False):
                 label = _text(f"{ref.side.value} {ref.path}:{ref.range.start_line}")
                 links.append(f"[{label}](report.md#evidence-{ident})")
             lines.append("- 核对位置：" + "；".join(links))
+    paths = getattr(review, "paths", ())
+    if paths:
+        lines.extend(
+            (
+                "",
+                "## 执行路径",
+                "",
+                "以下连接是基于代码证据的语义推断，不是运行轨迹；静态调用图单独保留。",
+            )
+        )
+    for path in paths:
+        steps = {step.step_id: step for step in path.steps}
+        lines.extend(
+            (
+                "",
+                f"### {path.side.value}：{_text(path.scenario)}",
+                "",
+                f"- 条件：{_text(path.condition)}",
+            )
+        )
+        if path.entry_step_id:
+            lines.append("- 入口：" + _text(steps[path.entry_step_id].description))
+        else:
+            lines.append("- 入口：尚未确定。")
+        for step in path.steps:
+            lines.append(f"- 步骤 {_text(step.step_id)} [{step.kind}]：{_text(step.description)}")
+            catalog = {ref.evidence_id: ref for ref in report.evidence}
+            refs = [catalog[ident] for ident in step.evidence_ids]
+            links = [
+                f"[{_text(ref.side.value + ' ' + ref.path + ':' + str(ref.range.start_line))}](report.md#evidence-{ref.evidence_id})"
+                for ref in refs
+            ]
+            lines.append("  - 证据：" + "；".join(links))
+        for link in path.links:
+            status = "尚未确定" if link.support == "unknown" else "语义推断"
+            lines.append(
+                f"- 连接：{_text(link.source)} → {_text(link.target)}；{link.relation}；{status}"
+                + (f"；条件：{_text(link.condition)}" if link.condition else "")
+            )
+            if detailed:
+                lines.append("  - 连接证据：" + ", ".join(_text(i) for i in link.evidence_ids))
+            else:
+                refs = [catalog[ident] for ident in link.evidence_ids]
+                lines.append(
+                    "  - 连接证据："
+                    + "；".join(
+                        f"[{_text(ref.path + ':' + str(ref.range.start_line))}](report.md#evidence-{ref.evidence_id})"
+                        for ref in refs
+                    )
+                )
+            lines.extend("  - 限制：" + _text(value) for value in link.limitations)
+        if path.outcome:
+            lines.append("- 结果：" + _text(path.outcome))
+        lines.extend("- 尚不确定：" + _text(value) for value in path.limitations)
     return lines

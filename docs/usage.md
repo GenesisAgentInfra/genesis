@@ -139,3 +139,5 @@ pin the repository/Action to a reviewed full commit SHA.
 
 Refresh installed agent skills with `genesis agent install --agent codex --update`
 (or the same agent/scope originally chosen). This does not replace local edits.
+
+For versioned, evidence-backed execution paths and compatibility, see [Execution paths](execution-paths.md).
