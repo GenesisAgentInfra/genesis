@@ -67,6 +67,9 @@ class SemanticClient:
                     if data.get("behavior_review_version") == "1":
                         review_versions = [*review_versions, "1"]
                     return {
+                        "behavior_review_versions": tuple(
+                            v for v in ("1", "2") if v in review_versions
+                        ),
                         "behavior_review_version": next(
                             (v for v in ("2", "1") if v in review_versions), None
                         ),
@@ -78,10 +81,20 @@ class SemanticClient:
     @staticmethod
     def negotiate_review_version(approved, capabilities):
         """Only downgrade the optional output requested in the approved preview."""
-        supported = capabilities.get("behavior_review_version")
-        if approved is None or supported not in {"1", "2"}:
+        if approved is None:
             return None
-        return str(min(int(approved), int(supported)))
+        versions = capabilities.get("behavior_review_versions")
+        if versions is None:
+            # Legacy discoveries expose one advertised version only.
+            versions = (capabilities.get("behavior_review_version"),)
+        return next(
+            (
+                version
+                for version in ("2", "1")
+                if int(version) <= int(approved) and version in versions
+            ),
+            None,
+        )
 
     def _post(self, path: str, request):
         try:

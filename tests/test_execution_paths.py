@@ -181,3 +181,18 @@ def test_negotiation_only_downgrades_approved_output(declared, expected):
     assert client.negotiate_review_version(None, capabilities) is None
     assert client.negotiate_review_version("1", capabilities) != "2"
     assert len(seen) == 1 and "authorization" not in seen[0].headers
+
+
+def test_negotiation_does_not_assume_v1_when_service_only_advertises_v2():
+    assert (
+        SemanticClient.negotiate_review_version(
+            "1", {"behavior_review_versions": ("2",), "behavior_review_version": "2"}
+        )
+        is None
+    )
+    assert (
+        SemanticClient.negotiate_review_version(
+            "1", {"behavior_review_versions": ("1", "2"), "behavior_review_version": "2"}
+        )
+        == "1"
+    )
