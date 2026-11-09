@@ -47,9 +47,8 @@
 | **Agent 一直在忙，用户却拿不到结果。** [来源](https://github.com/openai/openai-agents-python/issues/191) | 任务完成和停止条件的变化。 |
 | **用户点了拒绝，操作却照常执行。** [来源](https://github.com/langchain-ai/langchain/issues/40492) | 审批检查与操作执行路径的变化。 |
 | **用户只请求一次，同一个操作却执行两次。** [来源](https://github.com/langchain-ai/langgraph/issues/9185) | 重试路径与防止重复操作的检查。 |
-
-场景来自公开报告与复现，并非 Genesis 检出率评测。
-[证据与能力范围](docs/research/agent-change-pain-points.md).
+| **同样的任务，消耗更多 token。** [来源](https://github.com/microsoft/agent-framework/issues/5049) | 提示词膨胀与额外模型调用。 |
+| **任务还能完成，用户却要等更久。** [来源](https://github.com/openai/openai-agents-python/issues/2386) | 阻塞调用与串行执行步骤。 |
 
 <a id="genesis-get-started"></a>
 

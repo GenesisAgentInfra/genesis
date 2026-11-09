@@ -47,9 +47,8 @@
 | **エージェントは動き続ける。でも結果が届かない。** [出典](https://github.com/openai/openai-agents-python/issues/191) | タスクの完了条件と停止条件の変更。 |
 | **ユーザーが拒否しても、操作が実行される。** [出典](https://github.com/langchain-ai/langchain/issues/40492) | 承認チェックと操作の実行経路の変更。 |
 | **依頼は一度。同じ操作が二度実行される。** [出典](https://github.com/langchain-ai/langgraph/issues/9185) | 再試行経路と重複操作を防ぐチェック。 |
-
-公開報告と再現例に基づくシナリオであり、Genesis の検出性能を測った結果ではありません。
-[根拠と対応範囲](docs/research/agent-change-pain-points.md).
+| **同じタスクなのに、トークン消費が増える。** [出典](https://github.com/microsoft/agent-framework/issues/5049) | プロンプトの肥大化とモデル呼び出しの追加。 |
+| **タスクは完了する。でも待ち時間が延びる。** [出典](https://github.com/openai/openai-agents-python/issues/2386) | ブロッキング呼び出しと逐次実行のステップ。 |
 
 <a id="genesis-get-started"></a>
 

@@ -47,9 +47,8 @@
 | **에이전트는 계속 일하지만, 결과는 오지 않습니다.** [출처](https://github.com/openai/openai-agents-python/issues/191) | 작업 완료 조건과 종료 조건의 변경. |
 | **사용자가 거절해도 작업이 실행됩니다.** [출처](https://github.com/langchain-ai/langchain/issues/40492) | 승인 검사와 작업 실행 경로의 변경. |
 | **요청은 한 번인데, 같은 작업이 두 번 실행됩니다.** [출처](https://github.com/langchain-ai/langgraph/issues/9185) | 재시도 경로와 중복 작업 방지 검사. |
-
-공개 보고와 재현 사례에 기반하며, Genesis 탐지 성능 평가 결과는 아닙니다.
-[근거와 지원 범위](docs/research/agent-change-pain-points.md).
+| **같은 작업인데 토큰을 더 많이 씁니다.** [출처](https://github.com/microsoft/agent-framework/issues/5049) | 프롬프트 증가와 추가 모델 호출. |
+| **작업은 완료되지만 사용자는 더 오래 기다립니다.** [출처](https://github.com/openai/openai-agents-python/issues/2386) | 블로킹 호출과 순차 실행 단계. |
 
 <a id="genesis-get-started"></a>
 

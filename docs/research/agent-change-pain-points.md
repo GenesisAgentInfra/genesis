@@ -26,6 +26,22 @@ Researched 2026-11-09. Primary issue pages and their current GitHub API status w
 - **Genesis mapping to verify:** Review visible retry/failure paths, affected side-effecting calls, and test-source assertions; identify missing timeout/replay checks. Do not claim runtime deduplication, exactly-once execution, or inspection of external provider state.
 - **Evidence strength:** Published local reproduction plus repository explanation of intended resume semantics. This is a recovery/application design hazard, not a claimed unfixed LangGraph bug or proof of real financial loss.
 
+## 4. Duplicated prompt instructions consume unnecessary input tokens
+
+- **Source:** [Microsoft Agent Framework issue #5049](https://github.com/microsoft/agent-framework/issues/5049), opened April 2, 2026; closed completed. The Python reproduction creates an agent with `instructions`; its outgoing API payload contains two identical system messages before the user's message. Two preparation layers both prepend instructions.
+- **Confirmed fix:** [PR #5051](https://github.com/microsoft/agent-framework/pull/5051) merged April 2, 2026, commit `7e8e9e30744f319a7579adf8f87cb3fa91f888b9`. It deduplicates leading instruction messages and adds focused helper tests plus an OpenAI request regression test. [Approval](https://github.com/microsoft/agent-framework/pull/5051#pullrequestreview-4048870466) and [second approval](https://github.com/microsoft/agent-framework/pull/5051#pullrequestreview-4049380856) were verified via the API; this issue has no explanatory comment thread.
+- **Suitable scenario:** “The same task burns more tokens.” Concrete supporting detail: repeated instructions consume unnecessary input tokens.
+- **Evidence boundary:** Extra prompt content is established; dollar cost is an inference under token-priced billing, not a measured invoice. No doubled total bill, monetary loss, percentage savings, or Genesis detection result is established. This historical implementation issue is fixed, not a claim about current releases.
+- **Genesis mapping:** Review visible prompt growth and additional recognized model-call sites; explain conditional cost risk. Framework-generated duplication requires the relevant preparation source in the review context. A dependency version bump alone does not establish it.
+
+## 5. Blocking tools turn intended concurrency into waiting
+
+- **Source:** [OpenAI Agents Python issue #2386](https://github.com/openai/openai-agents-python/issues/2386), a report against SDK `v0.7.0`; closed completed. Direct invocation of synchronous tools blocked the event loop, so multiple otherwise parallel tool calls could execute effectively sequentially.
+- **Confirmed fix:** [Member confirmation](https://github.com/openai/openai-agents-python/issues/2386#issuecomment-3827277732); [PR #2387](https://github.com/openai/openai-agents-python/pull/2387) merged February 3, 2026, commit `9a1543a23835e2b89a0dcc984b916b6c817621cd`. The change offloads synchronous tools through `asyncio.to_thread` and adds event-loop-progress regression coverage.
+- **Suitable scenario:** “Tasks still finish. Your users wait longer.” Review question: did a new blocking call or changed execution order add waiting?
+- **Evidence boundary:** Confirmed historical behavior and merged fix, not a current universal SDK defect. No benchmark of seconds saved or production percentile latency was established. The source is about concurrency being blocked; it does not show Genesis detecting or repairing it.
+- **Genesis mapping:** Review source-visible blocking calls and before/after execution order with affected callers. Static call counts are not elapsed-time measurements; generic semantic reasoning is not a framework-complete performance analyzer.
+
 ## README use
 
 Keep the scenarios short and link their issue sources directly. Describe Genesis as helping review changed behavior, affected paths, cost/wait risks and verification gaps from the supplied Python evidence. Keep the capability mapping conditional where framework/runtime semantics are unavailable. These examples are not Genesis benchmark results.
@@ -42,3 +58,13 @@ Inspected in the CLI checkout based on commit `ebdf401`; these are source/contra
 - [`models.py`](../../packages/genesis_contracts/src/genesis_contracts/models.py): `VerificationSuggestion` (line 298) carries scenarios, suggested assertions and evidence; `BehaviorChange` (line 333) requires source references for each described before/after side and limitations for a missing side. Contracts establish report structure, not semantic model accuracy.
 
 No full LangGraph/Pydantic runner interpretation, hidden dependency source inspection, external state verification, runtime enforcement, or guarantee of catching these cases is established by those modules.
+
+## Cost and latency capability limits
+
+Additional source inspection at CLI commit `db684a4`:
+
+- [`prompt_metrics.py`](../../packages/genesis_ci/src/genesis_ci/prompt_metrics.py) counts supported prompt fragments. It excludes framing, tools, dynamic values, history and multimodal payloads: these are not complete request-token counts or lower bounds.
+- [`cost.py`](../../packages/genesis_ci/src/genesis_ci/cost.py) calculates explicit user-supplied quantity/price scenarios. It does not predict or measure runtime spending; cache tiers, retries, tool fees and other provider charges require explicit inputs.
+- [`rules.py`](../../packages/genesis_ci/src/genesis_ci/rules.py) reports structural changes such as model-call sites and direct awaits, with an explicit no-latency-estimate limitation. The README should describe review questions and evidence, not automatic billing control or measured speedups.
+
+Other screened sources were less suitable: [Agents SDK #2784](https://github.com/openai/openai-agents-python/issues/2784) reports a cache-hit drop when adding PDF input, but the author later describes inconsistent/model-dependent observations and there is no confirmed root cause; [Pydantic Harness #289](https://github.com/pydantic/pydantic-ai-harness/issues/289) is a design proposal for oversized tool-return handling, not a measured customer cost incident.

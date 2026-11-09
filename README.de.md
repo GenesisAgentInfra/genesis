@@ -47,9 +47,8 @@ Erkenne, wie eine Codeänderung das Ergebnis für deine Nutzer verändert.
 | **Der Agent arbeitet weiter. Das Ergebnis bleibt aus.** [Quelle](https://github.com/openai/openai-agents-python/issues/191) | Änderungen an Abschluss- und Abbruchbedingungen. |
 | **Der Nutzer sagt Nein. Die Aktion läuft trotzdem.** [Quelle](https://github.com/langchain-ai/langchain/issues/40492) | Änderungen an Freigabeprüfungen und Aktionspfaden. |
 | **Eine Anfrage. Dieselbe Aktion passiert zweimal.** [Quelle](https://github.com/langchain-ai/langgraph/issues/9185) | Wiederholungspfade und Prüfungen gegen doppelte Aktionen. |
-
-Die Szenarien stammen aus öffentlichen Berichten und Reproduktionen, nicht aus einem Genesis-Erkennungsbenchmark.
-[Belege und Umfang](docs/research/agent-change-pain-points.md).
+| **Dieselbe Aufgabe verbraucht mehr Tokens.** [Quelle](https://github.com/microsoft/agent-framework/issues/5049) | Wachsende Prompts und zusätzliche Modellaufrufe. |
+| **Aufgaben werden fertig. Deine Nutzer warten länger.** [Quelle](https://github.com/openai/openai-agents-python/issues/2386) | Blockierende Aufrufe und sequenzielle Schritte. |
 
 <a id="genesis-get-started"></a>
 

@@ -47,9 +47,8 @@ See how a code change affects what your agent delivers to users.
 | **The agent keeps working. The user never gets a result.** [Source](https://github.com/openai/openai-agents-python/issues/191) | Changes to completion and stop conditions. |
 | **The user says “no.” The action still runs.** [Source](https://github.com/langchain-ai/langchain/issues/40492) | Changes to approval checks and action paths. |
 | **One request. The same action happens twice.** [Source](https://github.com/langchain-ai/langgraph/issues/9185) | Retry paths and checks against duplicate actions. |
-
-Based on public reports and reproductions, not a Genesis detection benchmark.
-[Evidence and scope](docs/research/agent-change-pain-points.md).
+| **The same task burns more tokens.** [Source](https://github.com/microsoft/agent-framework/issues/5049) | Prompt growth and extra model calls. |
+| **Tasks still finish. Your users wait longer.** [Source](https://github.com/openai/openai-agents-python/issues/2386) | Blocking calls and sequential steps. |
 
 <a id="genesis-get-started"></a>
 

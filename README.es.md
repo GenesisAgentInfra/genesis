@@ -47,9 +47,8 @@ Entiende cómo un cambio de código afecta al resultado que recibe el usuario.
 | **El agente sigue trabajando. El resultado nunca llega.** [Fuente](https://github.com/openai/openai-agents-python/issues/191) | Cambios en las condiciones de finalización y salida. |
 | **El usuario dice «no». La acción se ejecuta igual.** [Fuente](https://github.com/langchain-ai/langchain/issues/40492) | Cambios en los controles de aprobación y las rutas de ejecución. |
 | **Una solicitud. La misma acción ocurre dos veces.** [Fuente](https://github.com/langchain-ai/langgraph/issues/9185) | Rutas de reintento y controles contra acciones duplicadas. |
-
-Escenarios basados en informes y reproducciones públicos, no en un benchmark de detección de Genesis.
-[Evidencia y alcance](docs/research/agent-change-pain-points.md).
+| **La misma tarea consume más tokens.** [Fuente](https://github.com/microsoft/agent-framework/issues/5049) | Crecimiento del prompt y llamadas adicionales al modelo. |
+| **Las tareas se completan. Tus usuarios esperan más.** [Fuente](https://github.com/openai/openai-agents-python/issues/2386) | Llamadas bloqueantes y pasos secuenciales. |
 
 <a id="genesis-get-started"></a>
 
