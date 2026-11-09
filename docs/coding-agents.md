@@ -157,10 +157,18 @@ application repository, not the Genesis checkout or the user's global instructio
 
 ```markdown
 ## Genesis review before CR/PR
-When the user asks to prepare, cut, or submit a code review (CR/PR) for Python
-changes, use the installed genesis-review skill before finalizing the review
-description or submitting it. This includes "准备发 CR" and "整理改动提 PR";
-the user need not name Genesis. Honor an explicit request to skip Genesis.
+When the user's intent is to prepare Python changes for review or hand them to
+reviewers, use the installed genesis-review skill before finalizing the review
+description or submitting it. Match intent in the conversation, in any language,
+not an exact phrase; the user need not name Genesis. Examples include "prepare
+for review", "cut a CR", "open a PR", "raise an MR", "send this for review",
+"发 CR", "提 PR", "提审", "发起合并请求", and "整理好交给同事 review".
+CR, PR/pull request, and MR/merge request refer to this same review-handoff intent.
+Apply this when drafting a review description for actual changes as well.
+A standalone commit/push, an explanation of review terminology, or reading an
+existing review/report does not imply a new Genesis run. Use context to resolve
+short phrases such as "发一下"; clarify if the intended action remains unclear.
+Honor an explicit request to skip Genesis.
 Review the intended change set against its actual target base, including intended
 uncommitted/new files. Reuse an existing Genesis result only if it covers the same
 source snapshot, scope, and analysis inputs; disclose changes it does not cover.
@@ -174,9 +182,27 @@ This is agent guidance, not a Git hook or merge gate. Publishing the CR and
 changing code still follow the user's request and existing project permissions.
 ```
 
-Try it in a new agent session: “帮我整理这次改动，准备发 CR.” Check that the agent
-actually invokes Genesis and reports its output; having the section on disk does
-not prove that the current agent loaded or followed it. Direct terminal pushes
+The instruction is written in English with bilingual examples; users do not need
+to use English, Chinese, or a fixed command. Keep the intent rule when adapting
+its wording to a team's language. Examples are illustrative, not a keyword list.
+
+Use these acceptance scenarios in separate new agent sessions after setup. They
+are expected behavior, not measured trigger reliability:
+
+| User request / context | Expected behavior |
+| --- | --- |
+| "发 CR", "帮我提个 PR", "这些改动可以提审了" | Invoke Genesis for the intended Python changes before handoff. |
+| "Open a PR", "cut a CR", "raise a merge request" | Same review flow; no dependency on a particular hosting platform. |
+| "帮我写这次改动的 PR 描述", "get this ready for review" | Review before finalizing the description. |
+| "整理好交给同事看一下" in a code-review handoff | Recognize the intent even without CR/PR/MR terminology. |
+| "发一下" with no established action | Clarify the intended action rather than guessing. |
+| "只 commit 一下", "push this branch" with no review request | No automatic Genesis review from this convention alone. |
+| "什么是 PR？", "解释已有的 Genesis 报告" | Explain; no new analysis. |
+| "准备发 PR，但这次跳过 Genesis" | Honor the skip. |
+
+Check that the agent actually invokes Genesis and reports its output; having the
+section on disk does not prove that the current agent loaded or followed it.
+Verify upload authorization separately before any hosted review. Direct terminal pushes
 and CRs prepared without the agent are not intercepted. GitHub, GitLab, Gerrit,
 and other review destinations use the same local convention; it does not install
 an integration with those services. Unsupported changes should be identified

@@ -64,7 +64,10 @@ authorization covering the destination and selected source.
 
 **After setup:** ask your agent, “Prepare these changes for code review.” The
 project instruction asks it to run Genesis first and explain the result before
-finalizing the CR/PR description. This works locally without GitHub CI. It is
+finalizing the CR/PR description. There is no fixed command or required language:
+"open a PR", "raise an MR", "send this for review", and "提审" express the same
+intent. A standalone commit or push does not trigger this convention. This works
+locally without GitHub CI. It is
 agent guidance, not a guaranteed trigger, Git hook, or merge gate; the skill is
 installed per user, while this review convention applies to the current project.
 Installing the CLI alone does not add the convention. See the

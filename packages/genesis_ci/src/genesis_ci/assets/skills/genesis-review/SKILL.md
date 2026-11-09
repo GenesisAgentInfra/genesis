@@ -1,6 +1,6 @@
 ---
 name: genesis-review
-description: Review Python code changes with Genesis and explain behavior, affected paths, cost/wait risks, test evidence, and verification gaps. Use when asked to run Genesis or check Python change risks, and when preparing, cutting, or submitting a CR/PR under the project's Genesis review instruction, including “准备发 CR” and “整理改动提 PR”.
+description: Review Python changes with Genesis when explicitly requested or asked to check change risks. Under a project Genesis review convention, use for the intent to prepare changes for reviewers or draft their review description, across languages (prepare for review, cut a CR, open a PR, raise an MR, 发 CR, 提 PR, 提审). Match intent, not exact keywords. Explain existing reports without starting a new analysis.
 ---
 
 # Genesis change review
@@ -15,8 +15,13 @@ evidence directly; do not start a new analysis.
 ## When preparing a CR/PR
 
 When the project has opted into Genesis before CR/PR preparation, run this review
-before finalizing the review description or submitting the change. Honor an
-explicit request to skip Genesis. A CR request alone does not authorize hosted
+before finalizing the review description or submitting the change. Recognize
+review-handoff intent from the conversation, including requests to draft the
+review description or get changes ready for colleagues. CR, pull request/PR,
+and merge request/MR are equivalent here; examples are not an exhaustive list
+or a required command language. A standalone commit/push or a question about
+review terminology does not imply a new review. Clarify ambiguous handoffs.
+Honor an explicit request to skip Genesis. A CR request alone does not authorize hosted
 source upload; follow the consent steps below. This skill does not install a
 Git hook, intercept terminal pushes, or enforce a merge gate.
 

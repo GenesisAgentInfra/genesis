@@ -60,7 +60,10 @@ CLI 和静态分析部分开源。语义审查由 Genesis 托管服务完成，�
 ```
 
 **配置后的体验：**你照常说“帮我整理这次改动，准备发 CR”，项目指令会要求 Agent
-先运行 Genesis、解释结果，再整理 CR/PR 描述。这个流程在本地发起，不依赖 GitHub CI。
+先运行 Genesis、解释结果，再整理 CR/PR 描述。没有固定口令，也不限中文：
+“发 CR”“提 PR”“提审”“帮我写这次改动的 PR 描述”，以及英文的 “open a PR”
+“raise an MR”，都属于把改动交给别人审查的意图；单独 commit 或 push 不自动触发。
+这个流程在本地发起，不依赖 GitHub CI。
 它是 Agent 的默认工作约定，不保证每次触发，也不是 Git hook 或合并门禁。
 skill 安装在用户级，但这项审查约定只配置到当前项目；只安装 CLI 不会添加约定。
 手动安装、已有用户升级和移除方式见[项目配置指南](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
