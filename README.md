@@ -1,70 +1,70 @@
-# Genesis CLI
+<p align="center">
+  <a href="https://usegenesis.vercel.app/"><img src="assets/readme/favicon.svg" alt="Genesis icon" width="52" height="52" align="middle"></a>&nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/wordmark-dark.svg">
+    <img src="assets/readme/wordmark-light.svg" alt="Genesis" width="240" align="middle">
+  </picture>
+</p>
 
-Ask your coding agent to review a Python change with Genesis. The agent runs the
-local CLI, Genesis extracts structured code evidence, and the hosted Genesis
-service explains behavior changes, affected paths, cost/wait/failure risks, test
-evidence, and verification gaps. The agent then explains the report in chat.
+<h1 align="center">Code intelligence for your coding agent.</h1>
 
-The CLI and static analysis are public. The semantic service is privately
-maintained and operated by the Genesis team. You do not need to deploy a server
-or supply a model-provider key. Task/PR documents and flow maps are optional.
+<p align="center">
+  <a href="https://usegenesis.vercel.app/">Website</a> &nbsp;·&nbsp;
+  <a href="#genesis-get-started"><strong>Get started</strong></a> &nbsp;·&nbsp;
+  <a href="#genesis-docs">Documentation</a> &nbsp;·&nbsp;
+  <a href="#genesis-stars">Star History</a>
+</p>
+
+<p align="center"><strong>English</strong> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a> &nbsp;·&nbsp; <a href="README.ja.md">日本語</a> &nbsp;·&nbsp; <a href="README.ko.md">한국어</a> &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a> &nbsp;·&nbsp; <a href="README.fr.md">Français</a> &nbsp;·&nbsp; <a href="README.es.md">Español</a></p>
+
+<p align="center">
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis-cli?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub Stars" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis-cli?style=flat-square&amp;color=34a853" alt="License: Apache-2.0" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Works with Codex and Claude Code" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="Supported analysis language: Python" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis-cli%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="CLI package version" height="24"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">
+    <picture>
+      <source media="(max-width: 600px) and (prefers-reduced-motion: reduce)" srcset="assets/readme/code-intelligence-animation-mobile-poster.png">
+      <source media="(max-width: 600px)" srcset="assets/readme/code-intelligence-animation-mobile.gif">
+      <source media="(prefers-reduced-motion: reduce)" srcset="assets/readme/code-intelligence-animation-poster.png">
+      <img src="assets/readme/code-intelligence-animation.gif" alt="Illustrated review workflow: a Python code change moves through context, behavior, and risk analysis into a review report." width="100%">
+    </picture>
+  </a>
+</p>
+
+<p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Illustrated review workflow</a></sub></p>
+
+<a id="genesis-get-started"></a>
 
 ## Start in your coding agent
 
-Installing a command does not automatically tell an agent when or how to use it.
-Genesis includes a `genesis-review` skill and an installer for Codex and Claude
-Code. The skill teaches the workflow; the CLI performs the analysis.
+The CLI and static analysis are open source. Semantic review uses the Genesis
+hosted service, with your approval before source is sent.
 
-Paste this into the coding agent working on your application:
+### 1. Install once
 
-> Help me set up Genesis from https://github.com/GenesisAgentInfra/genesis-cli.
-> Read its README and docs/coding-agents.md, then install the CLI and the
-> genesis-review skill for the agent I am using, with user scope. Keep the CLI
-> checkout outside this application and reuse an existing installation if present.
-> Verify the CLI version and skill installation. Do not run a review or upload
-> source during setup.
+Paste this into Codex or Claude Code in the project you want to review:
 
-The agent needs shell access, Git, Python 3.12+, and uv 0.13.7 in its execution
-environment. Packages are not published on PyPI yet. A local installation does
-not automatically appear in a remote/cloud agent; install in that environment
-when that is where your project and agent run.
+```text
+Set up Genesis from https://github.com/GenesisAgentInfra/genesis-cli.
+Read its README and docs/coding-agents.md. Install the CLI outside this
+project and the genesis-review skill for my current agent with user scope.
+Reuse an existing installation if available. Verify the CLI version and
+skill installation. Only set up; do not review or upload code yet.
+```
 
-After setup, start a new agent session if the skill is not visible. Ask:
+Requires shell access, Git, Python 3.12+, and uv 0.13.7 where your agent runs.
+Packages are installed from source and are not yet on PyPI.
+[Remote/cloud setup and skill discovery](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
 
-> Use Genesis to review my current uncommitted changes. Explain what changed
-> for users, the main risks, and what still needs testing. Show the upload scope
-> before sending source.
+<details>
+<summary>Manual installation</summary>
 
-Or explicitly select the skill:
-
-| Agent | Prompt |
-| --- | --- |
-| Codex | `$genesis-review` followed by your review request |
-| Claude Code | `/genesis-review` followed by your review request |
-
-Natural-language selection depends on the agent; explicit invocation makes your
-choice clear. This setup does not install an automatic hook after every edit.
-See [coding-agent setup and troubleshooting](docs/coding-agents.md).
-
-## What happens during a review
-
-1. The agent identifies your application and the intended change: worktree edits,
-   branch changes, or a specified commit pair.
-2. Genesis freezes that input and prepares a local preview. The agent explains
-   which source excerpts and facts would be sent, and to which service.
-3. With your upload approval, the agent runs the hosted review on that frozen
-   input. Without approval, you still get a local partial report.
-4. The agent reads `summary.md`, then checks statuses and evidence in `report.json`
-   and `report.md`, and explains the result in your language.
-
-With no personal connection settings, the CLI uses the official shared trial.
-No `genesis auth` is needed. Installing the skill does not grant upload consent.
-Genesis does not execute your application or its tests. The skill does not
-create requirements or turn a review request into permission to fix/commit code.
-
-## Manual setup, or instructions for your agent
-
-Clone outside the application you want to review:
+Run these commands outside the application you want to review:
 
 ```sh
 git clone https://github.com/GenesisAgentInfra/genesis-cli.git
@@ -75,88 +75,110 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Use `--agent claude` for Claude Code, or `--agent both`. The default is user
-scope; project scope is also available. The installer prints its destinations
-and leaves existing agent instructions, permission settings, and Genesis keys
-alone. An existing different skill is preserved.
+Use `--agent claude` for Claude Code or `--agent both`. The default scope is user.
+The installer preserves existing agent instructions, permissions, credentials,
+and any different existing skill.
 
-You can also invoke the CLI directly from your application directory:
+[Setup options and troubleshooting](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
 
-```sh
-uv run --project /absolute/path/to/genesis-cli --package genesis-ci --no-dev --frozen \
-  genesis analyze --repo . --base HEAD
+</details>
+
+### 2. Ask for a review
+
+Start a new agent session if the skill is not visible, then ask:
+
+```text
+Use Genesis to review my uncommitted changes.
+Explain what changes for users, the main risks, and what still needs testing.
+Show me which source excerpts will be sent before uploading.
 ```
 
-This compares the current tracked worktree to `HEAD`. Add `--include-untracked`
-for new files that belong to the review. To compare committed branch changes,
-choose the actual baseline and pass `--base BASE_COMMIT --head HEAD`.
-`--preview-only` prepares material without sending; `--offline` runs only local
-analysis. These partial modes normally exit **2**, not 0.
+You can also select the skill explicitly:
 
-## Read the result
+| Agent | Invocation |
+| --- | --- |
+| Codex | `$genesis-review` followed by your request |
+| Claude Code | `/genesis-review` followed by your request |
 
-Reports are saved under your application's `.genesis/analyses/<run-id>/`. The
-command prints the directory. Start with `summary.md`; `report.md` contains
-detailed statuses/evidence and `report.json` contains the structured result.
-All three reflect the same analysis. The five review areas are:
+Name a branch comparison or commit pair when you want a different scope.
+Task descriptions and flow maps are optional context.
 
-- **Business behavior:** what can change, with before/after evidence.
-- **Affected paths:** callers, code paths, and any supplied flow maps.
-- **Cost/wait/failure:** conditional risks and supported static estimates.
-- **Tests:** what related test source appears to check, not a claim tests passed.
-- **Verification:** suggested checks and missing evidence.
+The official shared trial works without `genesis auth` when no personal
+connection settings are configured. It uses a limited pool shared by all users.
+A model-provider API key is not required.
+[Access and trial limits](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md#default-shared-trial).
 
-Exit **0** means analysis completed within its declared scope, **2** means a
-usable partial report, and **1** means the requested result could not be produced.
-Completion is not approval of a change. Missing requirements remain unknown.
-Dynamic calls, unsupported constructs, omitted context, and service failures
-can limit the result. Do not commit `.genesis/`: it can contain frozen source.
+## What your review covers
 
-## Hosted service and access
+| Area | What you get |
+| --- | --- |
+| Business behavior | Before-and-after evidence of how the application can behave differently. |
+| Affected paths | Callers and code paths connected to the change, plus any supplied flow maps. |
+| Cost, waiting, and failure | Conditional risks and static estimates where the available evidence supports them. |
+| Tests | What related test source checks and which assertions may be missing. |
+| Verification | Suggested checks and gaps that still need evidence. |
 
-The official endpoint is `https://semantic-api-production.up.railway.app`.
-Shared trial and personal Genesis keys access this same service. The public
-repository does not distribute the private server for self-hosting.
+Genesis analyzes Python source without running your application or its tests.
+Missing requirements and unresolved behavior remain explicit gaps in the review.
 
-The trial starts with **10,000 admitted requests shared by all users**, including
-analysis, flow drafting, and admitted failures. This lifetime pool has no daily
-reset or guaranteed per-user allocation. The trial identity is deliberately
-public and revocable. Exhaustion/revocation preserves a local partial report;
-the CLI does not automatically retry.
+## From your change to a report
 
-For access under a personal key, request one from the Genesis team. Provisioning
-is currently manual. Configure it securely outside agent chat:
+1. **Prepare locally.** Genesis captures the chosen changes and extracts code
+   evidence. Your agent shows the source excerpts and facts selected for upload.
+2. **Approve the upload.** With your authorization, Genesis sends that material
+   to its hosted service. You can keep the analysis local and receive a partial
+   report instead.
+3. **Read the findings in chat.** Your agent explains the report, checks its
+   evidence and status, and identifies what still needs verification.
 
-```sh
-uv run --package genesis-ci --no-dev --frozen genesis auth \
-  --service-url https://semantic-api-production.up.railway.app
-```
+Reports are saved in your project's `.genesis/analyses/<run-id>/`:
 
-The prompt hides the key and saves it outside the project. Personal settings take
-priority, and failures do not silently switch to trial. Do not paste personal
-keys in chat or issues. The GitHub Action stays offline without an explicit key.
-See [configuration, data handling, and access](docs/usage.md).
+- `summary.md`: start with the readable summary.
+- `report.md`: inspect detailed findings, evidence, and statuses.
+- `report.json`: use the structured result in your own tools.
+
+Exit codes: **0** means complete within the declared scope, **2** means a usable
+partial report, and **1** means the requested result could not be produced.
+Keep `.genesis/` out of Git; it can contain captured source.
+
+## Source and service
+
+The public repository contains the CLI and static analysis. The Genesis team
+operates the private semantic service; its server implementation is not included
+for self-hosting.
+
+Preview and offline analysis stay local. Installing the skill does not enable
+automatic reviews after every edit.
+
+[Data handling, personal keys, and configuration](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md).
+
+<a id="genesis-docs"></a>
 
 ## Documentation
 
-- [Use Genesis from a coding agent](docs/coding-agents.md) — setup, discovery,
-  natural-language requests, team instructions, and troubleshooting.
-- [CLI configuration and data handling](docs/usage.md) — command reference,
-  credentials, optional context, upload behavior, and updates.
-- [GitHub Action](docs/github-action.md) — repository automation, separate from
-  local coding-agent use.
-- [Synthetic business example](examples/submit-report/README.md) — a local
-  deterministic example for understanding the output.
-- [Client development](CONTRIBUTING.md) and [repository ownership](docs/repository-boundary.md).
-- [Versioned report schemas](https://github.com/GenesisAgentInfra/code-intelligence-protocol).
+- [Coding-agent guide](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md): setup, skill discovery, team instructions, and troubleshooting.
+- [CLI guide](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md): commands, optional context, credentials, and data handling.
+- [GitHub Action](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/github-action.md): configure repository automation; hosted analysis requires an explicit Genesis key.
+- [Contributing](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/CONTRIBUTING.md): develop and test the client.
+- [Repository boundary](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/repository-boundary.md) and [report schemas](https://github.com/GenesisAgentInfra/code-intelligence-protocol).
+
+<a id="genesis-stars"></a>
+
+## Star History
+
+<a href="https://www.star-history.com/#GenesisAgentInfra/genesis-cli&amp;Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date&amp;theme=dark">
+    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date" alt="Star history for GenesisAgentInfra/genesis-cli" width="100%">
+  </picture>
+</a>
+
+[View on Star History](https://www.star-history.com/#GenesisAgentInfra/genesis-cli&Date)
+
 
 ## License
 
-Original Genesis CLI code is licensed under [Apache-2.0](LICENSE). You may use,
-modify and redistribute it, including commercially, subject to the license terms.
-The license does not grant trademark rights or access to the separately operated
-Genesis service. The private service implementation is not part of this repository.
-
-Bundled third-party components retain their own licenses, including the MIT
-notice for tokenizer assets. See [NOTICE](NOTICE) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Original Genesis CLI code is licensed under [Apache-2.0](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE).
+Access to the separately operated Genesis service is not granted by this license.
+Bundled components retain their own licenses; see [NOTICE](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/NOTICE)
+and [third-party notices](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/THIRD_PARTY_NOTICES.md).
