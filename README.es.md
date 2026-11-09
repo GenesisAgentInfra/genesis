@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Ayuda a tu agente a entender los cambios de código.</h1>
+<h1 align="center">Salvaguardas para cada cambio en tu agente.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">Sitio web</a> &nbsp;·&nbsp;

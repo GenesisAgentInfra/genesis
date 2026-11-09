@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Damit dein Coding-Agent Codeänderungen versteht.</h1>
+<h1 align="center">Leitplanken für jede Änderung an deinem Agenten.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">Website</a> &nbsp;·&nbsp;

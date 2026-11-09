@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">让你的编程 Agent 看懂代码变更。</h1>
+<h1 align="center">为你的 Agent 的每一次变更提供护栏。</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">官网</a> &nbsp;·&nbsp;

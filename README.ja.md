@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">コーディングエージェントに、コード変更を理解する力を。</h1>
+<h1 align="center">あなたのエージェントのあらゆる変更に、ガードレールを。</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">公式サイト</a> &nbsp;·&nbsp;

@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">코딩 에이전트가 코드 변경을 이해하도록.</h1>
+<h1 align="center">에이전트의 모든 변경을 위한 가드레일.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">공식 웹사이트</a> &nbsp;·&nbsp;

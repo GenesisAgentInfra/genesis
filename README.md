@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Code intelligence for your coding agent.</h1>
+<h1 align="center">Guardrails for every change to your agent.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">Website</a> &nbsp;·&nbsp;
