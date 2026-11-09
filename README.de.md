@@ -40,16 +40,16 @@
 
 ## Warum Genesis?
 
-Eine kleine Änderung kann beeinflussen, was dein Agent als Nächstes tut. Diese Beispiele stammen aus öffentlichen Problemberichten:
+Erkenne, wie eine Codeänderung das Ergebnis für deine Nutzer verändert.
 
-| Was schiefgehen kann | Wobei Genesis im Review hilft |
+| Auswirkung für Nutzer | Wobei Genesis im Review hilft |
 | --- | --- |
-| **Eine Einstellung lässt den Agenten ein Tool immer wieder aufrufen.** Ein Nutzer des Agents SDK meldete nach `tool_choice="required"` wiederholte erfolgreiche Suchaufrufe bis zum Rundenlimit. [Bericht](https://github.com/openai/openai-agents-python/issues/191) | Änderungen an Modellaufrufen, unterstützten Schleifengrenzen und Abbruchbedingungen mit Codebelegen prüfen. |
-| **Eine Routing-Änderung führt eine abgelehnte Aktion trotzdem aus.** Eine LangChain-Reproduktion zeigt, dass zusätzliche Routing-Middleware ein vom Menschen abgelehntes Tool ausführt. [Bericht](https://github.com/langchain-ai/langchain/issues/40492) | Verhalten vor und nach der Änderung sowie betroffene Aufrufpfade vergleichen, um Freigabeprüfungen gezielt zu untersuchen. |
-| **Nach einem Timeout wird eine Aktion zweimal ausgeführt.** Eine LangGraph-Reproduktion zeigt eine simulierte Zahlung, deren Antwort ausbleibt und die beim Fortsetzen erneut ausgeführt wird. [Bericht](https://github.com/langchain-ai/langgraph/issues/9185) | Änderungen an der Fehlerbehandlung und zugehörige Testbelege prüfen; Assertions für Fehlerpfade vorschlagen. |
+| **Der Agent arbeitet weiter. Das Ergebnis bleibt aus.** [Quelle](https://github.com/openai/openai-agents-python/issues/191) | Änderungen an Abschluss- und Abbruchbedingungen. |
+| **Der Nutzer sagt Nein. Die Aktion läuft trotzdem.** [Quelle](https://github.com/langchain-ai/langchain/issues/40492) | Änderungen an Freigabeprüfungen und Aktionspfaden. |
+| **Eine Anfrage. Dieselbe Aktion passiert zweimal.** [Quelle](https://github.com/langchain-ai/langgraph/issues/9185) | Wiederholungspfade und Prüfungen gegen doppelte Aktionen. |
 
-Diese Beispiele begründen den Review-Bedarf; sie sind kein Erkennungsbenchmark für Genesis.
-[Quellen und aktueller Funktionsumfang](docs/research/agent-change-pain-points.md).
+Die Szenarien stammen aus öffentlichen Berichten und Reproduktionen, nicht aus einem Genesis-Erkennungsbenchmark.
+[Belege und Umfang](docs/research/agent-change-pain-points.md).
 
 <a id="genesis-get-started"></a>
 

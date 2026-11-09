@@ -40,16 +40,16 @@
 
 ## 为什么需要 Genesis
 
-一个小改动，就可能改变 Agent 接下来的行为。下面都是真实的公开问题记录：
+看清一次代码改动，会怎样改变 Agent 交付给用户的结果。
 
-| 可能遇到的问题 | Genesis 帮你审查什么 |
+| 业务影响 | Genesis 帮你审查什么 |
 | --- | --- |
-| **改一个配置，Agent 就反复调用工具。** Agents SDK 用户设置 `tool_choice="required"` 后，搜索已经成功，Agent 却继续调用，直到耗尽轮数。 [原始记录](https://github.com/openai/openai-agents-python/issues/191) | 模型调用、支持识别的循环上限和停止条件有哪些变化，并附上代码依据。 |
-| **加一段路由逻辑，用户拒绝的操作仍然执行。** LangChain 的复现中，加入路由中间件后，被人工拒绝的工具仍被执行。 [原始记录](https://github.com/langchain-ai/langchain/issues/40492) | 改动前后的行为及受影响调用路径，帮助你重点检查审批逻辑。 |
-| **超时后恢复任务，同一个操作执行了两次。** LangGraph 的复现中，模拟付款已成功，但响应超时；恢复后再次付款。 [原始记录](https://github.com/langchain-ai/langgraph/issues/9185) | 错误处理的变化及相关测试证据，并建议失败路径需要补充的断言。 |
+| **Agent 一直在忙，用户却拿不到结果。** [来源](https://github.com/openai/openai-agents-python/issues/191) | 任务完成和停止条件的变化。 |
+| **用户点了拒绝，操作却照常执行。** [来源](https://github.com/langchain-ai/langchain/issues/40492) | 审批检查与操作执行路径的变化。 |
+| **用户只请求一次，同一个操作却执行两次。** [来源](https://github.com/langchain-ai/langgraph/issues/9185) | 重试路径与防止重复操作的检查。 |
 
-这些案例说明为什么需要审查，并非 Genesis 已检出这些问题的评测结果。
-[来源证据与当前能力范围](docs/research/agent-change-pain-points.md)。
+场景来自公开报告与复现，并非 Genesis 检出率评测。
+[证据与能力范围](docs/research/agent-change-pain-points.md).
 
 <a id="genesis-get-started"></a>
 

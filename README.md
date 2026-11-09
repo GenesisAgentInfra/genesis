@@ -40,16 +40,16 @@
 
 ## Why you need Genesis
 
-A small change can alter what your agent does next. These are real, publicly reported examples:
+See how a code change affects what your agent delivers to users.
 
-| What can go wrong | What Genesis helps you review |
+| Business impact | What Genesis helps you review |
 | --- | --- |
-| **One setting makes the agent keep calling a tool.** An Agents SDK user reported repeated successful searches until the turn limit after setting `tool_choice="required"`. [Report](https://github.com/openai/openai-agents-python/issues/191) | Changes to model calls, supported loop bounds, and stop conditions, with links to the code. |
-| **A routing change lets a rejected action run.** A LangChain reproduction adds routing middleware and shows a human-rejected tool still executing. [Report](https://github.com/langchain-ai/langchain/issues/40492) | Before-and-after behavior and affected call paths, to focus review on approval checks. |
-| **A timeout turns one action into two.** A LangGraph reproduction shows a simulated payment committing, timing out, and executing again on resume. [Report](https://github.com/langchain-ai/langgraph/issues/9185) | Error-handling changes and related test evidence, with suggestions for failure-path assertions. |
+| **The agent keeps working. The user never gets a result.** [Source](https://github.com/openai/openai-agents-python/issues/191) | Changes to completion and stop conditions. |
+| **The user says “no.” The action still runs.** [Source](https://github.com/langchain-ai/langchain/issues/40492) | Changes to approval checks and action paths. |
+| **One request. The same action happens twice.** [Source](https://github.com/langchain-ai/langgraph/issues/9185) | Retry paths and checks against duplicate actions. |
 
-These examples motivate the review; they are not a Genesis detection benchmark.
-[Source evidence and current scope](docs/research/agent-change-pain-points.md).
+Based on public reports and reproductions, not a Genesis detection benchmark.
+[Evidence and scope](docs/research/agent-change-pain-points.md).
 
 <a id="genesis-get-started"></a>
 
