@@ -64,9 +64,6 @@ CLI, skill, 프로젝트 지침을 확인하고 변경한 파일을 알려 주�
 이 규칙은 현재 프로젝트에만 적용됩니다. CLI 설치만으로는 추가되지 않습니다.
 [수동 설정, 업데이트 및 제거](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
-에이전트가 실행되는 환경에 셸 접근 권한, Git, Python 3.12 이상, uv 0.13.7이 필요합니다. 패키지는 소스에서 설치하며, 아직 PyPI에 배포되지 않았습니다.
-[원격·클라우드 환경 설정 및 스킬 검색](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
-
 <details>
 <summary>직접 설치하기</summary>
 
@@ -81,15 +78,9 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Claude Code에는 `--agent claude`를, 둘 다 설치하려면 `--agent both`를 사용하세요. 기본 설치 범위는 사용자입니다. 설치 프로그램은 기존 에이전트 지침, 권한, 자격 증명, 내용이 다른 기존 스킬을 그대로 유지합니다.
-
-[설정 옵션 및 문제 해결](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. 리뷰 요청하기
-
-스킬이 보이지 않으면 새 에이전트 세션을 시작한 다음, 아래와 같이 요청하세요.
 
 ```text
 이 변경 사항을 CR/PR에 올릴 준비를 해 주세요. 프로젝트의 Genesis 리뷰 지침에 따라
@@ -117,8 +108,6 @@ Claude Code에는 `--agent claude`를, 둘 다 설치하려면 `--agent both`를
 | 비용, 대기, 실패 | 확보된 근거가 뒷받침하는 범위 내에서 제시하는 조건부 위험과 정적 추정치. |
 | 테스트 | 관련 테스트 소스가 무엇을 확인하는지, 어떤 검증문이 누락되었을 수 있는지. |
 | 검증 | 권장 확인 사항과 추가 근거가 필요한 부분. |
-
-Genesis는 애플리케이션이나 테스트를 실행하지 않고 Python 소스를 분석합니다. 누락된 요구사항과 확인되지 않은 동작은 리뷰에서 미확인 사항으로 명시합니다.
 
 ## 변경 사항에서 보고서까지
 

@@ -67,11 +67,6 @@ C'est une consigne pour l'agent, pas une garantie d'exécution, un hook Git ou u
 au niveau utilisateur ; cette règle s'applique au projet actuel. Installer la CLI seule ne l'ajoute pas.
 [Configuration manuelle, mise à jour et suppression](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
-L'environnement d'exécution de votre agent doit disposer d'un accès au shell,
-de Git, de Python 3.12+ et d'uv 0.13.7. Les paquets s'installent depuis les sources
-et ne sont pas encore disponibles sur PyPI.
-[Configuration à distance ou dans le cloud et détection du skill](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
-
 <details>
 <summary>Installation manuelle</summary>
 
@@ -86,19 +81,9 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Utilisez `--agent claude` pour Claude Code ou `--agent both`. L'installation se
-fait par défaut au niveau utilisateur. Le programme d'installation préserve les
-instructions de l'agent, les autorisations et les identifiants existants, ainsi
-que tout skill déjà présent qui diffère de celui à installer.
-
-[Options de configuration et dépannage](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. Demander une revue
-
-Si le skill n'est pas visible, ouvrez une nouvelle session de l'agent, puis
-formulez cette demande :
 
 ```text
 Prépare ces changements pour une revue de code (CR/PR), en suivant la consigne Genesis du projet.
@@ -130,10 +115,6 @@ tous les utilisateurs. Aucune clé API de fournisseur de modèles n'est requise.
 | Coûts, attente et échecs | Des risques conditionnels et des estimations statiques, lorsque les éléments disponibles permettent de les étayer. |
 | Tests | Ce que vérifie le code source des tests associés et les assertions qui peuvent manquer. |
 | Vérification | Des contrôles suggérés et les points qui nécessitent encore des éléments probants. |
-
-Genesis analyse le code source Python sans exécuter votre application ni ses
-tests. Les exigences manquantes et les comportements non élucidés restent
-explicitement signalés comme des lacunes dans la revue.
 
 ## De votre modification au rapport
 

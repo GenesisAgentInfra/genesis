@@ -74,10 +74,6 @@ Installing the CLI alone does not add the convention. See the
 [project setup guide](docs/coding-agents.md#configure-cr-preparation-in-this-project)
 for manual setup, existing installations, and removal.
 
-Requires shell access, Git, Python 3.12+, and uv 0.13.7 where your agent runs.
-Packages are installed from source and are not yet on PyPI.
-[Remote/cloud setup and skill discovery](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
-
 <details>
 <summary>Manual installation</summary>
 
@@ -92,17 +88,9 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Use `--agent claude` for Claude Code or `--agent both`. The default scope is user.
-The installer preserves existing agent instructions, permissions, credentials,
-and any different existing skill.
-
-[Setup options and troubleshooting](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. Prepare your next CR/PR
-
-Start a new agent session if the skill is not visible, then ask:
 
 ```text
 Prepare these changes for code review (CR/PR). Explain the review findings
@@ -134,9 +122,6 @@ A model-provider API key is not required.
 | Cost, waiting, and failure | Conditional risks and static estimates where the available evidence supports them. |
 | Tests | What related test source checks and which assertions may be missing. |
 | Verification | Suggested checks and gaps that still need evidence. |
-
-Genesis analyzes Python source without running your application or its tests.
-Missing requirements and unresolved behavior remain explicit gaps in the review.
 
 ## From your change to a report
 

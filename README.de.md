@@ -68,11 +68,6 @@ GitHub CI ist dafür nicht nötig. Dies ist eine Agentenanweisung, keine Ausfüh
 Merge-Sperre. Der Skill gilt auf Benutzerebene, die Regel für dieses Projekt. Die CLI-Installation allein ergänzt sie nicht.
 [Manuelle Einrichtung, Aktualisierung und Entfernung](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
-In der Ausführungsumgebung deines Agents werden Shell-Zugriff, Git, Python 3.12+
-und uv 0.13.7 benötigt. Die Pakete werden aus dem Quellcode installiert und sind
-noch nicht auf PyPI verfügbar.
-[Remote-/Cloud-Einrichtung und Skill-Erkennung](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
-
 <details>
 <summary>Manuelle Installation</summary>
 
@@ -87,19 +82,9 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Verwende `--agent claude` für Claude Code oder `--agent both`. Standardmäßig
-erfolgt die Installation auf Benutzerebene. Das Installationsprogramm behält
-bestehende Agent-Anweisungen, Berechtigungen, Zugangsdaten und einen bereits
-vorhandenen, abweichenden Skill bei.
-
-[Einrichtungsoptionen und Fehlerbehebung](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. Ein Review anfordern
-
-Starte eine neue Agent-Sitzung, falls der Skill nicht sichtbar ist. Stelle dann
-diese Anfrage:
 
 ```text
 Bereite diese Änderungen für ein Code-Review (CR/PR) gemäß der Genesis-Anweisung dieses Projekts vor.
@@ -132,10 +117,6 @@ Modellanbieters ist nicht erforderlich.
 | Kosten, Wartezeiten und Fehler | Bedingte Risiken und statische Schätzungen, soweit die verfügbaren Belege sie stützen. |
 | Tests | Was der zugehörige Testquellcode prüft und welche Assertions möglicherweise fehlen. |
 | Verifikation | Vorschläge für Prüfungen und Lücken, für die noch Belege fehlen. |
-
-Genesis analysiert Python-Quellcode, ohne deine Anwendung oder ihre Tests
-auszuführen. Fehlende Anforderungen und ungeklärtes Verhalten bleiben im Review
-als Lücken ausgewiesen.
 
 ## Von deiner Änderung zum Bericht
 

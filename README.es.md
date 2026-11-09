@@ -67,11 +67,6 @@ Es una instrucción para el agente, no una garantía de ejecución, un hook de G
 para el usuario; esta regla se aplica al proyecto actual. Instalar solo la CLI no añade la regla.
 [Configuración manual, actualización y eliminación](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
-El entorno donde se ejecute tu agente debe tener acceso al shell, Git,
-Python 3.12+ y uv 0.13.7. Los paquetes se instalan desde el código fuente y aún
-no están disponibles en PyPI.
-[Configuración remota o en la nube y detección del skill](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
-
 <details>
 <summary>Instalación manual</summary>
 
@@ -86,18 +81,9 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Usa `--agent claude` para Claude Code o `--agent both`. El alcance predeterminado
-es el de usuario. El instalador conserva las instrucciones del agente, los
-permisos y las credenciales existentes, así como cualquier skill ya instalado
-que difiera del que se va a instalar.
-
-[Opciones de configuración y solución de problemas](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. Solicita una revisión
-
-Si el skill no aparece, inicia una nueva sesión del agente y haz esta solicitud:
 
 ```text
 Prepara estos cambios para revisión de código (CR/PR), siguiendo la instrucción de Genesis de este proyecto.
@@ -128,10 +114,6 @@ todos los usuarios. No requiere una clave API de un proveedor de modelos.
 | Coste, espera y fallos | Riesgos condicionales y estimaciones estáticas cuando la evidencia disponible los respalda. |
 | Pruebas | Qué comprueba el código fuente de las pruebas relacionadas y qué aserciones podrían faltar. |
 | Verificación | Comprobaciones sugeridas y aspectos que aún necesitan evidencia. |
-
-Genesis analiza el código fuente Python sin ejecutar tu aplicación ni sus
-pruebas. Los requisitos ausentes y los comportamientos sin resolver quedan
-señalados explícitamente como lagunas en la revisión.
 
 ## De tu cambio al informe
 

@@ -65,9 +65,6 @@ Genesis レビューを追加してください。CLI、スキル、指示を確
 この設定は現在のプロジェクト単位です。CLI のインストールだけでは追加されません。
 [手動設定・更新・解除](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
 
-エージェントの実行環境には、シェルへのアクセス、Git、Python 3.12 以降、uv 0.13.7 が必要です。パッケージはソースからインストールします。PyPI にはまだ公開されていません。
-[リモート／クラウド環境のセットアップとスキルの検出](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting)。
-
 <details>
 <summary>手動でインストールする</summary>
 
@@ -82,15 +79,9 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Claude Code には `--agent claude`、両方には `--agent both` を指定します。デフォルトはユーザースコープです。インストーラーは、既存のエージェント指示、権限、認証情報、および内容の異なる既存スキルを保持します。
-
-[セットアップのオプションとトラブルシューティング](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md)。
-
 </details>
 
 ### 2. レビューを依頼する
-
-スキルが表示されない場合は、エージェントのセッションを新しく開始してから、次のように依頼してください。
 
 ```text
 この変更を CR/PR に出す準備をしてください。プロジェクトの Genesis レビュー指示に従い、
@@ -118,8 +109,6 @@ Claude Code には `--agent claude`、両方には `--agent both` を指定し�
 | コスト、待ち時間、失敗 | 利用可能な証拠で裏付けられる範囲の、条件付きのリスクと静的な見積もり。 |
 | テスト | 関連するテストのソースが何を検証しているか、どのアサーションが不足している可能性があるか。 |
 | 検証 | 推奨する確認事項と、まだ証拠が足りない点。 |
-
-Genesis は、アプリケーションやテストを実行せずに Python のソースを解析します。要件の不足や解明できていない振る舞いは、レビュー内で未確認事項として明示します。
 
 ## 変更からレポートまで
 

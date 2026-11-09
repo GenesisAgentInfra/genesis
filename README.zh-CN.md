@@ -68,10 +68,6 @@ CLI 和静态分析部分开源。语义审查由 Genesis 托管服务完成，�
 skill 安装在用户级，但这项审查约定只配置到当前项目；只安装 CLI 不会添加约定。
 手动安装、已有用户升级和移除方式见[项目配置指南](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
 
-Agent 的运行环境需要 Shell 访问权限、Git、Python 3.12+ 和 uv 0.13.7。
-目前通过源码安装，尚未发布到 PyPI。
-[远程或云端环境与 skill 发现说明](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting)。
-
 <details>
 <summary>手动安装</summary>
 
@@ -86,16 +82,9 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Claude Code 使用 `--agent claude`，同时安装到两种 Agent 则使用 `--agent both`。
-默认安装范围为用户级。安装器会保留已有的 Agent 指令、权限、凭据，以及与当前版本不同的既有 skill。
-
-[安装选项与故障排查](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md)。
-
 </details>
 
 ### 2. 照常准备 CR/PR
-
-如果看不到新安装的 skill，先开启一个新的 Agent 会话，然后输入：
 
 ```text
 帮我整理这次改动，准备发 CR/PR。
@@ -125,8 +114,6 @@ Claude Code 使用 `--agent claude`，同时安装到两种 Agent 则使用 `--a
 | 成本、等待与失败 | 基于现有证据的条件性风险分析和静态估算。 |
 | 测试 | 相关测试源码检查了什么，以及可能缺少哪些断言。 |
 | 验证 | 建议执行的检查，以及仍然缺少的证据。 |
-
-Genesis 分析 Python 源码，不执行应用或测试。缺失的需求和无法确定的行为会明确保留为审查缺口。
 
 ## 从代码改动到审查报告
 
