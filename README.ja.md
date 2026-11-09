@@ -38,6 +38,19 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">コードレビューの流れ</a></sub></p>
 
+## Genesis が必要な理由
+
+小さな変更でも、エージェントの次の動作が変わることがあります。以下は実際に公開された問題の例です。
+
+| 起こりうる問題 | Genesis がレビューを支援する内容 |
+| --- | --- |
+| **設定を一つ変えたら、ツール呼び出しが止まらない。** Agents SDK の利用者は、`tool_choice="required"` の設定後、検索が成功してもターン上限まで繰り返されると報告しています。[報告](https://github.com/openai/openai-agents-python/issues/191) | モデル呼び出し、対応するループ上限、停止条件の変更を、コードの根拠とともに確認します。 |
+| **ルーティングを変えたら、拒否した操作が実行される。** LangChain の再現例では、ルーティング用ミドルウェアを追加すると、人が拒否したツールも実行されます。[報告](https://github.com/langchain-ai/langchain/issues/40492) | 変更前後の振る舞いと影響を受ける呼び出し経路を比較し、承認チェックの確認を支援します。 |
+| **タイムアウト後に再開すると、同じ操作が二度実行される。** LangGraph の再現例では、模擬決済が完了した後に応答がタイムアウトし、再開時に再び決済されます。[報告](https://github.com/langchain-ai/langgraph/issues/9185) | エラー処理の変更と関連テストの根拠を確認し、失敗経路に必要なアサーションを提案します。 |
+
+これらはレビューの必要性を示す事例であり、Genesis の検出性能を検証したベンチマークではありません。
+[出典と現在の対応範囲](docs/research/agent-change-pain-points.md)。
+
 <a id="genesis-get-started"></a>
 
 ## コーディングエージェントで使い始める

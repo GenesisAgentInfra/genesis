@@ -38,6 +38,19 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Illustration du processus de revue</a></sub></p>
 
+## Pourquoi utiliser Genesis ?
+
+Une petite modification peut changer ce que fait votre agent ensuite. Voici des exemples réels signalés publiquement :
+
+| Ce qui peut mal tourner | Ce que Genesis vous aide à examiner |
+| --- | --- |
+| **Un réglage fait appeler un outil en boucle.** Un utilisateur d’Agents SDK a signalé des recherches répétées et réussies jusqu’à la limite de tours après avoir défini `tool_choice="required"`. [Signalement](https://github.com/openai/openai-agents-python/issues/191) | Les modifications des appels au modèle, des bornes de boucle reconnues et des conditions d’arrêt, avec des références au code. |
+| **Une modification du routage exécute une action refusée.** Une reproduction LangChain ajoute un middleware de routage et montre qu’un outil refusé par un humain est tout de même exécuté. [Signalement](https://github.com/langchain-ai/langchain/issues/40492) | Le comportement avant et après la modification et les chemins d’appel affectés, pour cibler les contrôles d’approbation. |
+| **Un timeout fait exécuter une action deux fois.** Une reproduction LangGraph montre un paiement simulé validé, suivi d’un timeout, puis d’une seconde exécution à la reprise. [Signalement](https://github.com/langchain-ai/langgraph/issues/9185) | Les changements de gestion des erreurs et les tests associés, avec des suggestions d’assertions pour les chemins d’échec. |
+
+Ces exemples motivent la revue ; ils ne constituent pas un benchmark de détection de Genesis.
+[Sources et périmètre actuel](docs/research/agent-change-pain-points.md).
+
 <a id="genesis-get-started"></a>
 
 ## Commencer dans votre agent de développement

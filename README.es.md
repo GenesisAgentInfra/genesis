@@ -38,6 +38,19 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Ilustración del proceso de revisión</a></sub></p>
 
+## Por qué necesitas Genesis
+
+Un pequeño cambio puede alterar lo que hace tu agente a continuación. Estos son ejemplos reales publicados:
+
+| Qué puede salir mal | Qué te ayuda a revisar Genesis |
+| --- | --- |
+| **Una opción hace que el agente siga llamando a una herramienta.** Un usuario de Agents SDK informó de búsquedas repetidas y exitosas hasta agotar el límite de turnos tras configurar `tool_choice="required"`. [Informe](https://github.com/openai/openai-agents-python/issues/191) | Cambios en llamadas al modelo, límites de bucles compatibles y condiciones de salida, con referencias al código. |
+| **Un cambio de rutas ejecuta una acción rechazada.** Una reproducción de LangChain añade middleware de enrutamiento y muestra que se ejecuta una herramienta rechazada por una persona. [Informe](https://github.com/langchain-ai/langchain/issues/40492) | El comportamiento antes y después y las rutas de llamadas afectadas, para centrar la revisión en los controles de aprobación. |
+| **Un timeout convierte una acción en dos.** Una reproducción de LangGraph muestra un pago simulado confirmado cuya respuesta llega tarde; al reanudar, se ejecuta de nuevo. [Informe](https://github.com/langchain-ai/langgraph/issues/9185) | Cambios en el manejo de errores y evidencia de pruebas relacionadas, con sugerencias de aserciones para rutas de fallo. |
+
+Estos ejemplos motivan la revisión; no son un benchmark de detección de Genesis.
+[Fuentes y alcance actual](docs/research/agent-change-pain-points.md).
+
 <a id="genesis-get-started"></a>
 
 ## Empieza desde tu agente de programación

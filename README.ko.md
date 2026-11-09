@@ -38,6 +38,19 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">코드 리뷰 흐름 예시</a></sub></p>
 
+## Genesis가 필요한 이유
+
+작은 변경 하나로 에이전트의 다음 행동이 달라질 수 있습니다. 아래는 실제 공개된 문제 사례입니다.
+
+| 발생할 수 있는 문제 | Genesis가 검토를 돕는 내용 |
+| --- | --- |
+| **설정 하나를 바꾸자 도구 호출이 반복됩니다.** Agents SDK 사용자는 `tool_choice="required"` 설정 후 검색이 성공해도 턴 한도까지 반복된다고 보고했습니다. [원문](https://github.com/openai/openai-agents-python/issues/191) | 모델 호출, 지원되는 루프 상한과 종료 조건의 변경을 코드 근거와 함께 검토합니다. |
+| **라우팅을 바꾸자 거절한 작업이 실행됩니다.** LangChain 재현 사례에서는 라우팅 미들웨어를 추가한 뒤 사람이 거절한 도구도 실행됩니다. [원문](https://github.com/langchain-ai/langchain/issues/40492) | 변경 전후 동작과 영향을 받는 호출 경로를 비교해 승인 검사에 집중하도록 돕습니다. |
+| **타임아웃 후 재개하면 같은 작업이 두 번 실행됩니다.** LangGraph 재현 사례에서는 모의 결제가 완료된 뒤 응답이 타임아웃되고, 재개 시 다시 결제됩니다. [원문](https://github.com/langchain-ai/langgraph/issues/9185) | 오류 처리 변경과 관련 테스트 근거를 검토하고, 실패 경로에 필요한 검증문을 제안합니다. |
+
+이 사례들은 리뷰가 필요한 이유를 보여주며, Genesis의 탐지 성능을 검증한 벤치마크가 아닙니다.
+[출처와 현재 지원 범위](docs/research/agent-change-pain-points.md).
+
 <a id="genesis-get-started"></a>
 
 ## 코딩 에이전트에서 시작하기

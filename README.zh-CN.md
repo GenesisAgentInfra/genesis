@@ -38,6 +38,19 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">代码审查流程示意</a></sub></p>
 
+## 为什么需要 Genesis
+
+一个小改动，就可能改变 Agent 接下来的行为。下面都是真实的公开问题记录：
+
+| 可能遇到的问题 | Genesis 帮你审查什么 |
+| --- | --- |
+| **改一个配置，Agent 就反复调用工具。** Agents SDK 用户设置 `tool_choice="required"` 后，搜索已经成功，Agent 却继续调用，直到耗尽轮数。 [原始记录](https://github.com/openai/openai-agents-python/issues/191) | 模型调用、支持识别的循环上限和停止条件有哪些变化，并附上代码依据。 |
+| **加一段路由逻辑，用户拒绝的操作仍然执行。** LangChain 的复现中，加入路由中间件后，被人工拒绝的工具仍被执行。 [原始记录](https://github.com/langchain-ai/langchain/issues/40492) | 改动前后的行为及受影响调用路径，帮助你重点检查审批逻辑。 |
+| **超时后恢复任务，同一个操作执行了两次。** LangGraph 的复现中，模拟付款已成功，但响应超时；恢复后再次付款。 [原始记录](https://github.com/langchain-ai/langgraph/issues/9185) | 错误处理的变化及相关测试证据，并建议失败路径需要补充的断言。 |
+
+这些案例说明为什么需要审查，并非 Genesis 已检出这些问题的评测结果。
+[来源证据与当前能力范围](docs/research/agent-change-pain-points.md)。
+
 <a id="genesis-get-started"></a>
 
 ## 在你的编程 Agent 中开始使用
