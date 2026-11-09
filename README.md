@@ -45,7 +45,7 @@
 The CLI and static analysis are open source. Semantic review uses the Genesis
 hosted service, with your approval before source is sent.
 
-### 1. Install once
+### 1. Set up once per project
 
 Paste this into Codex or Claude Code in the project you want to review:
 
@@ -53,9 +53,23 @@ Paste this into Codex or Claude Code in the project you want to review:
 Set up Genesis from https://github.com/GenesisAgentInfra/genesis-cli.
 Read its README and docs/coding-agents.md. Install the CLI outside this
 project and the genesis-review skill for my current agent with user scope.
-Reuse an existing installation if available. Verify the CLI version and
-skill installation. Only set up; do not review or upload code yet.
+Reuse an existing installation; update an unmodified managed skill if needed.
+Follow "Configure CR preparation in this project" in docs/coding-agents.md:
+add the Genesis review instruction to this project's agent instructions,
+preserving existing content, so preparing a CR/PR runs Genesis first.
+Verify the CLI, skill, and project instruction; tell me which file changed.
+Only set up now; do not review or upload code. Future uploads still require
+authorization covering the destination and selected source.
 ```
+
+**After setup:** ask your agent, “Prepare these changes for code review.” The
+project instruction asks it to run Genesis first and explain the result before
+finalizing the CR/PR description. This works locally without GitHub CI. It is
+agent guidance, not a guaranteed trigger, Git hook, or merge gate; the skill is
+installed per user, while this review convention applies to the current project.
+Installing the CLI alone does not add the convention. See the
+[project setup guide](docs/coding-agents.md#configure-cr-preparation-in-this-project)
+for manual setup, existing installations, and removal.
 
 Requires shell access, Git, Python 3.12+, and uv 0.13.7 where your agent runs.
 Packages are installed from source and are not yet on PyPI.
@@ -83,14 +97,14 @@ and any different existing skill.
 
 </details>
 
-### 2. Ask for a review
+### 2. Prepare your next CR/PR
 
 Start a new agent session if the skill is not visible, then ask:
 
 ```text
-Use Genesis to review my uncommitted changes.
-Explain what changes for users, the main risks, and what still needs testing.
-Show me which source excerpts will be sent before uploading.
+Prepare these changes for code review (CR/PR). Explain the review findings
+and remaining gaps before finalizing the description. Show me the upload
+scope before sending.
 ```
 
 You can also select the skill explicitly:

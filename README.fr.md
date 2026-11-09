@@ -51,12 +51,21 @@ Collez cette demande dans Codex ou Claude Code, dans le projet à examiner :
 
 ```text
 Configure Genesis depuis https://github.com/GenesisAgentInfra/genesis-cli.
-Lis son README et docs/coding-agents.md. Installe la CLI en dehors de ce
-projet et le skill genesis-review pour mon agent actuel au niveau utilisateur.
-Réutilise une installation existante si possible. Vérifie la version de la CLI
-et l'installation du skill. Effectue uniquement la configuration ; ne lance
-pas encore de revue et n'envoie aucun code.
+Lis le README et docs/coding-agents.md. Installe la CLI hors de ce projet et le
+skill genesis-review au niveau utilisateur pour mon agent actuel. Réutilise
+l'installation existante et actualise si nécessaire un skill géré non modifié.
+Suis "Configure CR preparation in this project" dans docs/coding-agents.md :
+ajoute aux instructions de ce projet la revue Genesis avant de préparer une CR/PR,
+en conservant le contenu existant. Vérifie la CLI, le skill et la règle ; indique le fichier modifié.
+Configure uniquement : aucune analyse ni aucun envoi de code maintenant.
+Les futurs envois nécessitent une autorisation couvrant le service et les sources sélectionnées.
 ```
+
+**Après configuration :** demandez « Prépare ces changements pour une revue de code ». Les instructions du projet
+prévoient une revue Genesis et une explication du résultat avant de finaliser la description de la CR/PR, sans GitHub CI.
+C'est une consigne pour l'agent, pas une garantie d'exécution, un hook Git ou un blocage de fusion. Le skill est installé
+au niveau utilisateur ; cette règle s'applique au projet actuel. Installer la CLI seule ne l'ajoute pas.
+[Configuration manuelle, mise à jour et suppression](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
 L'environnement d'exécution de votre agent doit disposer d'un accès au shell,
 de Git, de Python 3.12+ et d'uv 0.13.7. Les paquets s'installent depuis les sources
@@ -92,10 +101,8 @@ Si le skill n'est pas visible, ouvrez une nouvelle session de l'agent, puis
 formulez cette demande :
 
 ```text
-Utilise Genesis pour examiner mes modifications non committées.
-Explique ce qui change pour les utilisateurs, les principaux risques et ce
-qui reste à tester. Montre-moi les extraits de code source qui seront
-transmis avant de les envoyer.
+Prépare ces changements pour une revue de code (CR/PR), en suivant la consigne Genesis du projet.
+Explique les résultats et les points non vérifiés avant de finaliser la description. Montre le périmètre de l'envoi avant tout transfert.
 ```
 
 Vous pouvez aussi sélectionner le skill explicitement :

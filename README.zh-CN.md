@@ -44,17 +44,26 @@
 
 CLI 和静态分析部分开源。语义审查由 Genesis 托管服务完成，发送源码前需要获得你的授权。
 
-### 1. 完成一次安装
+### 1. 为当前项目配置一次
 
 在要审查的项目中，把下面的提示词粘贴给 Codex 或 Claude Code：
 
 ```text
-请从 https://github.com/GenesisAgentInfra/genesis-cli 安装 Genesis。
-先阅读 README 和 docs/coding-agents.md，把 CLI 安装在当前项目之外，
-并为我正在使用的 Agent 安装用户级 genesis-review skill。
-已有安装就复用。检查 CLI 版本和 skill 安装状态。
-这一步只安装，不审查、不上传代码。
+请从 https://github.com/GenesisAgentInfra/genesis-cli 接入 Genesis。
+先读 README 和 docs/coding-agents.md，把 CLI 安装在当前项目之外，
+并为我当前使用的 Agent 安装用户级 genesis-review skill。
+已有安装就复用；需要时更新未经用户修改的托管 skill。
+按照 docs/coding-agents.md 的 “Configure CR preparation in this project”，
+在当前项目的 Agent 指令文件中加入准备 CR/PR 前先运行 Genesis 的约定，
+保留其他现有内容。检查 CLI、skill 和项目约定，并告诉我修改了哪个文件。
+这一步只配置，不审查、不上传代码；以后的上传仍需获得覆盖目标服务和所选源码的授权。
 ```
+
+**配置后的体验：**你照常说“帮我整理这次改动，准备发 CR”，项目指令会要求 Agent
+先运行 Genesis、解释结果，再整理 CR/PR 描述。这个流程在本地发起，不依赖 GitHub CI。
+它是 Agent 的默认工作约定，不保证每次触发，也不是 Git hook 或合并门禁。
+skill 安装在用户级，但这项审查约定只配置到当前项目；只安装 CLI 不会添加约定。
+手动安装、已有用户升级和移除方式见[项目配置指南](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
 
 Agent 的运行环境需要 Shell 访问权限、Git、Python 3.12+ 和 uv 0.13.7。
 目前通过源码安装，尚未发布到 PyPI。
@@ -81,14 +90,14 @@ Claude Code 使用 `--agent claude`，同时安装到两种 Agent 则使用 `--a
 
 </details>
 
-### 2. 发起审查
+### 2. 照常准备 CR/PR
 
 如果看不到新安装的 skill，先开启一个新的 Agent 会话，然后输入：
 
 ```text
-用 Genesis 审查我当前未提交的改动。
-解释这些改动会怎样影响用户、有哪些主要风险，以及还需要测试什么。
-上传前先展示将要发送的源码片段。
+帮我整理这次改动，准备发 CR/PR。
+先解释审查发现和未验证的部分，再整理提交 review 的描述。
+上传前先展示发送范围。
 ```
 
 也可以明确选择 skill：

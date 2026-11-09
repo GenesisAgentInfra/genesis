@@ -51,12 +51,21 @@ Pega esta solicitud en Codex o Claude Code dentro del proyecto que quieras revis
 
 ```text
 Configura Genesis desde https://github.com/GenesisAgentInfra/genesis-cli.
-Lee su README y docs/coding-agents.md. Instala la CLI fuera de este proyecto
-y el skill genesis-review para mi agente actual con alcance de usuario.
-Reutiliza una instalación existente si está disponible. Comprueba la versión
-de la CLI y la instalación del skill. Realiza solo la configuración;
-no revises ni envíes código todavía.
+Lee el README y docs/coding-agents.md. Instala la CLI fuera de este proyecto y el
+skill genesis-review para mi agente actual con alcance de usuario. Reutiliza la
+instalación existente y actualiza, si hace falta, un skill administrado sin modificaciones.
+Sigue "Configure CR preparation in this project" en docs/coding-agents.md:
+añade a las instrucciones de este proyecto la revisión con Genesis antes de preparar una CR/PR,
+preservando el contenido existente. Verifica CLI, skill y regla; indica qué archivo cambió.
+Por ahora solo configura: no analices ni subas código. Los envíos futuros requieren
+autorización que cubra el servicio de destino y las fuentes seleccionadas.
 ```
+
+**Después de configurar:** pide al agente « Prepara estos cambios para revisión de código ». Las instrucciones del proyecto
+le indican que ejecute Genesis y explique el resultado antes de finalizar la descripción de la CR/PR. No requiere GitHub CI.
+Es una instrucción para el agente, no una garantía de ejecución, un hook de Git ni un bloqueo de merge. El skill se instala
+para el usuario; esta regla se aplica al proyecto actual. Instalar solo la CLI no añade la regla.
+[Configuración manual, actualización y eliminación](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
 El entorno donde se ejecute tu agente debe tener acceso al shell, Git,
 Python 3.12+ y uv 0.13.7. Los paquetes se instalan desde el código fuente y aún
@@ -91,10 +100,8 @@ que difiera del que se va a instalar.
 Si el skill no aparece, inicia una nueva sesión del agente y haz esta solicitud:
 
 ```text
-Usa Genesis para revisar mis cambios sin commit.
-Explica qué cambia para los usuarios, los riesgos principales y qué falta
-por probar. Muéstrame qué fragmentos de código fuente se van a transmitir
-antes de enviarlos.
+Prepara estos cambios para revisión de código (CR/PR), siguiendo la instrucción de Genesis de este proyecto.
+Explica los hallazgos y lo que falta verificar antes de finalizar la descripción. Muestra el alcance de la subida antes de enviar.
 ```
 
 También puedes seleccionar el skill de forma explícita:

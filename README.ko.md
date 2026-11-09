@@ -50,11 +50,19 @@ CLI와 정적 분석은 오픈 소스입니다. 의미 분석을 포함한 리�
 
 ```text
 https://github.com/GenesisAgentInfra/genesis-cli 에서 Genesis를 설정해 주세요.
-README와 docs/coding-agents.md를 읽고, CLI는 이 프로젝트 외부에 설치해 주세요.
-현재 사용하는 에이전트의 사용자 범위에 genesis-review 스킬을 설치해 주세요.
-기존 설치가 있으면 재사용하고, CLI 버전과 스킬 설치 상태를 확인해 주세요.
-이번에는 설정만 진행하고, 아직 리뷰하거나 코드를 업로드하지 마세요.
+README와 docs/coding-agents.md를 읽고 CLI는 프로젝트 밖에, genesis-review skill은
+현재 에이전트의 사용자 범위에 설치하세요. 기존 설치를 재사용하고 수정되지 않은 관리형 skill은 필요하면 갱신하세요.
+docs/coding-agents.md의 "Configure CR preparation in this project"에 따라 기존 내용을 보존하면서
+이 프로젝트의 에이전트 지침에 CR/PR 준비 전에 Genesis를 실행하는 규칙을 추가하세요.
+CLI, skill, 프로젝트 지침을 확인하고 변경한 파일을 알려 주세요.
+지금은 설정만 하고 코드 분석이나 업로드는 하지 마세요. 향후 업로드에도 대상 서비스와 선택된 소스를 포함하는 승인이 필요합니다.
 ```
+
+**설정 후:** “이 변경 사항을 코드 리뷰에 올릴 준비를 해 줘”라고 요청하면 프로젝트 지침에 따라
+에이전트가 CR/PR 설명을 완성하기 전에 Genesis를 실행하고 결과를 설명합니다. GitHub CI는 필요하지 않습니다.
+이는 에이전트 지침이며 실행 보장, Git hook 또는 병합 차단 기능이 아닙니다. skill은 사용자 범위에 설치되지만
+이 규칙은 현재 프로젝트에만 적용됩니다. CLI 설치만으로는 추가되지 않습니다.
+[수동 설정, 업데이트 및 제거](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
 에이전트가 실행되는 환경에 셸 접근 권한, Git, Python 3.12 이상, uv 0.13.7이 필요합니다. 패키지는 소스에서 설치하며, 아직 PyPI에 배포되지 않았습니다.
 [원격·클라우드 환경 설정 및 스킬 검색](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
@@ -84,9 +92,8 @@ Claude Code에는 `--agent claude`를, 둘 다 설치하려면 `--agent both`를
 스킬이 보이지 않으면 새 에이전트 세션을 시작한 다음, 아래와 같이 요청하세요.
 
 ```text
-Genesis로 아직 커밋하지 않은 변경 사항을 리뷰해 주세요.
-사용자에게 무엇이 달라지는지, 주요 위험은 무엇인지, 어떤 테스트가 더 필요한지 설명해 주세요.
-업로드하기 전에 어떤 소스 코드 발췌문을 보낼지 보여 주세요.
+이 변경 사항을 CR/PR에 올릴 준비를 해 주세요. 프로젝트의 Genesis 리뷰 지침에 따라
+분석 결과와 미검증 사항을 설명한 뒤 리뷰 설명을 완성하세요. 전송 전에 업로드 범위를 보여 주세요.
 ```
 
 스킬을 직접 선택할 수도 있습니다.

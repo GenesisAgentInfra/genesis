@@ -51,13 +51,22 @@ Zustimmung übertragen.
 Füge diese Anfrage in Codex oder Claude Code im zu prüfenden Projekt ein:
 
 ```text
-Richte Genesis aus https://github.com/GenesisAgentInfra/genesis-cli ein.
-Lies die README und docs/coding-agents.md. Installiere die CLI außerhalb
-dieses Projekts und den Skill genesis-review für meinen aktuellen Agent
-auf Benutzerebene. Verwende eine vorhandene Installation, falls verfügbar.
-Prüfe die CLI-Version und die Skill-Installation. Führe nur die Einrichtung
-durch; prüfe noch keinen Code und lade noch keinen Code hoch.
+Richte Genesis von https://github.com/GenesisAgentInfra/genesis-cli ein.
+Lies README und docs/coding-agents.md. Installiere die CLI außerhalb dieses Projekts
+und den genesis-review-Skill für meinen aktuellen Agenten auf Benutzerebene.
+Verwende eine vorhandene Installation und aktualisiere bei Bedarf einen unveränderten verwalteten Skill.
+Befolge "Configure CR preparation in this project" in docs/coding-agents.md:
+Ergänze die Projektanweisungen um eine Genesis-Prüfung vor der CR/PR-Vorbereitung,
+ohne bestehende Inhalte zu ersetzen. Prüfe CLI, Skill und Regel und nenne die geänderte Datei.
+Jetzt nur einrichten, keinen Code prüfen oder hochladen. Künftige Uploads benötigen
+weiterhin eine Genehmigung für den Zieldienst und die ausgewählten Quellen.
 ```
+
+**Nach der Einrichtung:** Bitten Sie den Agenten, Änderungen für ein Code-Review vorzubereiten. Die Projektanweisung
+sieht vor, zuerst Genesis auszuführen und das Ergebnis zu erklären, bevor die CR/PR-Beschreibung fertiggestellt wird.
+GitHub CI ist dafür nicht nötig. Dies ist eine Agentenanweisung, keine Ausführungsgarantie, kein Git-Hook und keine
+Merge-Sperre. Der Skill gilt auf Benutzerebene, die Regel für dieses Projekt. Die CLI-Installation allein ergänzt sie nicht.
+[Manuelle Einrichtung, Aktualisierung und Entfernung](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
 In der Ausführungsumgebung deines Agents werden Shell-Zugriff, Git, Python 3.12+
 und uv 0.13.7 benötigt. Die Pakete werden aus dem Quellcode installiert und sind
@@ -93,10 +102,8 @@ Starte eine neue Agent-Sitzung, falls der Skill nicht sichtbar ist. Stelle dann
 diese Anfrage:
 
 ```text
-Prüfe meine noch nicht committeten Änderungen mit Genesis.
-Erkläre, was sich für Nutzer ändert, welche Risiken wichtig sind und was
-noch getestet werden muss. Zeige mir vor dem Hochladen, welche
-Quellcodeausschnitte übertragen werden.
+Bereite diese Änderungen für ein Code-Review (CR/PR) gemäß der Genesis-Anweisung dieses Projekts vor.
+Erkläre Ergebnisse und offene Prüfpunkte vor der fertigen Beschreibung. Zeige vor dem Hochladen den Umfang der Übertragung.
 ```
 
 Du kannst den Skill auch ausdrücklich auswählen:

@@ -1,6 +1,6 @@
 ---
 name: genesis-review
-description: Review Python code changes with Genesis and explain business behavior, affected paths, cost/wait risks, test evidence, and verification gaps. Use when the user asks to run Genesis, check change risks, or review a Python diff with Genesis, including “用 Genesis 检查这次改动”.
+description: Review Python code changes with Genesis and explain behavior, affected paths, cost/wait risks, test evidence, and verification gaps. Use when asked to run Genesis or check Python change risks, and when preparing, cutting, or submitting a CR/PR under the project's Genesis review instruction, including “准备发 CR” and “整理改动提 PR”.
 ---
 
 # Genesis change review
@@ -11,6 +11,26 @@ team's private service. This skill supplies invocation guidance, not analysis
 results or inferred user requirements.
 If the request is to explain an existing report, read that report and its
 evidence directly; do not start a new analysis.
+
+## When preparing a CR/PR
+
+When the project has opted into Genesis before CR/PR preparation, run this review
+before finalizing the review description or submitting the change. Honor an
+explicit request to skip Genesis. A CR request alone does not authorize hosted
+source upload; follow the consent steps below. This skill does not install a
+Git hook, intercept terminal pushes, or enforce a merge gate.
+
+Review the whole intended change set, not just the latest commit. Reuse a prior
+Genesis report only after verifying its frozen source, scope, and analysis inputs
+still match. If code changed, explain that the previous result is stale and apply
+the preview/consent steps to the new scope. Keep automatic failure retries disabled.
+For changes outside the supported Python scope, state the limitation.
+
+Before the CR handoff, explain the actual Genesis findings, report location, and
+remaining gaps. If it cannot run or finishes only partially, report that status
+and follow the user's instructions for continuing; never present it as a pass.
+Code fixes and publishing the CR require their own authorization under the user's
+request and project policy.
 
 ## Locate the CLI and choose the change
 
