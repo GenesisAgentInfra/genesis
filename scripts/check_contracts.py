@@ -41,19 +41,20 @@ def main() -> None:
         )
     )
     print(f"validated {len(expected)} schemas, {count} fixture reports, and the flow example")
-    for filename, schema in public_schemas("0.2.0").items():
-        actual = json.loads((PUBLIC.parent / "v0.2.0" / filename).read_text())
-        if actual != schema:
-            raise SystemExit(f"public v0.2.0 schema is stale: {filename}")
-        Draft202012Validator.check_schema(schema)
-        examples = sorted((PUBLIC.parent.parent / "examples" / "v0.2.0").glob("*.json"))
-        if not examples:
-            raise SystemExit("missing public v0.2.0 examples")
-        for example in examples:
-            data = json.loads(example.read_text())
-            Draft202012Validator(schema).validate(data)
-            validate_public_response(parse_analysis_response(data))
-    print("validated behavior comparison schema and examples")
+    for version in ("0.2.0", "0.3.0"):
+        for filename, schema in public_schemas(version).items():
+            actual = json.loads((PUBLIC.parent / ("v" + version) / filename).read_text())
+            if actual != schema:
+                raise SystemExit(f"public v{version} schema is stale: {filename}")
+            Draft202012Validator.check_schema(schema)
+            examples = sorted((PUBLIC.parent.parent / "examples" / ("v" + version)).glob("*.json"))
+            if not examples:
+                raise SystemExit(f"missing public v{version} examples")
+            for example in examples:
+                data = json.loads(example.read_text())
+                Draft202012Validator(schema).validate(data)
+                validate_public_response(parse_analysis_response(data))
+    print("validated behavior comparison and execution path schemas and examples")
 
 
 if __name__ == "__main__":
