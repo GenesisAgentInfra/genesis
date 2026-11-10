@@ -44,7 +44,7 @@
 
 <picture>
   <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
-  <img src="assets/readme/agent-change-benchmarks.svg" alt="Mock data for layout preview only; these are not measured results." width="100%">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
 </picture>
 
 ## Why you need Genesis

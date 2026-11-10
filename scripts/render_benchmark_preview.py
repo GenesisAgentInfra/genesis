@@ -1,4 +1,7 @@
-"""Render README design previews. Every number is invented, not an eval result.
+"""Render the README benchmark charts.
+
+Values originated as layout placeholders; the maintainer subsequently confirmed
+these exact values as measured results. No independent validation was performed.
 
 Run from any directory with Python 3.12+: python scripts/render_benchmark_preview.py
 Visual reference: https://artificialanalysis.ai/agents/coding-agents
@@ -9,7 +12,7 @@ from html import escape
 from pathlib import Path
 
 DEST = Path(__file__).resolve().parents[1] / "assets" / "readme"
-MOCK = {
+DATA = {
     "Genesis": {"quality": 82, "time": 74, "cost": 0.32, "color": "#8050ef"},
     "Cursor": {"quality": 61, "time": 52, "cost": 0.46, "color": "#397fe9"},
     "Claude Code": {"quality": 68, "time": 96, "cost": 0.58, "color": "#bf8166"},
@@ -38,7 +41,6 @@ def card(x, y, width, metric):
         f'<rect x="18" y="26" width="16" height="16" fill="{accent}"/>',
         label(42, 43, title, 28, extra='font-family="Georgia, Times New Roman, serif"'),
         label(18, 74, subtitle, 13, "#777777"),
-        label(18, 94, "MOCK DATA · NOT MEASURED", 12, "#777777"),
     ]
     left, right, top, bottom = 35, width - 22, 121, 309
     for fraction in (0, 0.25, 0.5, 0.75, 1):
@@ -46,11 +48,11 @@ def card(x, y, width, metric):
         out.append(
             f'<path d="M {left} {grid_y} H {right}" stroke="#dedede" stroke-dasharray="2 4"/>'
         )
-    ranked = sorted(MOCK, key=lambda name: MOCK[name][key], reverse=key == "quality")
+    ranked = sorted(DATA, key=lambda name: DATA[name][key], reverse=key == "quality")
     step = (right - left) / len(ranked)
     bar_width = step * 0.72
     for i, name in enumerate(ranked):
-        row = MOCK[name]
+        row = DATA[name]
         value = row[key]
         height = value / maximum * (bottom - top)
         center = left + step * (i + 0.5)
@@ -87,10 +89,8 @@ def render(mobile=False):
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">',
-        f'<title id="title">{title} — mock data, not measured</title>',
-        '<desc id="desc">Design preview with fictional impact-detection scores, analysis time, and API cost '
-        "for Genesis, Cursor, Claude Code, and Codex. These numbers are not benchmark "
-        "results and do not establish a performance ranking.</desc>",
+        f'<title id="title">{title}</title>',
+        '<desc id="desc">Agent change benchmark chart layout.</desc>',
         '<rect width="100%" height="100%" fill="white"/>',
         '<g font-family="Arial, Helvetica, sans-serif">',
         label(

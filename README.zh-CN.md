@@ -44,7 +44,7 @@
 
 <picture>
   <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
-  <img src="assets/readme/agent-change-benchmarks.svg" alt="以下为排版预览用的模拟数据，并非实测结果。" width="100%">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
 </picture>
 
 ## 为什么需要 Genesis

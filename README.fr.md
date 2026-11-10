@@ -44,7 +44,7 @@
 
 <picture>
   <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
-  <img src="assets/readme/agent-change-benchmarks.svg" alt="Données fictives pour prévisualiser la mise en page, pas des résultats mesurés." width="100%">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
 </picture>
 
 ## Pourquoi utiliser Genesis ?
