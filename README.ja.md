@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">コーディングエージェントに、コード変更を理解する力を。</h1>
+<h1 align="center">あなたのエージェントのあらゆる変更に、ガードレールを。</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">公式サイト</a> &nbsp;·&nbsp;
@@ -38,6 +38,27 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">コードレビューの流れ</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## ベンチマーク
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+</picture>
+
+## Genesis が必要な理由
+
+コードの変更が、ユーザーに届く結果をどう変えるかを確認します。
+
+| ユーザーへの影響 | Genesis がレビューを支援する内容 |
+| --- | --- |
+| **エージェントは動き続ける。でも結果が届かない。** [出典](https://github.com/openai/openai-agents-python/issues/191) | タスクの完了条件と停止条件の変更。 |
+| **ユーザーが拒否しても、操作が実行される。** [出典](https://github.com/langchain-ai/langchain/issues/40492) | 承認チェックと操作の実行経路の変更。 |
+| **依頼は一度。同じ操作が二度実行される。** [出典](https://github.com/langchain-ai/langgraph/issues/9185) | 再試行経路と重複操作を防ぐチェック。 |
+| **同じタスクなのに、トークン消費が増える。** [出典](https://github.com/microsoft/agent-framework/issues/5049) | プロンプトの肥大化とモデル呼び出しの追加。 |
+| **タスクは完了する。でも待ち時間が延びる。** [出典](https://github.com/openai/openai-agents-python/issues/2386) | ブロッキング呼び出しと逐次実行のステップ。 |
+
 <a id="genesis-get-started"></a>
 
 ## コーディングエージェントで使い始める
@@ -50,14 +71,20 @@ CLI と静的解析はオープンソースです。意味解析を伴うレビ�
 
 ```text
 https://github.com/GenesisAgentInfra/genesis-cli から Genesis をセットアップしてください。
-README と docs/coding-agents.md を読み、CLI はこのプロジェクトの外に、
-genesis-review スキルは現在使っているエージェントのユーザースコープにインストールしてください。
-既存のインストールがあれば再利用してください。CLI のバージョンとスキルの
-インストール状態を確認してください。今回はセットアップのみ行い、レビューやコードのアップロードはしないでください。
+README と docs/coding-agents.md を読み、CLI はプロジェクト外に、genesis-review
+スキルは現在のエージェントのユーザースコープにインストールしてください。
+既存のインストールは再利用し、未編集の管理対象スキルは必要に応じて更新してください。
+docs/coding-agents.md の "Configure CR preparation in this project" に従い、
+既存の内容を保持して、このプロジェクトのエージェント指示に CR/PR 準備前の
+Genesis レビューを追加してください。CLI、スキル、指示を確認し、変更したファイルを報告してください。
+今回は設定のみです。レビューやアップロードは行わず、今後の送信にも対象サービスとソースを含む承認が必要です。
 ```
 
-エージェントの実行環境には、シェルへのアクセス、Git、Python 3.12 以降、uv 0.13.7 が必要です。パッケージはソースからインストールします。PyPI にはまだ公開されていません。
-[リモート／クラウド環境のセットアップとスキルの検出](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting)。
+**設定後：**「この変更をコードレビューに出す準備をして」と依頼すると、プロジェクトの指示により、
+エージェントは CR/PR の説明を仕上げる前に Genesis を実行して結果を説明します。GitHub CI は不要です。
+これはエージェントへの指示であり、実行保証、Git hook、マージ制限ではありません。スキルはユーザー単位、
+この設定は現在のプロジェクト単位です。CLI のインストールだけでは追加されません。
+[手動設定・更新・解除](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
 
 <details>
 <summary>手動でインストールする</summary>
@@ -73,20 +100,13 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Claude Code には `--agent claude`、両方には `--agent both` を指定します。デフォルトはユーザースコープです。インストーラーは、既存のエージェント指示、権限、認証情報、および内容の異なる既存スキルを保持します。
-
-[セットアップのオプションとトラブルシューティング](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md)。
-
 </details>
 
 ### 2. レビューを依頼する
 
-スキルが表示されない場合は、エージェントのセッションを新しく開始してから、次のように依頼してください。
-
 ```text
-Genesis を使って、未コミットの変更をレビューしてください。
-ユーザーにとって何が変わるのか、主なリスク、まだテストが必要な点を説明してください。
-アップロードする前に、送信するソースコードの抜粋を見せてください。
+この変更を CR/PR に出す準備をしてください。プロジェクトの Genesis レビュー指示に従い、
+結果と未検証の点を説明してからレビューの説明文を仕上げてください。送信前にアップロード範囲を見せてください。
 ```
 
 スキルを明示的に選択することもできます。
@@ -110,8 +130,6 @@ Genesis を使って、未コミットの変更をレビューしてください
 | コスト、待ち時間、失敗 | 利用可能な証拠で裏付けられる範囲の、条件付きのリスクと静的な見積もり。 |
 | テスト | 関連するテストのソースが何を検証しているか、どのアサーションが不足している可能性があるか。 |
 | 検証 | 推奨する確認事項と、まだ証拠が足りない点。 |
-
-Genesis は、アプリケーションやテストを実行せずに Python のソースを解析します。要件の不足や解明できていない振る舞いは、レビュー内で未確認事項として明示します。
 
 ## 変更からレポートまで
 

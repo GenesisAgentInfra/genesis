@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Code intelligence for your coding agent.</h1>
+<h1 align="center">Guardrails for every change to your agent.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">Website</a> &nbsp;·&nbsp;
@@ -38,6 +38,27 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Illustrated review workflow</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## Benchmarks
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+</picture>
+
+## Why you need Genesis
+
+See how a code change affects what your agent delivers to users.
+
+| Business impact | What Genesis helps you review |
+| --- | --- |
+| **The agent keeps working. The user never gets a result.** [Source](https://github.com/openai/openai-agents-python/issues/191) | Changes to completion and stop conditions. |
+| **The user says “no.” The action still runs.** [Source](https://github.com/langchain-ai/langchain/issues/40492) | Changes to approval checks and action paths. |
+| **One request. The same action happens twice.** [Source](https://github.com/langchain-ai/langgraph/issues/9185) | Retry paths and checks against duplicate actions. |
+| **The same task burns more tokens.** [Source](https://github.com/microsoft/agent-framework/issues/5049) | Prompt growth and extra model calls. |
+| **Tasks still finish. Your users wait longer.** [Source](https://github.com/openai/openai-agents-python/issues/2386) | Blocking calls and sequential steps. |
+
 <a id="genesis-get-started"></a>
 
 ## Start in your coding agent
@@ -45,7 +66,7 @@
 The CLI and static analysis are open source. Semantic review uses the Genesis
 hosted service, with your approval before source is sent.
 
-### 1. Install once
+### 1. Set up once per project
 
 Paste this into Codex or Claude Code in the project you want to review:
 
@@ -53,13 +74,26 @@ Paste this into Codex or Claude Code in the project you want to review:
 Set up Genesis from https://github.com/GenesisAgentInfra/genesis-cli.
 Read its README and docs/coding-agents.md. Install the CLI outside this
 project and the genesis-review skill for my current agent with user scope.
-Reuse an existing installation if available. Verify the CLI version and
-skill installation. Only set up; do not review or upload code yet.
+Reuse an existing installation; update an unmodified managed skill if needed.
+Follow "Configure CR preparation in this project" in docs/coding-agents.md:
+add the Genesis review instruction to this project's agent instructions,
+preserving existing content, so preparing a CR/PR runs Genesis first.
+Verify the CLI, skill, and project instruction; tell me which file changed.
+Only set up now; do not review or upload code. Future uploads still require
+authorization covering the destination and selected source.
 ```
 
-Requires shell access, Git, Python 3.12+, and uv 0.13.7 where your agent runs.
-Packages are installed from source and are not yet on PyPI.
-[Remote/cloud setup and skill discovery](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
+**After setup:** ask your agent, “Prepare these changes for code review.” The
+project instruction asks it to run Genesis first and explain the result before
+finalizing the CR/PR description. There is no fixed command or required language:
+"open a PR", "raise an MR", "send this for review", and "提审" express the same
+intent. A standalone commit or push does not trigger this convention. This works
+locally without GitHub CI. It is
+agent guidance, not a guaranteed trigger, Git hook, or merge gate; the skill is
+installed per user, while this review convention applies to the current project.
+Installing the CLI alone does not add the convention. See the
+[project setup guide](docs/coding-agents.md#configure-cr-preparation-in-this-project)
+for manual setup, existing installations, and removal.
 
 <details>
 <summary>Manual installation</summary>
@@ -75,22 +109,14 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Use `--agent claude` for Claude Code or `--agent both`. The default scope is user.
-The installer preserves existing agent instructions, permissions, credentials,
-and any different existing skill.
-
-[Setup options and troubleshooting](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
-### 2. Ask for a review
-
-Start a new agent session if the skill is not visible, then ask:
+### 2. Prepare your next CR/PR
 
 ```text
-Use Genesis to review my uncommitted changes.
-Explain what changes for users, the main risks, and what still needs testing.
-Show me which source excerpts will be sent before uploading.
+Prepare these changes for code review (CR/PR). Explain the review findings
+and remaining gaps before finalizing the description. Show me the upload
+scope before sending.
 ```
 
 You can also select the skill explicitly:
@@ -117,9 +143,6 @@ A model-provider API key is not required.
 | Cost, waiting, and failure | Conditional risks and static estimates where the available evidence supports them. |
 | Tests | What related test source checks and which assertions may be missing. |
 | Verification | Suggested checks and gaps that still need evidence. |
-
-Genesis analyzes Python source without running your application or its tests.
-Missing requirements and unresolved behavior remain explicit gaps in the review.
 
 ## From your change to a report
 

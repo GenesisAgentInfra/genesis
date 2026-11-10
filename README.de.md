@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Damit dein Coding-Agent Codeänderungen versteht.</h1>
+<h1 align="center">Leitplanken für jede Änderung an deinem Agenten.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">Website</a> &nbsp;·&nbsp;
@@ -38,6 +38,27 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Der Review-Ablauf im Überblick</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## Benchmarks
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+</picture>
+
+## Warum Genesis?
+
+Erkenne, wie eine Codeänderung das Ergebnis für deine Nutzer verändert.
+
+| Auswirkung für Nutzer | Wobei Genesis im Review hilft |
+| --- | --- |
+| **Der Agent arbeitet weiter. Das Ergebnis bleibt aus.** [Quelle](https://github.com/openai/openai-agents-python/issues/191) | Änderungen an Abschluss- und Abbruchbedingungen. |
+| **Der Nutzer sagt Nein. Die Aktion läuft trotzdem.** [Quelle](https://github.com/langchain-ai/langchain/issues/40492) | Änderungen an Freigabeprüfungen und Aktionspfaden. |
+| **Eine Anfrage. Dieselbe Aktion passiert zweimal.** [Quelle](https://github.com/langchain-ai/langgraph/issues/9185) | Wiederholungspfade und Prüfungen gegen doppelte Aktionen. |
+| **Dieselbe Aufgabe verbraucht mehr Tokens.** [Quelle](https://github.com/microsoft/agent-framework/issues/5049) | Wachsende Prompts und zusätzliche Modellaufrufe. |
+| **Aufgaben werden fertig. Deine Nutzer warten länger.** [Quelle](https://github.com/openai/openai-agents-python/issues/2386) | Blockierende Aufrufe und sequenzielle Schritte. |
+
 <a id="genesis-get-started"></a>
 
 ## Mit deinem Coding-Agent starten
@@ -51,18 +72,22 @@ Zustimmung übertragen.
 Füge diese Anfrage in Codex oder Claude Code im zu prüfenden Projekt ein:
 
 ```text
-Richte Genesis aus https://github.com/GenesisAgentInfra/genesis-cli ein.
-Lies die README und docs/coding-agents.md. Installiere die CLI außerhalb
-dieses Projekts und den Skill genesis-review für meinen aktuellen Agent
-auf Benutzerebene. Verwende eine vorhandene Installation, falls verfügbar.
-Prüfe die CLI-Version und die Skill-Installation. Führe nur die Einrichtung
-durch; prüfe noch keinen Code und lade noch keinen Code hoch.
+Richte Genesis von https://github.com/GenesisAgentInfra/genesis-cli ein.
+Lies README und docs/coding-agents.md. Installiere die CLI außerhalb dieses Projekts
+und den genesis-review-Skill für meinen aktuellen Agenten auf Benutzerebene.
+Verwende eine vorhandene Installation und aktualisiere bei Bedarf einen unveränderten verwalteten Skill.
+Befolge "Configure CR preparation in this project" in docs/coding-agents.md:
+Ergänze die Projektanweisungen um eine Genesis-Prüfung vor der CR/PR-Vorbereitung,
+ohne bestehende Inhalte zu ersetzen. Prüfe CLI, Skill und Regel und nenne die geänderte Datei.
+Jetzt nur einrichten, keinen Code prüfen oder hochladen. Künftige Uploads benötigen
+weiterhin eine Genehmigung für den Zieldienst und die ausgewählten Quellen.
 ```
 
-In der Ausführungsumgebung deines Agents werden Shell-Zugriff, Git, Python 3.12+
-und uv 0.13.7 benötigt. Die Pakete werden aus dem Quellcode installiert und sind
-noch nicht auf PyPI verfügbar.
-[Remote-/Cloud-Einrichtung und Skill-Erkennung](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
+**Nach der Einrichtung:** Bitten Sie den Agenten, Änderungen für ein Code-Review vorzubereiten. Die Projektanweisung
+sieht vor, zuerst Genesis auszuführen und das Ergebnis zu erklären, bevor die CR/PR-Beschreibung fertiggestellt wird.
+GitHub CI ist dafür nicht nötig. Dies ist eine Agentenanweisung, keine Ausführungsgarantie, kein Git-Hook und keine
+Merge-Sperre. Der Skill gilt auf Benutzerebene, die Regel für dieses Projekt. Die CLI-Installation allein ergänzt sie nicht.
+[Manuelle Einrichtung, Aktualisierung und Entfernung](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
 <details>
 <summary>Manuelle Installation</summary>
@@ -78,25 +103,13 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Verwende `--agent claude` für Claude Code oder `--agent both`. Standardmäßig
-erfolgt die Installation auf Benutzerebene. Das Installationsprogramm behält
-bestehende Agent-Anweisungen, Berechtigungen, Zugangsdaten und einen bereits
-vorhandenen, abweichenden Skill bei.
-
-[Einrichtungsoptionen und Fehlerbehebung](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. Ein Review anfordern
 
-Starte eine neue Agent-Sitzung, falls der Skill nicht sichtbar ist. Stelle dann
-diese Anfrage:
-
 ```text
-Prüfe meine noch nicht committeten Änderungen mit Genesis.
-Erkläre, was sich für Nutzer ändert, welche Risiken wichtig sind und was
-noch getestet werden muss. Zeige mir vor dem Hochladen, welche
-Quellcodeausschnitte übertragen werden.
+Bereite diese Änderungen für ein Code-Review (CR/PR) gemäß der Genesis-Anweisung dieses Projekts vor.
+Erkläre Ergebnisse und offene Prüfpunkte vor der fertigen Beschreibung. Zeige vor dem Hochladen den Umfang der Übertragung.
 ```
 
 Du kannst den Skill auch ausdrücklich auswählen:
@@ -125,10 +138,6 @@ Modellanbieters ist nicht erforderlich.
 | Kosten, Wartezeiten und Fehler | Bedingte Risiken und statische Schätzungen, soweit die verfügbaren Belege sie stützen. |
 | Tests | Was der zugehörige Testquellcode prüft und welche Assertions möglicherweise fehlen. |
 | Verifikation | Vorschläge für Prüfungen und Lücken, für die noch Belege fehlen. |
-
-Genesis analysiert Python-Quellcode, ohne deine Anwendung oder ihre Tests
-auszuführen. Fehlende Anforderungen und ungeklärtes Verhalten bleiben im Review
-als Lücken ausgewiesen.
 
 ## Von deiner Änderung zum Bericht
 

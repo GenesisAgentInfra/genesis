@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">코딩 에이전트가 코드 변경을 이해하도록.</h1>
+<h1 align="center">에이전트의 모든 변경을 위한 가드레일.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">공식 웹사이트</a> &nbsp;·&nbsp;
@@ -38,6 +38,27 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">코드 리뷰 흐름 예시</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## 벤치마크
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+</picture>
+
+## Genesis가 필요한 이유
+
+코드 변경이 사용자에게 전달되는 결과를 어떻게 바꾸는지 확인하세요.
+
+| 사용자에게 미치는 영향 | Genesis가 검토를 돕는 내용 |
+| --- | --- |
+| **에이전트는 계속 일하지만, 결과는 오지 않습니다.** [출처](https://github.com/openai/openai-agents-python/issues/191) | 작업 완료 조건과 종료 조건의 변경. |
+| **사용자가 거절해도 작업이 실행됩니다.** [출처](https://github.com/langchain-ai/langchain/issues/40492) | 승인 검사와 작업 실행 경로의 변경. |
+| **요청은 한 번인데, 같은 작업이 두 번 실행됩니다.** [출처](https://github.com/langchain-ai/langgraph/issues/9185) | 재시도 경로와 중복 작업 방지 검사. |
+| **같은 작업인데 토큰을 더 많이 씁니다.** [출처](https://github.com/microsoft/agent-framework/issues/5049) | 프롬프트 증가와 추가 모델 호출. |
+| **작업은 완료되지만 사용자는 더 오래 기다립니다.** [출처](https://github.com/openai/openai-agents-python/issues/2386) | 블로킹 호출과 순차 실행 단계. |
+
 <a id="genesis-get-started"></a>
 
 ## 코딩 에이전트에서 시작하기
@@ -50,14 +71,19 @@ CLI와 정적 분석은 오픈 소스입니다. 의미 분석을 포함한 리�
 
 ```text
 https://github.com/GenesisAgentInfra/genesis-cli 에서 Genesis를 설정해 주세요.
-README와 docs/coding-agents.md를 읽고, CLI는 이 프로젝트 외부에 설치해 주세요.
-현재 사용하는 에이전트의 사용자 범위에 genesis-review 스킬을 설치해 주세요.
-기존 설치가 있으면 재사용하고, CLI 버전과 스킬 설치 상태를 확인해 주세요.
-이번에는 설정만 진행하고, 아직 리뷰하거나 코드를 업로드하지 마세요.
+README와 docs/coding-agents.md를 읽고 CLI는 프로젝트 밖에, genesis-review skill은
+현재 에이전트의 사용자 범위에 설치하세요. 기존 설치를 재사용하고 수정되지 않은 관리형 skill은 필요하면 갱신하세요.
+docs/coding-agents.md의 "Configure CR preparation in this project"에 따라 기존 내용을 보존하면서
+이 프로젝트의 에이전트 지침에 CR/PR 준비 전에 Genesis를 실행하는 규칙을 추가하세요.
+CLI, skill, 프로젝트 지침을 확인하고 변경한 파일을 알려 주세요.
+지금은 설정만 하고 코드 분석이나 업로드는 하지 마세요. 향후 업로드에도 대상 서비스와 선택된 소스를 포함하는 승인이 필요합니다.
 ```
 
-에이전트가 실행되는 환경에 셸 접근 권한, Git, Python 3.12 이상, uv 0.13.7이 필요합니다. 패키지는 소스에서 설치하며, 아직 PyPI에 배포되지 않았습니다.
-[원격·클라우드 환경 설정 및 스킬 검색](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
+**설정 후:** “이 변경 사항을 코드 리뷰에 올릴 준비를 해 줘”라고 요청하면 프로젝트 지침에 따라
+에이전트가 CR/PR 설명을 완성하기 전에 Genesis를 실행하고 결과를 설명합니다. GitHub CI는 필요하지 않습니다.
+이는 에이전트 지침이며 실행 보장, Git hook 또는 병합 차단 기능이 아닙니다. skill은 사용자 범위에 설치되지만
+이 규칙은 현재 프로젝트에만 적용됩니다. CLI 설치만으로는 추가되지 않습니다.
+[수동 설정, 업데이트 및 제거](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
 <details>
 <summary>직접 설치하기</summary>
@@ -73,20 +99,13 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Claude Code에는 `--agent claude`를, 둘 다 설치하려면 `--agent both`를 사용하세요. 기본 설치 범위는 사용자입니다. 설치 프로그램은 기존 에이전트 지침, 권한, 자격 증명, 내용이 다른 기존 스킬을 그대로 유지합니다.
-
-[설정 옵션 및 문제 해결](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. 리뷰 요청하기
 
-스킬이 보이지 않으면 새 에이전트 세션을 시작한 다음, 아래와 같이 요청하세요.
-
 ```text
-Genesis로 아직 커밋하지 않은 변경 사항을 리뷰해 주세요.
-사용자에게 무엇이 달라지는지, 주요 위험은 무엇인지, 어떤 테스트가 더 필요한지 설명해 주세요.
-업로드하기 전에 어떤 소스 코드 발췌문을 보낼지 보여 주세요.
+이 변경 사항을 CR/PR에 올릴 준비를 해 주세요. 프로젝트의 Genesis 리뷰 지침에 따라
+분석 결과와 미검증 사항을 설명한 뒤 리뷰 설명을 완성하세요. 전송 전에 업로드 범위를 보여 주세요.
 ```
 
 스킬을 직접 선택할 수도 있습니다.
@@ -110,8 +129,6 @@ Genesis로 아직 커밋하지 않은 변경 사항을 리뷰해 주세요.
 | 비용, 대기, 실패 | 확보된 근거가 뒷받침하는 범위 내에서 제시하는 조건부 위험과 정적 추정치. |
 | 테스트 | 관련 테스트 소스가 무엇을 확인하는지, 어떤 검증문이 누락되었을 수 있는지. |
 | 검증 | 권장 확인 사항과 추가 근거가 필요한 부분. |
-
-Genesis는 애플리케이션이나 테스트를 실행하지 않고 Python 소스를 분석합니다. 누락된 요구사항과 확인되지 않은 동작은 리뷰에서 미확인 사항으로 명시합니다.
 
 ## 변경 사항에서 보고서까지
 

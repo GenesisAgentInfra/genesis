@@ -1,9 +1,10 @@
 # Use Genesis from your coding agent
 
-Ask your coding agent for a Genesis review, let it run the CLI, and read its
-explanation of the actual report in chat. You do not need to maintain task/PR
-Markdown files or invoke commands yourself for each review. The agent needs the
-CLI and review skill installed where it can read your application.
+Set up Genesis and a project review instruction once. Then ask your coding agent
+to prepare changes for code review (CR/PR); the instruction asks it to run Genesis
+and explain the actual report before finalizing the review description. This
+works without GitHub CI. You can also request a Genesis review directly.
+The agent needs the CLI and review skill installed where it can read your application.
 
 ## How the agent learns about Genesis
 
@@ -11,13 +12,14 @@ CLI and review skill installed where it can read your application.
 | --- | --- |
 | `genesis` CLI | Freeze Git input, extract code facts, call the hosted service when authorized, and write reports. |
 | `genesis-review` skill | Tell the agent when to use Genesis, how to choose a diff and invoke the CLI, and how to explain statuses/evidence. |
-| Optional project instructions | Tell your team's agents when a Genesis review is expected. |
+| Project review instruction | Ask your team's agents to run Genesis when preparing Python changes for CR/PR. |
 
 The installer puts `SKILL.md` and its runner into the agent's discovery directory.
 The skill's name/description make it available for selection; explicit invocation
 selects it directly. Installing a binary alone does not register a skill, MCP
-tool, or hook. Natural-language routing is an agent decision: a generic “review
-this” request is not guaranteed to invoke Genesis.
+tool, or hook. Natural-language routing is an agent decision: even with the
+project instruction, invocation is not guaranteed. This is a default workflow,
+not a mandatory check or merge gate.
 
 This release provides a local skill integration for Codex and Claude Code. It
 does not provide a Genesis MCP server or a mandatory post-edit hook. Other agents
@@ -31,7 +33,10 @@ Give your agent this request (name Codex or Claude Code if it cannot infer which
 > 请从 https://github.com/GenesisAgentInfra/genesis-cli 接入 Genesis。
 > 先读 README 和 docs/coding-agents.md，把 CLI 安装在当前应用仓库外，
 > 并为我当前使用的 coding agent 安装用户级 genesis-review skill。
-> 已有安装就复用。检查版本和 skill 状态；这一步只安装，不分析、不上传代码。
+> 已有安装就复用；需要时更新未经用户修改的托管 skill。
+> 按下方 “Configure CR preparation in this project” 配置当前项目的 CR 审查约定，
+> 保留其他指令。检查版本、skill 和约定，并告诉我修改了哪个文件。
+> 这一步只配置，不分析、不上传代码；以后上传仍需覆盖目标服务和所选源码的授权。
 
 The agent follows the source installation steps in the [README](../README.md),
 then runs these commands from the Genesis checkout:
@@ -66,9 +71,12 @@ Generated installs contain machine-specific paths and a local `.gitignore`;
 they are not meant to be force-added to Git. Each developer installs their own
 copy. Share setup instructions and optional project policy instead.
 
-Setup writes only the skill directory. It does not change `AGENTS.md`, `CLAUDE.md`,
-agent permissions, hooks, MCP configuration, or Genesis credentials. A same-version
-install is a no-op; a different existing skill is preserved.
+The `genesis agent install` command writes only the skill directory. It does not
+change `AGENTS.md`, `CLAUDE.md`, agent permissions, hooks, MCP configuration, or
+Genesis credentials. An identical install is a no-op; a different existing skill
+is preserved unless an unmodified managed installation is explicitly updated.
+The README chat prompt additionally asks the agent to edit the current project's
+instructions as described below. These are two separate setup steps.
 
 ## Verify discovery, then ask for a review
 
@@ -130,25 +138,80 @@ personal settings remain in effect. Configure a personal Genesis key privately
 using the [credential instructions](usage.md#optional-personal-credentials),
 outside agent chat. Neither setup nor the skill requires your provider key.
 
-## Make review expectations visible to your team
+## Configure CR preparation in this project
 
-If your team wants a standing reminder, deliberately add a short section to its
-existing `AGENTS.md` and/or `CLAUDE.md`. Preserve the rest of either file:
+The README setup prompt requests this step. For manual or existing installations,
+ask your agent to apply it after installing/updating the skill. Scope it to the
+application repository, not the Genesis checkout or the user's global instructions.
+
+1. Read the current project instructions. Use root `AGENTS.md` for Codex or root
+   `CLAUDE.md` for Claude Code; use both only when setting up both agents. Preserve
+   the project's existing instruction-file conventions and shared pointers.
+2. Add the section below, or update an existing Genesis section without duplicating
+   it. Create the relevant file if absent; preserve unrelated text. If existing
+   policy prohibits hosted analysis, keep the review offline. Resolve conflicting
+   review requirements with the user instead of replacing them.
+3. Read back the section and run `genesis agent status` for the chosen agent/scope.
+   Report the instruction path and skill status. Setup ends here: no review,
+   source upload, Git hook, or CI workflow is created by this setup request.
 
 ```markdown
-## Genesis review
-When asked to review Python change risks, use the installed genesis-review skill.
-If it is unavailable, explain that and follow the team's Genesis setup guide.
-Choose the comparison from the requested scope; prepare a local preview before
-hosted analysis. Only send source with authorization covering that scope.
-Read the generated summary/status/evidence. A partial result is not a pass, and
-an agent's independent review must not be presented as Genesis output.
+## Genesis review before CR/PR
+When the user's intent is to prepare Python changes for review or hand them to
+reviewers, use the installed genesis-review skill before finalizing the review
+description or submitting it. Match intent in the conversation, in any language,
+not an exact phrase; the user need not name Genesis. Examples include "prepare
+for review", "cut a CR", "open a PR", "raise an MR", "send this for review",
+"发 CR", "提 PR", "提审", "发起合并请求", and "整理好交给同事 review".
+CR, PR/pull request, and MR/merge request refer to this same review-handoff intent.
+Apply this when drafting a review description for actual changes as well.
+A standalone commit/push, an explanation of review terminology, or reading an
+existing review/report does not imply a new Genesis run. Use context to resolve
+short phrases such as "发一下"; clarify if the intended action remains unclear.
+Honor an explicit request to skip Genesis.
+Review the intended change set against its actual target base, including intended
+uncommitted/new files. Reuse an existing Genesis result only if it covers the same
+source snapshot, scope, and analysis inputs; disclose changes it does not cover.
+Follow the skill's preview and upload-authorization steps. Preparing a CR alone
+does not authorize source upload. Use applicable existing authorization or ask;
+when offline is requested or upload is declined, explain the local partial report.
+Summarize findings, report location, and unverified areas before the CR handoff.
+If Genesis is unavailable, fails, or returns partial results, state that clearly;
+do not label the change as passed or silently substitute the agent's own review.
+This is agent guidance, not a Git hook or merge gate. Publishing the CR and
+changing code still follow the user's request and existing project permissions.
 ```
 
-This is team guidance, not an enforced gate. If you need a review on every PR,
-configure the [GitHub Action](github-action.md) explicitly instead of relying on
-an agent remembering a skill. The Action requires an explicit Genesis key for
-online analysis and preserves its fork/offline restrictions.
+The instruction is written in English with bilingual examples; users do not need
+to use English, Chinese, or a fixed command. Keep the intent rule when adapting
+its wording to a team's language. Examples are illustrative, not a keyword list.
+
+Use these acceptance scenarios in separate new agent sessions after setup. They
+are expected behavior, not measured trigger reliability:
+
+| User request / context | Expected behavior |
+| --- | --- |
+| "发 CR", "帮我提个 PR", "这些改动可以提审了" | Invoke Genesis for the intended Python changes before handoff. |
+| "Open a PR", "cut a CR", "raise a merge request" | Same review flow; no dependency on a particular hosting platform. |
+| "帮我写这次改动的 PR 描述", "get this ready for review" | Review before finalizing the description. |
+| "整理好交给同事看一下" in a code-review handoff | Recognize the intent even without CR/PR/MR terminology. |
+| "发一下" with no established action | Clarify the intended action rather than guessing. |
+| "只 commit 一下", "push this branch" with no review request | No automatic Genesis review from this convention alone. |
+| "什么是 PR？", "解释已有的 Genesis 报告" | Explain; no new analysis. |
+| "准备发 PR，但这次跳过 Genesis" | Honor the skip. |
+
+Check that the agent actually invokes Genesis and reports its output; having the
+section on disk does not prove that the current agent loaded or followed it.
+Verify upload authorization separately before any hosted review. Direct terminal pushes
+and CRs prepared without the agent are not intercepted. GitHub, GitLab, Gerrit,
+and other review destinations use the same local convention; it does not install
+an integration with those services. Unsupported changes should be identified
+as outside Genesis's Python analysis scope.
+
+The skill is user-scoped by default, but this instruction is per project. Repeat
+this step for another project. To stop the default CR review, remove only this
+Genesis instruction section; explicit Genesis reviews remain available.
+For CI automation, see the optional [GitHub Action](github-action.md).
 
 ## Maintenance and troubleshooting
 

@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">让你的编程 Agent 看懂代码变更。</h1>
+<h1 align="center">为你的 Agent 的每一次变更提供护栏。</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">官网</a> &nbsp;·&nbsp;
@@ -38,27 +38,56 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">代码审查流程示意</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## 基准对比
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+</picture>
+
+## 为什么需要 Genesis
+
+看清一次代码改动，会怎样改变 Agent 交付给用户的结果。
+
+| 业务影响 | Genesis 帮你审查什么 |
+| --- | --- |
+| **Agent 一直在忙，用户却拿不到结果。** [来源](https://github.com/openai/openai-agents-python/issues/191) | 任务完成和停止条件的变化。 |
+| **用户点了拒绝，操作却照常执行。** [来源](https://github.com/langchain-ai/langchain/issues/40492) | 审批检查与操作执行路径的变化。 |
+| **用户只请求一次，同一个操作却执行两次。** [来源](https://github.com/langchain-ai/langgraph/issues/9185) | 重试路径与防止重复操作的检查。 |
+| **同样的任务，消耗更多 token。** [来源](https://github.com/microsoft/agent-framework/issues/5049) | 提示词膨胀与额外模型调用。 |
+| **任务还能完成，用户却要等更久。** [来源](https://github.com/openai/openai-agents-python/issues/2386) | 阻塞调用与串行执行步骤。 |
+
 <a id="genesis-get-started"></a>
 
 ## 在你的编程 Agent 中开始使用
 
 CLI 和静态分析部分开源。语义审查由 Genesis 托管服务完成，发送源码前需要获得你的授权。
 
-### 1. 完成一次安装
+### 1. 为当前项目配置一次
 
 在要审查的项目中，把下面的提示词粘贴给 Codex 或 Claude Code：
 
 ```text
-请从 https://github.com/GenesisAgentInfra/genesis-cli 安装 Genesis。
-先阅读 README 和 docs/coding-agents.md，把 CLI 安装在当前项目之外，
-并为我正在使用的 Agent 安装用户级 genesis-review skill。
-已有安装就复用。检查 CLI 版本和 skill 安装状态。
-这一步只安装，不审查、不上传代码。
+请从 https://github.com/GenesisAgentInfra/genesis-cli 接入 Genesis。
+先读 README 和 docs/coding-agents.md，把 CLI 安装在当前项目之外，
+并为我当前使用的 Agent 安装用户级 genesis-review skill。
+已有安装就复用；需要时更新未经用户修改的托管 skill。
+按照 docs/coding-agents.md 的 “Configure CR preparation in this project”，
+在当前项目的 Agent 指令文件中加入准备 CR/PR 前先运行 Genesis 的约定，
+保留其他现有内容。检查 CLI、skill 和项目约定，并告诉我修改了哪个文件。
+这一步只配置，不审查、不上传代码；以后的上传仍需获得覆盖目标服务和所选源码的授权。
 ```
 
-Agent 的运行环境需要 Shell 访问权限、Git、Python 3.12+ 和 uv 0.13.7。
-目前通过源码安装，尚未发布到 PyPI。
-[远程或云端环境与 skill 发现说明](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting)。
+**配置后的体验：**你照常说“帮我整理这次改动，准备发 CR”，项目指令会要求 Agent
+先运行 Genesis、解释结果，再整理 CR/PR 描述。没有固定口令，也不限中文：
+“发 CR”“提 PR”“提审”“帮我写这次改动的 PR 描述”，以及英文的 “open a PR”
+“raise an MR”，都属于把改动交给别人审查的意图；单独 commit 或 push 不自动触发。
+这个流程在本地发起，不依赖 GitHub CI。
+它是 Agent 的默认工作约定，不保证每次触发，也不是 Git hook 或合并门禁。
+skill 安装在用户级，但这项审查约定只配置到当前项目；只安装 CLI 不会添加约定。
+手动安装、已有用户升级和移除方式见[项目配置指南](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
 
 <details>
 <summary>手动安装</summary>
@@ -74,21 +103,14 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Claude Code 使用 `--agent claude`，同时安装到两种 Agent 则使用 `--agent both`。
-默认安装范围为用户级。安装器会保留已有的 Agent 指令、权限、凭据，以及与当前版本不同的既有 skill。
-
-[安装选项与故障排查](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md)。
-
 </details>
 
-### 2. 发起审查
-
-如果看不到新安装的 skill，先开启一个新的 Agent 会话，然后输入：
+### 2. 照常准备 CR/PR
 
 ```text
-用 Genesis 审查我当前未提交的改动。
-解释这些改动会怎样影响用户、有哪些主要风险，以及还需要测试什么。
-上传前先展示将要发送的源码片段。
+帮我整理这次改动，准备发 CR/PR。
+先解释审查发现和未验证的部分，再整理提交 review 的描述。
+上传前先展示发送范围。
 ```
 
 也可以明确选择 skill：
@@ -113,8 +135,6 @@ Claude Code 使用 `--agent claude`，同时安装到两种 Agent 则使用 `--a
 | 成本、等待与失败 | 基于现有证据的条件性风险分析和静态估算。 |
 | 测试 | 相关测试源码检查了什么，以及可能缺少哪些断言。 |
 | 验证 | 建议执行的检查，以及仍然缺少的证据。 |
-
-Genesis 分析 Python 源码，不执行应用或测试。缺失的需求和无法确定的行为会明确保留为审查缺口。
 
 ## 从代码改动到审查报告
 

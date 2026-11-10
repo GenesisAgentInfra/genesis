@@ -1,6 +1,6 @@
 ---
 name: genesis-review
-description: Review Python code changes with Genesis and explain business behavior, affected paths, cost/wait risks, test evidence, and verification gaps. Use when the user asks to run Genesis, check change risks, or review a Python diff with Genesis, including “用 Genesis 检查这次改动”.
+description: Review Python changes with Genesis when explicitly requested or asked to check change risks. Under a project Genesis review convention, use for the intent to prepare changes for reviewers or draft their review description, across languages (prepare for review, cut a CR, open a PR, raise an MR, 发 CR, 提 PR, 提审). Match intent, not exact keywords. Explain existing reports without starting a new analysis.
 ---
 
 # Genesis change review
@@ -11,6 +11,31 @@ team's private service. This skill supplies invocation guidance, not analysis
 results or inferred user requirements.
 If the request is to explain an existing report, read that report and its
 evidence directly; do not start a new analysis.
+
+## When preparing a CR/PR
+
+When the project has opted into Genesis before CR/PR preparation, run this review
+before finalizing the review description or submitting the change. Recognize
+review-handoff intent from the conversation, including requests to draft the
+review description or get changes ready for colleagues. CR, pull request/PR,
+and merge request/MR are equivalent here; examples are not an exhaustive list
+or a required command language. A standalone commit/push or a question about
+review terminology does not imply a new review. Clarify ambiguous handoffs.
+Honor an explicit request to skip Genesis. A CR request alone does not authorize hosted
+source upload; follow the consent steps below. This skill does not install a
+Git hook, intercept terminal pushes, or enforce a merge gate.
+
+Review the whole intended change set, not just the latest commit. Reuse a prior
+Genesis report only after verifying its frozen source, scope, and analysis inputs
+still match. If code changed, explain that the previous result is stale and apply
+the preview/consent steps to the new scope. Keep automatic failure retries disabled.
+For changes outside the supported Python scope, state the limitation.
+
+Before the CR handoff, explain the actual Genesis findings, report location, and
+remaining gaps. If it cannot run or finishes only partially, report that status
+and follow the user's instructions for continuing; never present it as a pass.
+Code fixes and publishing the CR require their own authorization under the user's
+request and project policy.
 
 ## Locate the CLI and choose the change
 

@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Aidez votre agent à comprendre les changements de code.</h1>
+<h1 align="center">Des garde-fous pour chaque modification de votre agent.</h1>
 
 <p align="center">
   <a href="https://usegenesis.vercel.app/">Site web</a> &nbsp;·&nbsp;
@@ -38,6 +38,27 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Illustration du processus de revue</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## Benchmarks
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+</picture>
+
+## Pourquoi utiliser Genesis ?
+
+Voyez comment une modification du code affecte le résultat livré à vos utilisateurs.
+
+| Impact pour l’utilisateur | Ce que Genesis vous aide à examiner |
+| --- | --- |
+| **L’agent continue de travailler. Le résultat n’arrive jamais.** [Source](https://github.com/openai/openai-agents-python/issues/191) | Les changements des conditions de fin et d’arrêt. |
+| **L’utilisateur dit non. L’action s’exécute quand même.** [Source](https://github.com/langchain-ai/langchain/issues/40492) | Les changements des contrôles d’approbation et des chemins d’exécution. |
+| **Une demande. La même action se produit deux fois.** [Source](https://github.com/langchain-ai/langgraph/issues/9185) | Les chemins de reprise et les contrôles contre les actions en double. |
+| **La même tâche consomme plus de tokens.** [Source](https://github.com/microsoft/agent-framework/issues/5049) | La croissance des prompts et les appels supplémentaires au modèle. |
+| **La tâche se termine. Vos utilisateurs attendent plus longtemps.** [Source](https://github.com/openai/openai-agents-python/issues/2386) | Les appels bloquants et les étapes séquentielles. |
+
 <a id="genesis-get-started"></a>
 
 ## Commencer dans votre agent de développement
@@ -51,17 +72,21 @@ Collez cette demande dans Codex ou Claude Code, dans le projet à examiner :
 
 ```text
 Configure Genesis depuis https://github.com/GenesisAgentInfra/genesis-cli.
-Lis son README et docs/coding-agents.md. Installe la CLI en dehors de ce
-projet et le skill genesis-review pour mon agent actuel au niveau utilisateur.
-Réutilise une installation existante si possible. Vérifie la version de la CLI
-et l'installation du skill. Effectue uniquement la configuration ; ne lance
-pas encore de revue et n'envoie aucun code.
+Lis le README et docs/coding-agents.md. Installe la CLI hors de ce projet et le
+skill genesis-review au niveau utilisateur pour mon agent actuel. Réutilise
+l'installation existante et actualise si nécessaire un skill géré non modifié.
+Suis "Configure CR preparation in this project" dans docs/coding-agents.md :
+ajoute aux instructions de ce projet la revue Genesis avant de préparer une CR/PR,
+en conservant le contenu existant. Vérifie la CLI, le skill et la règle ; indique le fichier modifié.
+Configure uniquement : aucune analyse ni aucun envoi de code maintenant.
+Les futurs envois nécessitent une autorisation couvrant le service et les sources sélectionnées.
 ```
 
-L'environnement d'exécution de votre agent doit disposer d'un accès au shell,
-de Git, de Python 3.12+ et d'uv 0.13.7. Les paquets s'installent depuis les sources
-et ne sont pas encore disponibles sur PyPI.
-[Configuration à distance ou dans le cloud et détection du skill](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md#maintenance-and-troubleshooting).
+**Après configuration :** demandez « Prépare ces changements pour une revue de code ». Les instructions du projet
+prévoient une revue Genesis et une explication du résultat avant de finaliser la description de la CR/PR, sans GitHub CI.
+C'est une consigne pour l'agent, pas une garantie d'exécution, un hook Git ou un blocage de fusion. Le skill est installé
+au niveau utilisateur ; cette règle s'applique au projet actuel. Installer la CLI seule ne l'ajoute pas.
+[Configuration manuelle, mise à jour et suppression](docs/coding-agents.md#configure-cr-preparation-in-this-project).
 
 <details>
 <summary>Installation manuelle</summary>
@@ -77,25 +102,13 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent code
 uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 ```
 
-Utilisez `--agent claude` pour Claude Code ou `--agent both`. L'installation se
-fait par défaut au niveau utilisateur. Le programme d'installation préserve les
-instructions de l'agent, les autorisations et les identifiants existants, ainsi
-que tout skill déjà présent qui diffère de celui à installer.
-
-[Options de configuration et dépannage](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md).
-
 </details>
 
 ### 2. Demander une revue
 
-Si le skill n'est pas visible, ouvrez une nouvelle session de l'agent, puis
-formulez cette demande :
-
 ```text
-Utilise Genesis pour examiner mes modifications non committées.
-Explique ce qui change pour les utilisateurs, les principaux risques et ce
-qui reste à tester. Montre-moi les extraits de code source qui seront
-transmis avant de les envoyer.
+Prépare ces changements pour une revue de code (CR/PR), en suivant la consigne Genesis du projet.
+Explique les résultats et les points non vérifiés avant de finaliser la description. Montre le périmètre de l'envoi avant tout transfert.
 ```
 
 Vous pouvez aussi sélectionner le skill explicitement :
@@ -123,10 +136,6 @@ tous les utilisateurs. Aucune clé API de fournisseur de modèles n'est requise.
 | Coûts, attente et échecs | Des risques conditionnels et des estimations statiques, lorsque les éléments disponibles permettent de les étayer. |
 | Tests | Ce que vérifie le code source des tests associés et les assertions qui peuvent manquer. |
 | Vérification | Des contrôles suggérés et les points qui nécessitent encore des éléments probants. |
-
-Genesis analyse le code source Python sans exécuter votre application ni ses
-tests. Les exigences manquantes et les comportements non élucidés restent
-explicitement signalés comme des lacunes dans la revue.
 
 ## De votre modification au rapport
 
