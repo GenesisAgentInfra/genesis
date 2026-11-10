@@ -1,15 +1,42 @@
-# 有证据的执行路径
+# Execution paths with code evidence
 
-CLI 仍从 Git 冻结快照提取静态事实，服务端在原有语义分析中解释代码。两者只通过 API 交互；报告中的应用流程和 Genesis 自己的部署位置分别描述。
+The CLI extracts static facts from frozen Git snapshots. The service interprets
+that code as part of its semantic analysis, communicating with the CLI through
+the API. Application flows described in the report are separate from where
+Genesis itself is deployed.
 
-新版 CLI 请求 behavior_review v2。服务通过 `/capabilities` 声明 `behavior_review_versions: ["1", "2"]`，保留旧标量版本 1。CLI 只向下协商：v2 → v1 → 无行为对照，协商不增加已批准上传的材料，不重试分析 POST。
+The CLI requests `behavior_review` v2. The service advertises support through
+`/capabilities` with `behavior_review_versions: ["1", "2"]`, while retaining the
+legacy scalar version `1`. The CLI negotiates downward only: v2, then v1, then
+no behavior comparison. Negotiation cannot add material to the approved upload
+or retry the analysis POST.
 
-v2 保留原来的场景、条件、改动前后、原因、影响和保留行为，增加最多六条执行路径。每条路径只描述 base 或 head 的一个版本；每步与连接都引用该版本的代码证据。模型继续使用原来的调用轮数、输出预算和一次修复预算。
+Version 2 retains the scenario, condition, before/after behavior, explanation,
+impact, and preserved behavior, and adds up to six execution paths. Each path
+describes either the base or head revision. Every step and link cites code
+evidence from that same revision. The model uses the existing call count,
+output budget, and single repair allowance.
 
-例如“提交成功后等待通知，再返回结果”可以表示为提交 → 等待通知 → 返回。服务不能确认实际通知实现时，结果或连接保留 unknown，并说明缺少什么。语义推断不是静态解析成功，也不是已经运行过。引用不到代码、版本不符、节点不存在的连接会被拒绝。
+For example, "wait for notification after a successful submission, then return
+the result" can be represented as submission → wait for notification → return.
+If the service cannot confirm the notification implementation, the outcome or
+link remains unknown, with an explanation of the missing evidence. Semantic
+inference does not establish a resolved static call or observed execution.
+Validation rejects missing code references, references to the wrong revision,
+and links to nonexistent steps.
 
-`summary.md` 展示场景、步骤、结果和缺失连接；`report.md` 增加状态、ID、依据与证据。两份报告来自同一结果，不追加模型改写。JSON 报告使用 0.3.0；已有 0.1.0 和 0.2.0 读取方式保持兼容。
+`summary.md` shows scenarios, steps, outcomes, and missing links. `report.md`
+adds statuses, IDs, reasoning, and evidence. Both render the same analysis
+without another model rewrite. JSON reports use schema `0.3.0`; readers remain
+compatible with existing `0.1.0` and `0.2.0` reports.
 
-入口发现也会考虑有明确 class 父级的公开方法，但只称为候选。私有方法、嵌套函数、重复定义不作为新入口；构造实例、装饰器注册、反射派发并未因此得到证明。现有候选关系检索继续为服务提供源码，不把猜测写成 resolved 调用边。
+Entry discovery also considers public methods with an explicit enclosing class
+as candidates. Private methods, nested functions, and duplicate definitions are
+excluded from these new entry candidates. This does not prove instance
+construction, decorator registration, or reflective dispatch. Existing candidate
+relationship retrieval still supplies source to the service without turning
+guesses into resolved call edges.
 
-离线测试验证契约、引用和交接，不代表模型质量提升。真实评测必须固定 CLI、服务、提示词和展示版本，保留旧答卷和成绩。
+Offline tests verify contracts, references, and the client/service handoff.
+They do not establish better model quality. Model evaluations must pin the CLI,
+service, prompt, and presentation versions, and retain earlier answers and scores.

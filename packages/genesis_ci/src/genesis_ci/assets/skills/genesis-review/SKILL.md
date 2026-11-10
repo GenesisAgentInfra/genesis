@@ -1,6 +1,6 @@
 ---
 name: genesis-review
-description: Review Python changes with Genesis when explicitly requested or asked to check change risks. Under a project Genesis review convention, use for the intent to prepare changes for reviewers or draft their review description, across languages (prepare for review, cut a CR, open a PR, raise an MR, 发 CR, 提 PR, 提审). Match intent, not exact keywords. Explain existing reports without starting a new analysis.
+description: Review Python changes with Genesis when explicitly requested or asked to check change risks. Under a project Genesis review convention, use for the intent to prepare changes for reviewers or draft their review description, in any language (prepare for review, cut a CR, open a PR, raise an MR). Match intent, not exact keywords. Explain existing reports without starting a new analysis.
 ---
 
 # Genesis change review

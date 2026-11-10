@@ -86,7 +86,7 @@ authorization covering the destination and selected source.
 **After setup:** ask your agent, “Prepare these changes for code review.” The
 project instruction asks it to run Genesis first and explain the result before
 finalizing the CR/PR description. There is no fixed command or required language:
-"open a PR", "raise an MR", "send this for review", and "提审" express the same
+"open a PR", "raise an MR", and "send this for review" express the same
 intent. A standalone commit or push does not trigger this convention. This works
 locally without GitHub CI. It is
 agent guidance, not a guaranteed trigger, Git hook, or merge gate; the skill is

@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://usegenesis.vercel.app/"><img src="assets/readme/favicon.svg" alt="Genesis icon" width="52" height="52" align="middle"></a>&nbsp;&nbsp;
+  <a href="https://usegenesis.vercel.app/"><img src="assets/readme/favicon.svg" alt="Genesis 图标" width="52" height="52" align="middle"></a>&nbsp;&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/readme/wordmark-dark.svg">
     <img src="assets/readme/wordmark-light.svg" alt="Genesis" width="240" align="middle">
@@ -12,17 +12,17 @@
   <a href="https://usegenesis.vercel.app/">官网</a> &nbsp;·&nbsp;
   <a href="#genesis-get-started"><strong>开始使用</strong></a> &nbsp;·&nbsp;
   <a href="#genesis-docs">文档</a> &nbsp;·&nbsp;
-  <a href="#genesis-stars">Star History</a>
+  <a href="#genesis-stars">星标历史</a>
 </p>
 
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <strong>简体中文</strong> &nbsp;·&nbsp; <a href="README.ja.md">日本語</a> &nbsp;·&nbsp; <a href="README.ko.md">한국어</a> &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a> &nbsp;·&nbsp; <a href="README.fr.md">Français</a> &nbsp;·&nbsp; <a href="README.es.md">Español</a></p>
 
 <p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis-cli?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub Stars" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis-cli?style=flat-square&amp;color=34a853" alt="License: Apache-2.0" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Works with Codex and Claude Code" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="Supported analysis language: Python" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis-cli%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="CLI package version" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis-cli?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub 星标数" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis-cli?style=flat-square&amp;color=34a853" alt="许可证：Apache-2.0" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="支持 Codex 和 Claude Code" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="支持的分析语言：Python" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis-cli%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="CLI 软件包版本" height="24"></a>
 </p>
 
 <p align="center">
@@ -44,7 +44,7 @@
 
 <picture>
   <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
-  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent 变更基准对比：影响识别、分析耗时与分析成本。" width="100%">
 </picture>
 
 ## 为什么需要 Genesis
@@ -72,21 +72,21 @@ CLI 和静态分析部分开源。语义审查由 Genesis 托管服务完成，�
 ```text
 请从 https://github.com/GenesisAgentInfra/genesis-cli 接入 Genesis。
 先读 README 和 docs/coding-agents.md，把 CLI 安装在当前项目之外，
-并为我当前使用的 Agent 安装用户级 genesis-review skill。
-已有安装就复用；需要时更新未经用户修改的托管 skill。
-按照 docs/coding-agents.md 的 “Configure CR preparation in this project”，
+并为我当前使用的 Agent 安装用户级 genesis-review 技能。
+已有安装就复用；需要时更新未经用户修改的托管技能。
+按照 docs/coding-agents.md#configure-cr-preparation-in-this-project 的项目审查配置说明，
 在当前项目的 Agent 指令文件中加入准备 CR/PR 前先运行 Genesis 的约定，
-保留其他现有内容。检查 CLI、skill 和项目约定，并告诉我修改了哪个文件。
+保留其他现有内容。检查 CLI、技能和项目约定，并告诉我修改了哪个文件。
 这一步只配置，不审查、不上传代码；以后的上传仍需获得覆盖目标服务和所选源码的授权。
 ```
 
 **配置后的体验：**你照常说“帮我整理这次改动，准备发 CR”，项目指令会要求 Agent
 先运行 Genesis、解释结果，再整理 CR/PR 描述。没有固定口令，也不限中文：
-“发 CR”“提 PR”“提审”“帮我写这次改动的 PR 描述”，以及英文的 “open a PR”
-“raise an MR”，都属于把改动交给别人审查的意图；单独 commit 或 push 不自动触发。
+“发 CR”“提 PR”“提审”“帮我写这次改动的 PR 描述”，都属于把改动交给别人审查的意图；
+其他语言中表达相同意图的请求也适用。单独提交或推送代码不自动触发。
 这个流程在本地发起，不依赖 GitHub CI。
-它是 Agent 的默认工作约定，不保证每次触发，也不是 Git hook 或合并门禁。
-skill 安装在用户级，但这项审查约定只配置到当前项目；只安装 CLI 不会添加约定。
+它是 Agent 的默认工作约定，不保证每次触发，也不是 Git 钩子或合并门禁。
+技能安装在用户级，但这项审查约定只配置到当前项目；只安装 CLI 不会添加约定。
 手动安装、已有用户升级和移除方式见[项目配置指南](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
 
 <details>
@@ -109,11 +109,11 @@ uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 
 ```text
 帮我整理这次改动，准备发 CR/PR。
-先解释审查发现和未验证的部分，再整理提交 review 的描述。
+先解释审查发现和未验证的部分，再整理提交审查的描述。
 上传前先展示发送范围。
 ```
 
-也可以明确选择 skill：
+也可以明确选择技能：
 
 | Agent | 调用方式 |
 | --- | --- |
@@ -123,7 +123,7 @@ uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 需要其他审查范围时，请指定分支比较或两个提交。任务描述和流程图都是可选上下文。
 
 未配置个人连接设置时，可以直接使用官方共享试用，无需执行 `genesis auth`。
-试用额度有限，由所有用户共享。无需提供模型供应商的 API key。
+试用额度有限，由所有用户共享。无需提供模型供应商的 API 密钥。
 [访问方式与试用限制](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md#default-shared-trial)。
 
 ## 审查涵盖哪些内容
@@ -155,7 +155,7 @@ uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 
 公开仓库包含 CLI 和静态分析部分。私有语义服务由 Genesis 团队运营，仓库不提供可自托管的服务端实现。
 
-预览和离线分析均在本地完成。安装 skill 不会开启每次编辑后的自动审查。
+预览和离线分析均在本地完成。安装技能不会开启每次编辑后的自动审查。
 
 [数据处理、个人密钥与配置](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md)。
 
@@ -163,20 +163,20 @@ uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 
 ## 文档
 
-- [编程 Agent 指南](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md)：安装、skill 发现、团队指令和故障排查。
+- [编程 Agent 指南](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md)：安装、技能发现、团队指令和故障排查。
 - [CLI 指南](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md)：命令、可选上下文、凭据和数据处理。
-- [GitHub Action](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/github-action.md)：配置仓库自动化；使用托管分析时需要明确提供 Genesis key。
+- [GitHub Action](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/github-action.md)：配置仓库自动化；使用托管分析时需要明确提供 Genesis 密钥。
 - [参与开发](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/CONTRIBUTING.md)：开发与测试客户端。
-- [仓库边界](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/repository-boundary.md)和[报告 Schema](https://github.com/GenesisAgentInfra/code-intelligence-protocol)。
+- [仓库边界](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/repository-boundary.md)和[报告数据格式](https://github.com/GenesisAgentInfra/code-intelligence-protocol)。
 
 <a id="genesis-stars"></a>
 
-## Star History
+## 星标历史
 
 <a href="https://www.star-history.com/#GenesisAgentInfra/genesis-cli&amp;Date">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date&amp;theme=dark">
-    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date" alt="GenesisAgentInfra/genesis-cli 的 Star 历史" width="100%">
+    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date" alt="GenesisAgentInfra/genesis-cli 的星标历史" width="100%">
   </picture>
 </a>
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://usegenesis.vercel.app/"><img src="assets/readme/favicon.svg" alt="Genesis icon" width="52" height="52" align="middle"></a>&nbsp;&nbsp;
+  <a href="https://usegenesis.vercel.app/"><img src="assets/readme/favicon.svg" alt="Icône Genesis" width="52" height="52" align="middle"></a>&nbsp;&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/readme/wordmark-dark.svg">
     <img src="assets/readme/wordmark-light.svg" alt="Genesis" width="240" align="middle">
@@ -18,11 +18,11 @@
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a> &nbsp;·&nbsp; <a href="README.ja.md">日本語</a> &nbsp;·&nbsp; <a href="README.ko.md">한국어</a> &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a> &nbsp;·&nbsp; <strong>Français</strong> &nbsp;·&nbsp; <a href="README.es.md">Español</a></p>
 
 <p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis-cli?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub Stars" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis-cli?style=flat-square&amp;color=34a853" alt="License: Apache-2.0" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Works with Codex and Claude Code" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="Supported analysis language: Python" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis-cli%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="CLI package version" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis-cli?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="Étoiles GitHub" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis-cli?style=flat-square&amp;color=34a853" alt="Licence : Apache-2.0" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Compatible avec Codex et Claude Code" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="Langage pris en charge pour l’analyse : Python" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis-cli%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="Version du paquet CLI" height="24"></a>
 </p>
 
 <p align="center">
@@ -44,7 +44,7 @@
 
 <picture>
   <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
-  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent Change Benchmarks: Impact Detection, Analysis Time, and Analysis Cost." width="100%">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Comparaison des modifications d’agents : détection des impacts, durée et coût de l’analyse." width="100%">
 </picture>
 
 ## Pourquoi utiliser Genesis ?
@@ -75,7 +75,7 @@ Configure Genesis depuis https://github.com/GenesisAgentInfra/genesis-cli.
 Lis le README et docs/coding-agents.md. Installe la CLI hors de ce projet et le
 skill genesis-review au niveau utilisateur pour mon agent actuel. Réutilise
 l'installation existante et actualise si nécessaire un skill géré non modifié.
-Suis "Configure CR preparation in this project" dans docs/coding-agents.md :
+Suis les étapes de configuration dans docs/coding-agents.md#configure-cr-preparation-in-this-project :
 ajoute aux instructions de ce projet la revue Genesis avant de préparer une CR/PR,
 en conservant le contenu existant. Vérifie la CLI, le skill et la règle ; indique le fichier modifié.
 Configure uniquement : aucune analyse ni aucun envoi de code maintenant.

@@ -30,13 +30,15 @@ instruction/skill mechanism.
 
 Give your agent this request (name Codex or Claude Code if it cannot infer which):
 
-> 请从 https://github.com/GenesisAgentInfra/genesis-cli 接入 Genesis。
-> 先读 README 和 docs/coding-agents.md，把 CLI 安装在当前应用仓库外，
-> 并为我当前使用的 coding agent 安装用户级 genesis-review skill。
-> 已有安装就复用；需要时更新未经用户修改的托管 skill。
-> 按下方 “Configure CR preparation in this project” 配置当前项目的 CR 审查约定，
-> 保留其他指令。检查版本、skill 和约定，并告诉我修改了哪个文件。
-> 这一步只配置，不分析、不上传代码；以后上传仍需覆盖目标服务和所选源码的授权。
+> Set up Genesis from https://github.com/GenesisAgentInfra/genesis-cli.
+> Read its README and docs/coding-agents.md. Install the CLI outside this
+> application repository and the genesis-review skill for my current agent
+> with user scope. Reuse an existing installation; update an unmodified managed
+> skill if needed. Follow "Configure CR preparation in this project" below to
+> add the project's Genesis review instruction, preserving existing instructions.
+> Verify the CLI version, skill, and project instruction; tell me which file changed.
+> Only set up now; do not analyze or upload code. Future uploads still require
+> authorization covering the destination and selected source.
 
 The agent follows the source installation steps in the [README](../README.md),
 then runs these commands from the Genesis checkout:
@@ -88,27 +90,27 @@ reload newly created skill directories. Then use an explicit request:
 **Codex:**
 
 ```text
-$genesis-review 检查当前未提交改动，解释业务变化、风险和需要补测的内容。先展示上传范围。
+$genesis-review Review my uncommitted changes. Explain behavior changes, risks, and missing tests. Show the upload scope first.
 ```
 
 **Claude Code:**
 
 ```text
-/genesis-review 检查当前未提交改动，解释业务变化、风险和需要补测的内容。先展示上传范围。
+/genesis-review Review my uncommitted changes. Explain behavior changes, risks, and missing tests. Show the upload scope first.
 ```
 
 After confirming discovery, ordinary requests can name Genesis naturally:
 
-> 用 Genesis 帮我看看这次改动有什么风险。
+> Use Genesis to review the risks in these changes.
 
 Be specific about scope when it matters:
 
 | What you want | Example request |
 | --- | --- |
-| Uncommitted changes | “用 Genesis 检查当前未提交改动；新加的 billing.py 也包含进去。” |
-| Branch changes | “用 Genesis 检查这个分支相对 main 的提交，不包括工作区改动。” |
-| Local-only review | “用 Genesis 做离线检查，不要把代码上传。” |
-| Explain an existing result | “解释这份 Genesis summary.md，必要时核对 report.md 的证据，不要重跑。” |
+| Uncommitted changes | "Use Genesis to review my uncommitted changes, including the new billing.py file." |
+| Branch changes | "Use Genesis to review this branch's commits against main, excluding worktree changes." |
+| Local-only review | "Run an offline Genesis review. Do not upload code." |
+| Explain an existing result | "Explain this Genesis summary.md and check the evidence in report.md as needed. Do not rerun the analysis." |
 
 The skill tells the agent to choose the actual baseline and list relevant new
 files. It should not blindly use `HEAD~1`, assume every repository has `main`,
@@ -162,12 +164,12 @@ reviewers, use the installed genesis-review skill before finalizing the review
 description or submitting it. Match intent in the conversation, in any language,
 not an exact phrase; the user need not name Genesis. Examples include "prepare
 for review", "cut a CR", "open a PR", "raise an MR", "send this for review",
-"发 CR", "提 PR", "提审", "发起合并请求", and "整理好交给同事 review".
+and "get these changes ready for my colleagues to review".
 CR, PR/pull request, and MR/merge request refer to this same review-handoff intent.
 Apply this when drafting a review description for actual changes as well.
 A standalone commit/push, an explanation of review terminology, or reading an
 existing review/report does not imply a new Genesis run. Use context to resolve
-short phrases such as "发一下"; clarify if the intended action remains unclear.
+short phrases such as "send it"; clarify if the intended action remains unclear.
 Honor an explicit request to skip Genesis.
 Review the intended change set against its actual target base, including intended
 uncommitted/new files. Reuse an existing Genesis result only if it covers the same
@@ -182,23 +184,23 @@ This is agent guidance, not a Git hook or merge gate. Publishing the CR and
 changing code still follow the user's request and existing project permissions.
 ```
 
-The instruction is written in English with bilingual examples; users do not need
-to use English, Chinese, or a fixed command. Keep the intent rule when adapting
-its wording to a team's language. Examples are illustrative, not a keyword list.
+The examples here are in English, but the instruction applies to requests in any
+language. Keep the intent rule when adapting its wording to a team's language.
+The examples illustrate review intent; they are not an exhaustive keyword list.
 
 Use these acceptance scenarios in separate new agent sessions after setup. They
 are expected behavior, not measured trigger reliability:
 
 | User request / context | Expected behavior |
 | --- | --- |
-| "发 CR", "帮我提个 PR", "这些改动可以提审了" | Invoke Genesis for the intended Python changes before handoff. |
+| "Prepare these changes for review", "these changes are ready for review" | Invoke Genesis for the intended Python changes before handoff. |
 | "Open a PR", "cut a CR", "raise a merge request" | Same review flow; no dependency on a particular hosting platform. |
-| "帮我写这次改动的 PR 描述", "get this ready for review" | Review before finalizing the description. |
-| "整理好交给同事看一下" in a code-review handoff | Recognize the intent even without CR/PR/MR terminology. |
-| "发一下" with no established action | Clarify the intended action rather than guessing. |
-| "只 commit 一下", "push this branch" with no review request | No automatic Genesis review from this convention alone. |
-| "什么是 PR？", "解释已有的 Genesis 报告" | Explain; no new analysis. |
-| "准备发 PR，但这次跳过 Genesis" | Honor the skip. |
+| "Write the PR description for these changes", "get this ready for review" | Review before finalizing the description. |
+| "Get these changes ready for my colleagues to look at" in a code-review handoff | Recognize the intent even without CR/PR/MR terminology. |
+| "Send it" with no established action | Clarify the intended action rather than guessing. |
+| "Just commit this", "push this branch" with no review request | No automatic Genesis review from this convention alone. |
+| "What is a PR?", "explain the existing Genesis report" | Explain; no new analysis. |
+| "Prepare a PR, but skip Genesis this time" | Honor the skip. |
 
 Check that the agent actually invokes Genesis and reports its output; having the
 section on disk does not prove that the current agent loaded or followed it.

@@ -47,3 +47,12 @@ client checkout inside the service without contributing the change here.
 Keep third-party license notices with bundled assets. Original contributions are
 provided under Apache-2.0; see LICENSE and NOTICE. Changes to license notices
 must also be reflected in the package copies checked by scripts/check_packages.py.
+
+## Documentation language
+
+Write `README.md`, contributor documentation, guides under `docs/`, and bundled
+skill instructions in English. Each translated `README.<locale>.md` uses its
+named language for prose, example requests, headings, and image descriptions.
+Keep commands, paths, API fields, product names, and language-selector labels
+unchanged. Link to an English guide by its section anchor instead of copying
+an English heading into a translated paragraph or example request.
