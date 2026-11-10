@@ -16,9 +16,9 @@ MOCK = {
     "Codex": {"quality": 57, "time": 83, "cost": 0.27, "color": "#222222"},
 }
 METRICS = [
-    ("quality", "Review quality", "Issue detection F1 · Higher is better", 100, "#8050ef"),
-    ("time", "Time per review", "Wall time in seconds · Lower is better", 120, "#f3de41"),
-    ("cost", "Cost per review", "API cost in USD · Lower is better", 0.75, "#f18a40"),
+    ("quality", "Impact Detection", "Impact detection F1 · Higher is better", 100, "#8050ef"),
+    ("time", "Analysis Time", "Wall time in seconds · Lower is better", 120, "#f3de41"),
+    ("cost", "Analysis Cost", "API cost in USD · Lower is better", 0.75, "#f18a40"),
 ]
 
 
@@ -83,12 +83,12 @@ def card(x, y, width, metric):
 
 def render(mobile=False):
     width, height = (430, 1394) if mobile else (1200, 538)
-    title = "Agent review benchmarks"
+    title = "Agent Change Benchmarks"
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">',
         f'<title id="title">{title} — mock data, not measured</title>',
-        '<desc id="desc">Design preview with fictional F1, review time, and API cost '
+        '<desc id="desc">Design preview with fictional impact-detection F1, analysis time, and API cost '
         "for Genesis, Cursor, Claude Code, and Codex. These numbers are not benchmark "
         "results and do not establish a performance ranking.</desc>",
         '<rect width="100%" height="100%" fill="white"/>',
@@ -100,7 +100,7 @@ def render(mobile=False):
             30 if mobile else 34,
             extra='font-family="Georgia, Times New Roman, serif"',
         ),
-        label(20, 69, "Illustrative comparison · All values are fictional", 15, "#777777"),
+        label(20, 69, "Know what changes before you ship.", 15, "#777777"),
     ]
     for i, metric in enumerate(METRICS):
         parts.append(
