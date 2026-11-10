@@ -43,8 +43,8 @@
 ## 벤치마크
 
 <picture>
-  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
-  <img src="assets/readme/benchmark-preview.svg" alt="레이아웃 미리보기용 가상 데이터이며 실제 측정 결과가 아닙니다." width="100%">
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="레이아웃 미리보기용 가상 데이터이며 실제 측정 결과가 아닙니다." width="100%">
 </picture>
 
 ## Genesis가 필요한 이유

@@ -118,4 +118,4 @@ def render(mobile=False):
 if __name__ == "__main__":
     for is_mobile in (False, True):
         suffix = "-mobile" if is_mobile else ""
-        (DEST / f"benchmark-preview{suffix}.svg").write_text(render(is_mobile))
+        (DEST / f"agent-change-benchmarks{suffix}.svg").write_text(render(is_mobile))

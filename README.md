@@ -43,8 +43,8 @@
 ## Benchmarks
 
 <picture>
-  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
-  <img src="assets/readme/benchmark-preview.svg" alt="Mock data for layout preview only; these are not measured results." width="100%">
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Mock data for layout preview only; these are not measured results." width="100%">
 </picture>
 
 ## Why you need Genesis

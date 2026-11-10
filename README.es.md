@@ -43,8 +43,8 @@
 ## Comparativa
 
 <picture>
-  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
-  <img src="assets/readme/benchmark-preview.svg" alt="Datos ficticios para previsualizar el diseño; no son resultados medidos." width="100%">
+  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
+  <img src="assets/readme/agent-change-benchmarks.svg" alt="Datos ficticios para previsualizar el diseño; no son resultados medidos." width="100%">
 </picture>
 
 ## Por qué necesitas Genesis
