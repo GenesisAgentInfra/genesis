@@ -38,6 +38,15 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Ilustración del proceso de revisión</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## Comparativa
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
+  <img src="assets/readme/benchmark-preview.svg" alt="Datos ficticios para previsualizar el diseño; no son resultados medidos." width="100%">
+</picture>
+
 ## Por qué necesitas Genesis
 
 Entiende cómo un cambio de código afecta al resultado que recibe el usuario.

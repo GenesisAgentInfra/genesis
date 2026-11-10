@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="1394" viewBox="0 0 430 1394" role="img" aria-labelledby="title desc">
+<title id="title">Agent review benchmarks — mock data, not measured</title>
+<desc id="desc">Design preview with fictional F1, review time, and API cost for Genesis, Cursor, Claude Code, and Codex. These numbers are not benchmark results and do not establish a performance ranking.</desc>
+<rect width="100%" height="100%" fill="white"/>
+<g font-family="Arial, Helvetica, sans-serif">
+<text x="20" y="42" font-size="30" fill="#202020" font-family="Georgia, Times New Roman, serif">Agent review benchmarks</text>
+<text x="20" y="69" font-size="15" fill="#777777" >Illustrative comparison · All values are fictional</text>
+<g transform="translate(20 91)">
+<rect x="0.5" y="0.5" width="389" height="409" rx="8" fill="white" stroke="#dcdcdc"/>
+<rect x="18" y="26" width="16" height="16" fill="#8050ef"/>
+<text x="42" y="43" font-size="28" fill="#202020" font-family="Georgia, Times New Roman, serif">Review quality</text>
+<text x="18" y="74" font-size="13" fill="#777777" >Issue detection F1 · Higher is better</text>
+<text x="18" y="94" font-size="12" fill="#777777" >MOCK DATA · NOT MEASURED</text>
+<path d="M 35 309 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 262.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 215.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 168.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 121 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<rect x="46.66" y="154.84" width="59.94" height="154.16" rx="4" fill="#8050ef"/>
+<text x="76.62" y="145.84" font-size="17" fill="#202020" text-anchor="middle">82</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(81.62 329) rotate(-48)" text-anchor="end">Genesis</text>
+<rect x="129.91" y="181.16" width="59.94" height="127.84" rx="4" fill="#bf8166"/>
+<text x="159.88" y="172.16" font-size="17" fill="#202020" text-anchor="middle">68</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(164.88 329) rotate(-48)" text-anchor="end">Claude Code</text>
+<rect x="213.16" y="194.32" width="59.94" height="114.68" rx="4" fill="#397fe9"/>
+<text x="243.12" y="185.32" font-size="17" fill="#202020" text-anchor="middle">61</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(248.12 329) rotate(-48)" text-anchor="end">Cursor</text>
+<rect x="296.40" y="201.84" width="59.94" height="107.16" rx="4" fill="#222222"/>
+<text x="326.38" y="192.84" font-size="17" fill="#202020" text-anchor="middle">57</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(331.38 329) rotate(-48)" text-anchor="end">Codex</text>
+</g>
+<g transform="translate(20 517)">
+<rect x="0.5" y="0.5" width="389" height="409" rx="8" fill="white" stroke="#dcdcdc"/>
+<rect x="18" y="26" width="16" height="16" fill="#f3de41"/>
+<text x="42" y="43" font-size="28" fill="#202020" font-family="Georgia, Times New Roman, serif">Time per review</text>
+<text x="18" y="74" font-size="13" fill="#777777" >Wall time in seconds · Lower is better</text>
+<text x="18" y="94" font-size="12" fill="#777777" >MOCK DATA · NOT MEASURED</text>
+<path d="M 35 309 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 262.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 215.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 168.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 121 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<rect x="46.66" y="227.53" width="59.94" height="81.47" rx="4" fill="#397fe9"/>
+<text x="76.62" y="218.53" font-size="17" fill="#202020" text-anchor="middle">52</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(81.62 329) rotate(-48)" text-anchor="end">Cursor</text>
+<rect x="129.91" y="193.07" width="59.94" height="115.93" rx="4" fill="#8050ef"/>
+<text x="159.88" y="184.07" font-size="17" fill="#202020" text-anchor="middle">74</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(164.88 329) rotate(-48)" text-anchor="end">Genesis</text>
+<rect x="213.16" y="178.97" width="59.94" height="130.03" rx="4" fill="#222222"/>
+<text x="243.12" y="169.97" font-size="17" fill="#202020" text-anchor="middle">83</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(248.12 329) rotate(-48)" text-anchor="end">Codex</text>
+<rect x="296.40" y="158.60" width="59.94" height="150.40" rx="4" fill="#bf8166"/>
+<text x="326.38" y="149.6" font-size="17" fill="#202020" text-anchor="middle">96</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(331.38 329) rotate(-48)" text-anchor="end">Claude Code</text>
+</g>
+<g transform="translate(20 943)">
+<rect x="0.5" y="0.5" width="389" height="409" rx="8" fill="white" stroke="#dcdcdc"/>
+<rect x="18" y="26" width="16" height="16" fill="#f18a40"/>
+<text x="42" y="43" font-size="28" fill="#202020" font-family="Georgia, Times New Roman, serif">Cost per review</text>
+<text x="18" y="74" font-size="13" fill="#777777" >API cost in USD · Lower is better</text>
+<text x="18" y="94" font-size="12" fill="#777777" >MOCK DATA · NOT MEASURED</text>
+<path d="M 35 309 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 262.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 215.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 168.0 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<path d="M 35 121 H 368" stroke="#dedede" stroke-dasharray="2 4"/>
+<rect x="46.66" y="241.32" width="59.94" height="67.68" rx="4" fill="#222222"/>
+<text x="76.62" y="232.32" font-size="17" fill="#202020" text-anchor="middle">$0.27</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(81.62 329) rotate(-48)" text-anchor="end">Codex</text>
+<rect x="129.91" y="228.79" width="59.94" height="80.21" rx="4" fill="#8050ef"/>
+<text x="159.88" y="219.79" font-size="17" fill="#202020" text-anchor="middle">$0.32</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(164.88 329) rotate(-48)" text-anchor="end">Genesis</text>
+<rect x="213.16" y="193.69" width="59.94" height="115.31" rx="4" fill="#397fe9"/>
+<text x="243.12" y="184.69" font-size="17" fill="#202020" text-anchor="middle">$0.46</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(248.12 329) rotate(-48)" text-anchor="end">Cursor</text>
+<rect x="296.40" y="163.61" width="59.94" height="145.39" rx="4" fill="#bf8166"/>
+<text x="326.38" y="154.61" font-size="17" fill="#202020" text-anchor="middle">$0.58</text>
+<text x="0" y="0" font-size="16" fill="#202020" transform="translate(331.38 329) rotate(-48)" text-anchor="end">Claude Code</text>
+</g>
+</g>
+</svg>

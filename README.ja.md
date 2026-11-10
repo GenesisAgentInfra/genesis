@@ -38,6 +38,15 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">コードレビューの流れ</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## ベンチマーク
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
+  <img src="assets/readme/benchmark-preview.svg" alt="レイアウト確認用の架空データです。実測結果ではありません。" width="100%">
+</picture>
+
 ## Genesis が必要な理由
 
 コードの変更が、ユーザーに届く結果をどう変えるかを確認します。

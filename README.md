@@ -38,6 +38,15 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Illustrated review workflow</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## Benchmarks
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
+  <img src="assets/readme/benchmark-preview.svg" alt="Mock data for layout preview only; these are not measured results." width="100%">
+</picture>
+
 ## Why you need Genesis
 
 See how a code change affects what your agent delivers to users.

@@ -38,6 +38,15 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">代码审查流程示意</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## 基准对比
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
+  <img src="assets/readme/benchmark-preview.svg" alt="以下为排版预览用的模拟数据，并非实测结果。" width="100%">
+</picture>
+
 ## 为什么需要 Genesis
 
 看清一次代码改动，会怎样改变 Agent 交付给用户的结果。

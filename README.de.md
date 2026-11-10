@@ -38,6 +38,15 @@
 
 <p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Der Review-Ablauf im Überblick</a></sub></p>
 
+<a id="genesis-benchmarks"></a>
+
+## Benchmarks
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/readme/benchmark-preview-mobile.svg">
+  <img src="assets/readme/benchmark-preview.svg" alt="Fiktive Daten zur Layoutvorschau, keine gemessenen Ergebnisse." width="100%">
+</picture>
+
 ## Warum Genesis?
 
 Erkenne, wie eine Codeänderung das Ergebnis für deine Nutzer verändert.
