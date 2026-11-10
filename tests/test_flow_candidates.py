@@ -130,7 +130,7 @@ def test_module_call_supports_function_entry_but_is_not_itself_an_entry(source_r
     assert set(edge.evidence_ids) <= set(entries(result)[0].evidence_ids)
 
 
-def test_nested_functions_classes_and_tests_are_not_suggested_as_roots(source_repo):
+def test_nested_functions_and_tests_are_excluded_but_public_methods_are_candidates(source_repo):
     text = "def outer():\n    def inner(): return 1\n    return inner()\nclass C:\n    def method(self): return 1\n"
     result, _ = run_changes(
         source_repo,
@@ -140,10 +140,11 @@ def test_nested_functions_classes_and_tests_are_not_suggested_as_roots(source_re
             "tests/test_app.py": "def test_it(): assert 2\n",
         },
     )
-    assert [e.symbol_id for e in entries(result)] == ["app.py#outer"]
-    assert "app.py#C.method" in result.flows.entry_discovery.unresolved_change_ids
-    assert any(p.changed_symbol_id == "app.py#outer.inner" for p in entries(result)[0].paths)
-    assert any(item.code == "flow_entry_discovery_partial" for item in result.local.limitations)
+    assert {e.symbol_id for e in entries(result)} == {"app.py#outer", "app.py#C.method"}
+    assert not result.flows.entry_discovery.unresolved_change_ids
+    assert any(
+        p.changed_symbol_id == "app.py#outer.inner" for e in entries(result) for p in e.paths
+    )
 
 
 def test_duplicate_definitions_are_not_unique_entries(source_repo):
@@ -376,3 +377,29 @@ def test_candidates_survive_b4_request_and_report_without_new_http_fields(source
     assert any(f.finding_id == entries(result)[0].candidate_id for f in report.findings)
     assert not request.flows and not request.intents
     validate_public_response(report)
+
+
+def test_framework_method_candidate_keeps_registration_and_dispatch_uncertain(source_repo):
+    source = "from framework import route\nclass Handler:\n    @route('/submit')\n    async def submit(self):\n        return await self.provider.send()\n    def _private(self): return 1\n"
+    result, _ = run_changes(
+        source_repo,
+        {"app.py": source},
+        {
+            "app.py": source.replace(
+                "self.provider.send()", "self.provider.send(urgent=True)"
+            ).replace("return 1", "return 2")
+        },
+    )
+    assert {item.symbol_id for item in entries(result)} == {"app.py#Handler.submit"}
+    candidate = entries(result)[0]
+    assert "not established" in candidate.reason
+    assert "app.py#Handler._private" in result.flows.entry_discovery.unresolved_change_ids
+    # A public method is a proposed review entry; neither its decorator nor the
+    # dynamic receiver becomes a proven route/call merely because it was found.
+    calls = [
+        item
+        for item in result.local.facts.calls
+        if item.side == "head" and item.caller_symbol_id == "app.py#Handler.submit"
+    ]
+    assert calls and all(item.target.status != "resolved" for item in calls)
+    validate(result, result.flows.entry_discovery)

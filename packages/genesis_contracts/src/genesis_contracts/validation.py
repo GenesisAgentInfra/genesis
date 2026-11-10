@@ -182,10 +182,15 @@ def validate_semantic_response(
     request: AnalysisRequest, response: SemanticAnalysisResponse
 ) -> None:
     validate_analysis_request(request)
-    if response.behavior_review is not None and request.behavior_review_version != "1":
+    if response.behavior_review is not None and request.behavior_review_version is None:
         raise ValueError("behavior review was not requested")
-    if request.behavior_review_version == "1" and response.behavior_review is None:
+    if request.behavior_review_version is not None and response.behavior_review is None:
         raise ValueError("requested behavior review is missing")
+    if (
+        response.behavior_review is not None
+        and response.behavior_review.version != request.behavior_review_version
+    ):
+        raise ValueError("behavior review version does not match the request")
     validate_behavior_review(
         response.behavior_review, request.evidence, (*request.rule_findings, *response.findings)
     )

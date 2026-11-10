@@ -368,6 +368,62 @@ class BehaviorReview(ContractModel):
     changes: tuple[BehaviorChange, ...] = Field(default=(), max_length=12)
 
 
+class ExecutionStep(ContractModel):
+    step_id: str = Field(min_length=1, max_length=128)
+    symbol: str | None = Field(default=None, max_length=500)
+    kind: Literal["entrypoint", "function", "model", "tool", "human", "external", "return", "raise"]
+    description: str = Field(min_length=1, max_length=500)
+    evidence_ids: tuple[str, ...] = Field(min_length=1, max_length=8)
+
+
+class ExecutionLink(ContractModel):
+    source: str = Field(min_length=1, max_length=128)
+    target: str = Field(min_length=1, max_length=128)
+    relation: Literal["call", "await", "branch", "return", "raise", "human_wait"]
+    condition: str | None = Field(default=None, max_length=500)
+    support: Literal["semantic_inference", "unknown"] = "semantic_inference"
+    evidence_ids: tuple[str, ...] = Field(min_length=1, max_length=8)
+    limitations: tuple[str, ...] = Field(default=(), max_length=4)
+
+    @model_validator(mode="after")
+    def unknown_requires_explanation(self):
+        if self.support == "unknown" and not self.limitations:
+            raise ValueError("unknown execution link requires a limitation")
+        return self
+
+
+class ExecutionPath(ContractModel):
+    """Semantic explanation of one revision, distinct from the static call graph."""
+
+    path_id: str = Field(min_length=1, max_length=128)
+    side: EvidenceSide
+    scenario: str = Field(min_length=1, max_length=500)
+    condition: str = Field(min_length=1, max_length=500)
+    entry_step_id: str | None = Field(default=None, max_length=128)
+    steps: tuple[ExecutionStep, ...] = Field(min_length=1, max_length=12)
+    links: tuple[ExecutionLink, ...] = Field(default=(), max_length=16)
+    outcome: str | None = Field(default=None, max_length=500)
+    limitations: tuple[str, ...] = Field(default=(), max_length=8)
+
+    @model_validator(mode="after")
+    def validate_structure(self):
+        ids = [step.step_id for step in self.steps]
+        if len(ids) != len(set(ids)):
+            raise ValueError("duplicate execution step_id")
+        if self.entry_step_id is not None and self.entry_step_id not in ids:
+            raise ValueError("execution entry must reference a step")
+        if self.entry_step_id is None and not self.limitations:
+            raise ValueError("unknown execution entry requires a limitation")
+        if any(link.source not in ids or link.target not in ids for link in self.links):
+            raise ValueError("execution link endpoint is missing")
+        return self
+
+
+class PathBehaviorReview(BehaviorReview):
+    version: Literal["2"] = "2"
+    paths: tuple[ExecutionPath, ...] = Field(max_length=6)
+
+
 class AnalysisResponse(ContractModel):
     schema_version: Literal["0.1.0"] = "0.1.0"
     snapshot_id: str = Field(min_length=1)
@@ -399,8 +455,15 @@ class BehaviorAnalysisResponse(AnalysisResponse):
     behavior_review: BehaviorReview
 
 
+class PathAnalysisResponse(AnalysisResponse):
+    schema_version: Literal["0.3.0"] = "0.3.0"
+    behavior_review: PathBehaviorReview
+
+
 def parse_analysis_response(data):
-    model = BehaviorAnalysisResponse if data.get("schema_version") == "0.2.0" else AnalysisResponse
+    model = {"0.2.0": BehaviorAnalysisResponse, "0.3.0": PathAnalysisResponse}.get(
+        data.get("schema_version"), AnalysisResponse
+    )
     return model.model_validate(data)
 
 
@@ -758,7 +821,7 @@ class AnalysisRequest(ContractModel):
     input_token_budget: int = Field(default=40000, gt=0)
     review_directives: ReviewDirectives | None = None
     behavior_view: BehaviorView | None = None
-    behavior_review_version: Literal["1"] | None = None
+    behavior_review_version: Literal["1", "2"] | None = None
 
     @model_serializer(mode="wrap")
     def omit_unused_review_channel(self, handler):
@@ -817,7 +880,7 @@ class SemanticAnalysisResponse(ContractModel):
     limitations: tuple[Limitation, ...] = ()
     semantic_version: str = Field(min_length=1)
     review_receipt: ReviewReceipt | None = None
-    behavior_review: BehaviorReview | None = None
+    behavior_review: PathBehaviorReview | BehaviorReview | None = None
 
     @model_serializer(mode="wrap")
     def omit_unused_review_receipt(self, handler):

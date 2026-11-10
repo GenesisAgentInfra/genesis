@@ -5,6 +5,7 @@ from genesis_contracts.models import (
     BehaviorAnalysisResponse,
     CapabilityStatus,
     Limitation,
+    PathAnalysisResponse,
     SectionStatuses,
     SemanticAnalysisResponse,
 )
@@ -107,7 +108,13 @@ def assemble_report(
         and not any(item.affects_completeness for item in limitations)
         and (review is None or review.coverage.status == "analyzed")
     )
-    model = BehaviorAnalysisResponse if review is not None else AnalysisResponse
+    model = (
+        PathAnalysisResponse
+        if review is not None and review.version == "2"
+        else BehaviorAnalysisResponse
+        if review is not None
+        else AnalysisResponse
+    )
     report = model(
         **({"behavior_review": review} if review is not None else {}),
         snapshot_id=local.snapshot.snapshot_id,

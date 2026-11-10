@@ -528,7 +528,7 @@ def analyze_command(
                             max_excerpt_chars=settings.max_excerpt_chars,
                             max_excerpts=settings.max_excerpts,
                             exclude_paths=exclusions,
-                            behavior_review_version="1",
+                            behavior_review_version="2",
                         ),
                     )
                     preview = preview_request(request)
@@ -566,8 +566,11 @@ def analyze_command(
                                 # Negotiation can only remove optional material
                                 # from the locally approved preview, never add it.
                                 updates = {}
-                                if capabilities.get("behavior_review_version") != "1":
-                                    updates["behavior_review_version"] = None
+                                negotiated = client.negotiate_review_version(
+                                    request.behavior_review_version, capabilities
+                                )
+                                if negotiated != request.behavior_review_version:
+                                    updates["behavior_review_version"] = negotiated
                                 if (
                                     request.behavior_view is not None
                                     and request.behavior_view.version

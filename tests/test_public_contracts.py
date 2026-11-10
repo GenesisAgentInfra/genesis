@@ -26,6 +26,6 @@ def test_synthetic_requests_and_reports_match_public_contracts():
 
 
 def test_all_published_schema_versions_are_valid():
-    for version in ("0.1.0", "0.2.0"):
+    for version in ("0.1.0", "0.2.0", "0.3.0"):
         for schema in public_schemas(version).values():
             Draft202012Validator.check_schema(schema)
