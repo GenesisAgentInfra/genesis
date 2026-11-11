@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_id": "sha256:002d490916cd70745776b621dfe942b5a9dd6a7d5a37104709904da308ef9bf7",
+  "base_revision": null,
+  "head_revision": "fixture-expense-head",
+  "files": [
+    {
+      "path": "src/expense/api.py",
+      "side": "head",
+      "content_digest": "sha256:041b0ffe5ea9b8037efd9dcb13f0d69bf1e89fc241806d09e9318efad4fc6c38",
+      "kind": "code"
+    },
+    {
+      "path": "src/expense/review.py",
+      "side": "head",
+      "content_digest": "sha256:7c3c94a43cfafe825e92934fd2a938c69eecfc30ccf7dd3d849e6ff0c269b0b6",
+      "kind": "code"
+    },
+    {
+      "path": "src/expense/store.py",
+      "side": "head",
+      "content_digest": "sha256:47306b4a2a626119bd2453b22d55fdb2fd53d3f4aaf12cec1132b01b0f0953be",
+      "kind": "code"
+    }
+  ],
+  "integrity_status": "complete",
+  "omitted_inputs": []
+}
