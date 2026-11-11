@@ -34,7 +34,7 @@ The ordinary client test suite does not require the protocol checkout.
 
 Client source, context selection, rendering and Action changes belong here.
 The bundled agent skill lives in
-`packages/genesis_ci/src/genesis_ci/assets/skills/genesis-review/`; update that
+`packages/genesis_ci/src/genesis_ci/assets/skills/genesis/`; update that
 source rather than an installed copy under a user's home. `agent_setup.py` installs
 it with a machine-local runner configuration. Keep the agent guide and installer
 aligned, and test installation plus the runner without real model calls. Agent

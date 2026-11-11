@@ -342,6 +342,26 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
         self.stack.pop()
         self.barriers.pop()
 
+    def _namespace_mapping(self, node) -> bool:
+        """Whether an expression exposes a namespace as a mapping that can rebind names."""
+        if isinstance(node, cst.Call) and isinstance(node.func, cst.Name):
+            return node.func.value in {"globals", "locals", "vars"}
+        if isinstance(node, cst.Attribute):
+            return node.attr.value == "__dict__" or (
+                node.attr.value == "modules"
+                and isinstance(node.value, cst.Name)
+                and node.value.value == "sys"
+            )
+        return isinstance(node, cst.Name) and node.value == "__builtins__"
+
+    def _item_write(self, target) -> None:
+        # Writing or deleting an item changes the indexed object, not the names of
+        # this module. Only a write through a namespace mapping can rebind names.
+        if self._namespace_mapping(target.value):
+            self.file.dynamic_namespace = True
+        else:
+            self.file.mutable_values = True
+
     def _binding(self, node, target, value, *, unpacked=False):
         # A tuple assignment only makes its assigned values unknown. It does not
         # invalidate unrelated imports/calls throughout the entire module.
@@ -354,7 +374,9 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
             for origin in self.origins(target):
                 if origin.source == "import":
                     self.file.uncertain_imports.add(origin.name)
-        if not isinstance(target, (cst.Name, cst.Attribute)):
+        if isinstance(target, cst.Subscript):
+            self._item_write(target)
+        elif not isinstance(target, (cst.Name, cst.Attribute)):
             self.file.dynamic_namespace = True
 
         self.file.bindings.append(
@@ -733,6 +755,24 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                 self.file.exports[bound] = (NameOrigin(name=full, source="import"),)
 
     def visit_Del(self, node):
+        targets = (
+            [item.value for item in node.target.elements]
+            if isinstance(node.target, (cst.Tuple, cst.List))
+            else [node.target]
+        )
+        unbinds_name = False
+        for target in targets:
+            if isinstance(target, cst.Subscript):
+                unbinds_name |= self._namespace_mapping(target.value)
+                self._item_write(target)
+            elif isinstance(target, cst.Attribute):
+                for origin in self.origins(target):
+                    if origin.source == "import":
+                        self.file.uncertain_imports.add(origin.name)
+            else:
+                unbinds_name = True
+        if not unbinds_name:
+            return
         self.file.dynamic_namespace = True
         self.file.unresolved.append(
             UnresolvedFact(
@@ -794,7 +834,13 @@ def extract_python(snapshot: CapturedSnapshot, options: PythonOptions | None = N
     resolver = Resolver(parsed, options.source_roots, unavailable)
     for file in parsed.values():
         file.calls[:] = [
-            call.model_copy(update={"target": resolver.resolve(call.callee, file.side, file.path)})
+            call.model_copy(
+                update={
+                    "target": resolver.callable_target(
+                        resolver.resolve(call.callee, file.side, file.path), file.side
+                    )
+                }
+            )
             for call in file.calls
         ]
         for call in file.calls:
@@ -833,7 +879,9 @@ def extract_python(snapshot: CapturedSnapshot, options: PythonOptions | None = N
     failed = {(item.side, item.path) for item in coverage if item.syntax.status != "analyzed"}
     uncertain = {item.path for item in snapshot.capture.omissions if item.affects_completeness}
     changed = set()
-    for sid in sorted({s.symbol_id for s in symbols}):
+    # Without a baseline there is nothing to compare against, so nothing is changed.
+    compared = snapshot.capture.manifest.base_revision is not None
+    for sid in sorted({s.symbol_id for s in symbols}) if compared else ():
         path = sid.split("#")[0]
         if any(path == p or path.startswith(p + "/") for p in uncertain) or any(
             (side, path) in failed for side in EvidenceSide

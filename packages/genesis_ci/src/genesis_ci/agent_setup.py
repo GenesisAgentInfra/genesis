@@ -1,4 +1,4 @@
-"""Install the bundled review skill without changing agent policies or credentials."""
+"""Install the bundled Genesis skill without changing agent policies or credentials."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 
-SKILL_NAME = "genesis-review"
+SKILL_NAME = "genesis"
+# Earlier releases installed the skill under these names; an untouched copy is replaced.
+LEGACY_SKILL_NAMES = ("genesis-review",)
 ASSET_FILES = ("SKILL.md", "agents/openai.yaml", "scripts/run_genesis.py")
 MANIFEST = ".genesis-skill.json"
 
@@ -103,11 +105,27 @@ def _can_update(content: dict[str, bytes]) -> bool:
         return False
 
 
+def _legacy_installs(destination: Path) -> list[tuple[Path, bool]]:
+    """Earlier-named skills beside a destination, and whether Genesis may remove each."""
+    found = []
+    for name in LEGACY_SKILL_NAMES:
+        legacy = destination.with_name(name)
+        if legacy.is_symlink() or not legacy.is_dir():
+            continue
+        try:
+            removable = _can_update(_installed_files(legacy))
+        except ValueError:
+            removable = False
+        found.append((legacy, removable))
+    return found
+
+
 def install_skills(
     agent: Agent, scope: Scope, repo: Path | None, *, update: bool = False, dry_run: bool = False
 ) -> list[tuple[Path, str]]:
     desired = _payload()
     planned = []
+    legacy = []
     # Preflight every target before writing either agent's files.
     for destination in skill_destinations(agent, scope, repo):
         _assert_regular_path(destination)
@@ -125,8 +143,13 @@ def install_skills(
             else:
                 action = "update"
         planned.append((destination, action))
+        legacy += _legacy_installs(destination)
+    renamed = [
+        (path, f"remove (renamed to {SKILL_NAME})" if removable else "kept (edited or not ours)")
+        for path, removable in legacy
+    ]
     if dry_run:
-        return planned
+        return planned + renamed
     for destination, action in planned:
         if action == "unchanged":
             continue
@@ -162,7 +185,11 @@ def install_skills(
                 shutil.rmtree(staging)
             if installed and backup is not None and backup.exists():
                 shutil.rmtree(backup)
-    return planned
+    # Only after every new skill is in place, and only copies Genesis installed and nobody edited.
+    for path, removable in legacy:
+        if removable and _can_update(_installed_files(path)):
+            shutil.rmtree(path)
+    return planned + renamed
 
 
 def skill_status(agent: Agent, scope: Scope, repo: Path | None) -> list[tuple[Path, str]]:
@@ -176,4 +203,8 @@ def skill_status(agent: Agent, scope: Scope, repo: Path | None) -> list[tuple[Pa
             content = _installed_files(destination)
             state = "installed (current)" if content == desired else "different or locally edited"
         result.append((destination, state))
+        result += [
+            (path, f"earlier name; run install to replace it with {SKILL_NAME}")
+            for path, _ in _legacy_installs(destination)
+        ]
     return result

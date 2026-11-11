@@ -23,6 +23,7 @@ class Resolver:
         self.module_for_path = {}
         self.bindings = {}
         self.symbols = {}
+        self.kinds = {}
         for side, path in sorted(set(files) | self.unavailable):
             file = files.get((side, path))
             candidates = []
@@ -48,6 +49,7 @@ class Resolver:
                 continue
             for symbol in file.symbols:
                 self.symbols.setdefault((side, path, symbol.qualified_name), []).append(symbol)
+                self.kinds.setdefault((side, symbol.symbol_id), set()).add(symbol.kind)
             for binding in file.bindings:
                 for origin in binding.target.origins:
                     if origin.source == "local":
@@ -251,6 +253,18 @@ class Resolver:
                         targets=result.targets,
                         reason="Instance attribute inferred from __init__; runtime mutation is possible",
                     )
+            # A method of the same class, when no instance attribute shadows its name.
+            methods = [
+                s
+                for s in self.symbols.get((side, path, cls + "." + attr), [])
+                if s.kind == "function"
+            ]
+            if not found and methods:
+                return Resolution(
+                    status="candidate",
+                    targets=tuple(sorted({s.symbol_id for s in methods})),
+                    reason="Method looked up on self; a subclass or the instance may override it",
+                )
         return unknown("Parameter, dynamic attribute, or unsupported assignment")
 
     def _attribute(self, base, attribute, side, seen):
@@ -268,7 +282,13 @@ class Resolver:
                 targets.extend(result.targets)
                 uncertain |= result.status != "resolved"
             elif target.startswith(("external:", "instance:")):
-                targets.append(target.removeprefix("instance:") + "." + attribute)
+                member = target.removeprefix("instance:") + "." + attribute
+                # A member of a local class must be defined in that class itself;
+                # inherited and dynamically added members stay unresolved.
+                if member.startswith("external:") or (side, member) in self.kinds:
+                    targets.append(member)
+                else:
+                    uncertain = True
             else:
                 uncertain = True
         if not targets:
@@ -357,8 +377,39 @@ class Resolver:
                     targets=tuple("instance:" + t for t in constructor.targets),
                     reason=constructor.reason,
                 )
+            if constructor.targets and all(
+                self.kinds.get((side, target)) == {"class"} for target in constructor.targets
+            ):
+                return Resolution(
+                    status="candidate",
+                    targets=tuple("instance:" + target for target in constructor.targets),
+                    reason="Instance of a local class; subclasses and dynamic dispatch are not modelled",
+                )
             return unknown("Function return type is not statically known")
         return unknown("Dynamic callable or unsupported expression")
+
+    def callable_target(self, target, side):
+        """Resolve calling an instance of a local class to its own `__call__`, if it has one."""
+        local = [
+            item
+            for item in target.targets
+            if item.startswith("instance:") and not item.startswith("instance:external:")
+        ]
+        if not local:
+            return target
+        callables = [
+            item.removeprefix("instance:") + ".__call__"
+            for item in local
+            if (side, item.removeprefix("instance:") + ".__call__") in self.kinds
+        ]
+        kept = [item for item in target.targets if item not in local]
+        if not callables and not kept:
+            return unknown("Called object is an instance without a statically known __call__")
+        return Resolution(
+            status="candidate",
+            targets=tuple(sorted({*kept, *callables})),
+            reason="Call through an instance of a local class; dynamic dispatch is not modelled",
+        )
 
     def value(self, expr, side, path, seen=frozenset(), budget=None):
         """Substitute only unique unconditional local values; never evaluate customer expressions."""

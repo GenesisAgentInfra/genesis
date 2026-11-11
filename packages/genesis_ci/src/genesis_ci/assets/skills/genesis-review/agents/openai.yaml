@@ -1,6 +1,0 @@
-interface:
-  display_name: "Genesis Change Review"
-  short_description: "Review Python changes before CR/PR handoff"
-  default_prompt: "Use $genesis-review before preparing my Python changes for CR/PR. Explain the evidence and remaining gaps, and show the upload scope before sending."
-policy:
-  allow_implicit_invocation: true

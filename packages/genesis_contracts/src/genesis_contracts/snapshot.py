@@ -39,9 +39,13 @@ class SnapshotLimits(ContractModel):
 
 
 class SnapshotSpec(ContractModel):
-    """base is mandatory; head=None means the final working directory content."""
+    """head=None means the final working directory content.
 
-    base: str = Field(min_length=1)
+    base=None captures the head side only: there is no baseline, so nothing is
+    reported as changed. A comparison always names its base explicitly.
+    """
+
+    base: str | None = Field(default=None, min_length=1)
     head: str | None = Field(default=None, min_length=1)
     include_untracked: bool = False
     inputs: tuple[SnapshotInput, ...] = ()
