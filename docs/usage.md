@@ -4,7 +4,7 @@ For everyday use inside Codex or Claude Code, start with
 [coding-agent setup](coding-agents.md). This page is the CLI/configuration
 reference an agent or terminal user can consult. Bare `genesis` examples assume
 the CLI is on PATH; source installs can prefix them with
-`uv run --project /absolute/path/to/genesis-cli --package genesis-ci --no-dev --frozen`.
+`uv run --project /absolute/path/to/genesis --package genesis-ci --no-dev --frozen`.
 
 ## Agent integration commands
 

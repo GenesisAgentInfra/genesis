@@ -30,7 +30,7 @@ instruction/skill mechanism.
 
 Give your agent this request (name Codex or Claude Code if it cannot infer which):
 
-> Set up Genesis from https://github.com/GenesisAgentInfra/genesis-cli.
+> Set up Genesis from https://github.com/GenesisAgentInfra/genesis.
 > Read its README and docs/coding-agents.md. Install the CLI outside this
 > application repository and the genesis-review skill for my current agent
 > with user scope. Reuse an existing installation; update an unmodified managed
