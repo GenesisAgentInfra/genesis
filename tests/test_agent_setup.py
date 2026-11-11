@@ -159,7 +159,13 @@ def test_bundled_skill_examples_match_the_contracts_and_the_cli(user_home):
     FlowSubmission.model_validate(examples[1])
     ChangeSubmission.model_validate(examples[2])
     commands = set(re.findall(r"genesis map ([a-z]+)", text))
-    help_text = CliRunner().invoke(app, ["map", "--help"]).output
+
+    def help_of(*command):
+        # On CI the help is styled, which splits option names with escape codes.
+        output = CliRunner().invoke(app, ["map", *command, "--help"]).output
+        return re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+    help_text = help_of()
     assert commands == {
         "prepare",
         "render",
@@ -173,10 +179,7 @@ def test_bundled_skill_examples_match_the_contracts_and_the_cli(user_home):
     }
     assert all(command in help_text for command in commands)
     for flag in set(re.findall(r"(?<![-\w])(--[a-z][a-z-]+)", text)):
-        assert any(
-            flag in CliRunner().invoke(app, ["map", command, "--help"]).output
-            for command in commands
-        ), flag
+        assert any(flag in help_of(command) for command in commands), flag
 
 
 def test_update_refreshes_only_unmodified_managed_skill(user_home, monkeypatch):
