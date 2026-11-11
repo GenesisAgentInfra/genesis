@@ -535,7 +535,11 @@ def _diff(base: _Selection, head: _Selection, omissions: list[SnapshotOmission])
 
 
 def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
-    """Capture a repository root. Missing baseline is an error, never an empty base."""
+    """Capture a repository root.
+
+    A base that is named but missing is an error. Without a base only the head side
+    is captured, and the file diff stays empty instead of calling every file added.
+    """
     root = repo.expanduser().resolve(strict=True)
     git = _Git(root, spec.limits)
     top = Path(os.fsdecode(git.run("rev-parse", "--show-toplevel")).rstrip("\n")).resolve()
@@ -543,15 +547,18 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
         raise SnapshotError(
             "repository_root_required", "Pass the repository root, not a nested directory."
         )
-    base_revision = git.revision(spec.base)
+    base_revision = git.revision(spec.base) if spec.base is not None else None
     # Pin both commit refs before doing potentially slow file collection.
     resolved_head = (
         (base_revision if spec.head == spec.base else git.revision(spec.head))
         if spec.head is not None
         else None
     )
-    base_entries = git.tree(base_revision)
-    base = _collect(git, base_entries, spec, BASE)
+    base = (
+        _collect(git, git.tree(base_revision), spec, BASE)
+        if base_revision is not None
+        else _Selection({}, {}, {}, [])
+    )
     starting = {
         "starting_bytes": sum(map(len, base.files.values())),
         "starting_files": len(base.files),
@@ -649,7 +656,7 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
             for side, selection in ((BASE, base), (HEAD, head))
             for path in sorted(selection.files)
         ),
-        file_diff=_diff(base, head, omissions),
+        file_diff=_diff(base if base_revision is not None else head, head, omissions),
         omissions=tuple(omissions),
         worktree_consistency=consistency,
     )

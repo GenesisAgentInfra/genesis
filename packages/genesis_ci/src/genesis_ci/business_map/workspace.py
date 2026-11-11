@@ -1,0 +1,1249 @@
+"""The agent loop over a prepared session: plan, context, query, submit, assemble.
+
+Every call does one bounded thing and stores its result, so an interrupted agent
+loses nothing. The map is never edited in place: it is rebuilt from the plan, the
+accepted submissions and the facts each time something changes.
+
+An agent's submission is taken or rejected as a whole. What it calls resolved must
+be anchored in analyzer facts; a relation the facts cannot support has to be
+submitted as a candidate with a reason.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+from functools import cached_property
+from pathlib import Path, PurePosixPath
+
+from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, StepKind
+from genesis_contracts.change_report import ChangeReport
+from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet
+from genesis_contracts.fingerprint import fact_fingerprint
+from genesis_contracts.map_tasks import EvidenceCite, FlowSubmission, MapPlan
+from genesis_contracts.models import EvidenceRef, EvidenceSide, ReferenceRange
+from pydantic import ValidationError
+
+from genesis_ci.snapshot import slice_source
+from genesis_ci.snapshot_store import load_snapshot
+
+from .changes import CHANGE_TASK, ChangeAnalysis
+from .python_entries import entry_id
+from .session import evidence_bundle, session_root, write_json
+from .skeleton import (
+    _entry_label,
+    _evaluation_order,
+    control_edges,
+    flow_id_for,
+    shown_facts,
+    skeleton_flow,
+)
+
+HEAD = EvidenceSide.head
+ACCOUNTABLE_DEPTH = 2
+ACCOUNTABLE_LIMIT = 150
+ANCHOR_RANGE_LINES = 12
+SOURCE_CHARS = 12000
+SEARCH_LIMIT = 40
+CLAIM_SECONDS = 900
+OTHER_FACT_LIMIT = 80
+ROOT_CANDIDATE_LIMIT = 40
+_ACCOUNTED = {FactKind.condition, FactKind.loop, FactKind.raises}
+RULES = (
+    "Name steps in business language; one step may cover several code facts.",
+    "Cite evidence for every step: an evidence_id, or path + start_line + end_line + quote.",
+    "A resolved step needs anchors. List fact fingerprints, or cite a range of at most "
+    f"{ANCHOR_RANGE_LINES} lines and the facts inside it become the anchors.",
+    "Every accountable fact must be used by a step or branch, or listed in `omitted` with a "
+    "reason. Whatever is left is reported as unaccounted.",
+    "A branch edge leaves a decision step and names the branch of that condition it takes.",
+    "If the code does not show a relation, submit it as candidate or unknown with a reason.",
+)
+
+
+class LoopError(ValueError):
+    """A request the session cannot accept. `errors` lists every problem found."""
+
+    def __init__(self, code: str, message: str, errors: list[dict] | None = None):
+        self.code = code
+        self.errors = errors or []
+        super().__init__(message)
+
+
+def _digest(text: str, length: int = 12) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:length]
+
+
+def _problem(path: str, code: str, message: str) -> dict:
+    return {"path": path, "code": code, "message": message}
+
+
+def _location(parts) -> str:
+    """`steps[1].evidence[0]`, the same form the CLI's own checks report."""
+    text = ""
+    for part in parts:
+        text += f"[{part}]" if isinstance(part, int) else ("." if text else "") + str(part)
+    return text or "(document)"
+
+
+def pydantic_problems(error: ValidationError) -> list[dict]:
+    found = error.errors()
+    places = [tuple(item["loc"]) for item in found]
+
+    def echo(item) -> bool:
+        # A list reported as too short only because one of its items was invalid.
+        place = tuple(item["loc"])
+        return item["type"] == "too_short" and any(
+            other != place and other[: len(place)] == place for other in places
+        )
+
+    return [
+        _problem(_location(item["loc"]), "invalid_" + item["type"], item["msg"])
+        for item in found
+        if not echo(item)
+    ]
+
+
+_pydantic_problems = pydantic_problems
+
+
+class Workspace:
+    def __init__(self, repo: Path, session_id: str):
+        self.repo = repo.expanduser().resolve(strict=True)
+        self.root = session_root(self.repo, session_id)
+        if not (self.root / "session.json").is_file():
+            raise FileNotFoundError(f"no such session: {session_id}")
+        self.session = self._read("session.json")
+        stored = self._read("evidence.json") if (self.root / "evidence.json").is_file() else []
+        self._minted = {item["evidence_id"]: EvidenceRef.model_validate(item) for item in stored}
+
+    def _read(self, name: str):
+        return json.loads((self.root / name).read_text(encoding="utf-8"))
+
+    @cached_property
+    def facts(self) -> FactSet:
+        return FactSet.model_validate_json((self.root / "facts.json").read_text(encoding="utf-8"))
+
+    @cached_property
+    def snapshot(self):
+        return load_snapshot(self.root / "snapshot")
+
+    @cached_property
+    def symbols(self) -> dict:
+        return {item.symbol_id: item for item in self.facts.symbols if item.side == HEAD}
+
+    @cached_property
+    def by_symbol(self) -> dict[str, list[CodeFact]]:
+        grouped: dict[str, list[CodeFact]] = {}
+        for fact in self.facts.facts:
+            if fact.side == HEAD:
+                grouped.setdefault(fact.symbol_id, []).append(fact)
+        for items in grouped.values():
+            items.sort(key=_evaluation_order)
+        return grouped
+
+    @cached_property
+    def by_fingerprint(self) -> dict[str, CodeFact]:
+        return {fact.fingerprint: fact for fact in self.facts.facts if fact.side == HEAD}
+
+    @cached_property
+    def catalog(self) -> dict[str, EvidenceRef]:
+        return {ref.evidence_id: ref for ref in self.facts.evidence}
+
+    def evidence(self, evidence_id: str) -> EvidenceRef | None:
+        return self.catalog.get(evidence_id) or self._minted.get(evidence_id)
+
+    def adopt_evidence(self, refs: dict[str, EvidenceRef]) -> None:
+        """Keep references minted elsewhere in this session, so they can be read back."""
+        fresh = {key: ref for key, ref in refs.items() if key not in self._minted}
+        if fresh:
+            self._minted.update(fresh)
+            write_json(
+                self.root / "evidence.json",
+                [self._minted[key].model_dump(mode="json") for key in sorted(self._minted)],
+            )
+
+    # ----- change sessions ---------------------------------------------------------
+
+    @property
+    def is_change(self) -> bool:
+        return self.session.get("mode") == "change"
+
+    @cached_property
+    def changes(self) -> ChangeAnalysis:
+        return ChangeAnalysis(self)
+
+    def stored_map(self) -> BusinessMap:
+        return BusinessMap.model_validate_json(
+            (self.root / "business-map.json").read_text(encoding="utf-8")
+        )
+
+    def stored_report(self) -> ChangeReport | None:
+        if not self.is_change:
+            return None
+        path = self.root / "change-report.json"
+        if not path.is_file():
+            return self.refresh_change()
+        return ChangeReport.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def change_summary(self) -> dict:
+        if not self.is_change:
+            raise LoopError(
+                "not_a_change_session",
+                "This session compares nothing. Run `genesis map prepare --base REV` to "
+                "analyze the changes since a revision.",
+            )
+        return {**self.session, **self.changes.summary(self.stored_map())}
+
+    def refresh_change(self) -> ChangeReport | None:
+        """Rebuild the change report against the map as it is stored now."""
+        return self._publish(self.stored_map())
+
+    def _publish(self, business_map: BusinessMap) -> ChangeReport | None:
+        """Store the map, the change report that follows from it, and their excerpts."""
+        write_json(
+            self.root / "business-map.json",
+            business_map.model_dump(mode="json", exclude_none=True),
+        )
+        evidence = {ref.evidence_id: ref for ref in business_map.evidence}
+        report = None
+        if self.is_change:
+            report = self.changes.build(business_map)
+            write_json(
+                self.root / "change-report.json", report.model_dump(mode="json", exclude_none=True)
+            )
+            evidence.update((ref.evidence_id, ref) for ref in report.evidence)
+        bundle = evidence_bundle(self.snapshot, tuple(evidence[key] for key in sorted(evidence)))
+        write_json(self.root / "evidence-bundle.json", bundle.model_dump(mode="json"))
+        return report
+
+    def _submit_change(self, raw) -> dict:
+        """Check explanations and coverage verdicts for changes; all or nothing."""
+        folder = self.root / "changes"
+        try:
+            accepted, found = self.changes.check(raw)
+            problems = [_problem(*item) for item in found]
+        except ValidationError as error:
+            accepted, problems = {}, _pydantic_problems(error)
+        if problems:
+            counter = {"rejected": 0}
+            if (folder / "attempts.json").is_file():
+                counter = json.loads((folder / "attempts.json").read_text(encoding="utf-8"))
+            counter["rejected"] += 1
+            write_json(folder / "attempts.json", counter)
+            return {
+                "task_id": CHANGE_TASK,
+                "status": "rejected",
+                "rejections": counter["rejected"],
+                "accepted_version_kept": True,
+                "errors": problems,
+            }
+        write_json(
+            folder / "accepted.json",
+            {"assessments": {**self.changes.assessments(), **accepted}},
+        )
+        report = self.refresh_change()
+        return {
+            "task_id": CHANGE_TASK,
+            "status": "accepted",
+            "assessed": len(accepted),
+            **self._change_progress(report),
+            "errors": [],
+        }
+
+    def _change_progress(self, report: ChangeReport) -> dict:
+        placed = [item for item in report.changes if item.projection.status != "unassigned"]
+        return {
+            "analysis_status": report.analysis_status,
+            "changes": len(report.changes),
+            "changes_placed": len(placed),
+            "changes_waiting": sum(1 for item in placed if item.explanation is None),
+            "limitations": [item.code for item in report.limitations if item.affects_completeness],
+        }
+
+    # ----- entries, plan and tasks ------------------------------------------------
+
+    @cached_property
+    def plan(self) -> dict | None:
+        return self._read("plan.json") if (self.root / "plan.json").is_file() else None
+
+    def entries(self) -> dict[str, CodeEntry]:
+        """Head-side entries by id, including the ones an accepted plan proposed."""
+        found = {item.entry_id: item for item in self.facts.entries if item.side == HEAD}
+        for raw in (self.plan or {}).get("proposed", []):
+            found[raw["entry_id"]] = CodeEntry.model_validate(raw)
+        return found
+
+    def entry_anchor(self, entry: CodeEntry) -> str:
+        return fact_fingerprint(symbol=entry.symbol_id, kind="entry", text=_entry_label(entry))
+
+    def default_plan(self) -> MapPlan:
+        folders: dict[str, list[CodeEntry]] = {}
+        for entry in self.entries().values():
+            if entry.detection == "adapter":
+                folder = str(PurePosixPath(entry.symbol_id.partition("#")[0]).parent)
+                folders.setdefault("(repository root)" if folder == "." else folder, []).append(
+                    entry
+                )
+        return MapPlan(
+            domains=[{"key": "d_" + _digest(name), "name": name[:200]} for name in sorted(folders)],
+            flows=[
+                {
+                    "key": "f_" + entry.entry_id[6:],
+                    "domain": "d_" + _digest(name),
+                    "entry_ids": [entry.entry_id],
+                }
+                for name in sorted(folders)
+                for entry in sorted(folders[name], key=lambda item: item.symbol_id)
+            ],
+        )
+
+    def accountable(self, symbol_ids) -> tuple[list[CodeFact], bool]:
+        """Facts a flow has to account for, breadth first from its entry symbols."""
+        chosen, seen, frontier = [], set(symbol_ids), list(symbol_ids)
+        for depth in range(ACCOUNTABLE_DEPTH + 1):
+            following = []
+            for symbol in frontier:
+                for fact in self.by_symbol.get(symbol, ()):
+                    if fact.kind == FactKind.call:
+                        internal = [t for t in fact.target.targets if t in self.symbols]
+                        following += [t for t in internal if t not in seen]
+                        seen.update(internal)
+                        if fact.boundary == CallBoundary.external or (
+                            fact.boundary == CallBoundary.unknown and fact.awaited
+                        ):
+                            chosen.append(fact)
+                    elif fact.kind in _ACCOUNTED or (fact.kind == FactKind.returns and depth == 0):
+                        chosen.append(fact)
+            frontier = following
+        return chosen[:ACCOUNTABLE_LIMIT], len(chosen) > ACCOUNTABLE_LIMIT
+
+    def save_plan(self, plan: MapPlan | None) -> dict:
+        origin = "agent" if plan is not None else "default"
+        plan = plan or self.default_plan()
+        known = {item.entry_id: item for item in self.facts.entries if item.side == HEAD}
+        problems, proposed = [], []
+        for index, item in enumerate(plan.proposed_entries):
+            where = f"proposed_entries[{index}]"
+            symbol = self.symbols.get(item.symbol_id)
+            if symbol is None or symbol.kind != "function":
+                problems.append(
+                    _problem(
+                        where + ".symbol_id", "unknown_symbol", "No such function in the snapshot."
+                    )
+                )
+                continue
+            if entry_id(item.symbol_id) in known:
+                problems.append(
+                    _problem(where + ".symbol_id", "already_an_entry", entry_id(item.symbol_id))
+                )
+                continue
+            cited = self._cite(item.evidence, where + ".evidence", problems)
+            if cited:
+                proposed.append(
+                    {
+                        "entry_id": entry_id(item.symbol_id),
+                        "symbol_id": item.symbol_id,
+                        "kind": item.kind.value,
+                        "detection": "agent_proposed",
+                        "attributes": {"reason": item.reason[:200]},
+                        "evidence_ids": cited,
+                        "side": "head",
+                    }
+                )
+        usable = set(known) | {item["entry_id"] for item in proposed}
+        for index, flow in enumerate(plan.flows):
+            for entry in flow.entry_ids:
+                if entry not in usable:
+                    problems.append(
+                        _problem(f"flows[{index}].entry_ids", "unknown_entry", f"No entry {entry}.")
+                    )
+        for index, item in enumerate(plan.skipped):
+            if item.entry_id not in usable:
+                problems.append(
+                    _problem(
+                        f"skipped[{index}].entry_id", "unknown_entry", f"No entry {item.entry_id}."
+                    )
+                )
+        if problems:
+            raise LoopError("invalid_plan", "The plan was not accepted.", problems)
+        entries = {
+            **known,
+            **{item["entry_id"]: CodeEntry.model_validate(item) for item in proposed},
+        }
+        tasks = []
+        for flow in plan.flows:
+            symbols = [entries[entry].symbol_id for entry in flow.entry_ids]
+            facts, truncated = self.accountable(symbols)
+            flow_id = flow_id_for(symbols)
+            tasks.append(
+                {
+                    "task_id": "task_" + flow_id[5:],
+                    "kind": "flow",
+                    "flow_key": flow.key,
+                    "flow_id": flow_id,
+                    "entry_ids": list(flow.entry_ids),
+                    "accountable": [fact.fingerprint for fact in facts],
+                    "truncated": truncated,
+                }
+            )
+        write_json(
+            self.root / "plan.json",
+            {
+                "origin": origin,
+                "plan": plan.model_dump(mode="json", exclude_none=True),
+                "proposed": proposed,
+                "tasks": tasks,
+            },
+        )
+        self.__dict__.pop("plan", None)
+        self.assemble()
+        return {"status": "accepted", **self.status()}
+
+    def tasks(self) -> list[dict]:
+        if self.plan is None:
+            raise LoopError("no_plan", "Run `genesis map plan` before working on tasks.")
+        return self.plan["tasks"]
+
+    def task(self, task_id: str) -> dict:
+        found = next((item for item in self.tasks() if item["task_id"] == task_id), None)
+        if found is None:
+            raise LoopError("unknown_task", f"No task {task_id} in the current plan.")
+        return found
+
+    def _task_file(self, task_id: str, name: str) -> Path:
+        return self.root / "tasks" / task_id / name
+
+    def _stored(self, task_id: str, name: str):
+        path = self._task_file(task_id, name)
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+    def task_state(self, task: dict) -> str:
+        if self._stored(task["task_id"], "accepted.json") is not None:
+            return "validated"
+        if self._stored(task["task_id"], "rejected.json") is not None:
+            return "failed"
+        claim = self._stored(task["task_id"], "claim.json")
+        return "claimed" if claim and claim["expires_at"] > time.time() else "pending"
+
+    # ----- evidence ----------------------------------------------------------------
+
+    def _register(self, side, path, span) -> EvidenceRef:
+        ref = self.snapshot.source.evidence(side, path, span)
+        if ref.evidence_id not in self.catalog and ref.evidence_id not in self._minted:
+            self._minted[ref.evidence_id] = ref
+            write_json(
+                self.root / "evidence.json",
+                [self._minted[key].model_dump(mode="json") for key in sorted(self._minted)],
+            )
+        return ref
+
+    def _cite(self, cites: tuple[EvidenceCite, ...], where: str, problems: list) -> list[str]:
+        """Resolve citations against the frozen snapshot; report every one that fails."""
+        resolved = []
+        for index, cite in enumerate(cites):
+            at = f"{where}[{index}]"
+            if cite.evidence_id is not None:
+                if self.evidence(cite.evidence_id) is None:
+                    problems.append(_problem(at, "unknown_evidence", cite.evidence_id))
+                else:
+                    resolved.append(cite.evidence_id)
+                continue
+            if cite.side != HEAD:
+                problems.append(
+                    _problem(at, "wrong_side", "Only head-side source can be cited here.")
+                )
+                continue
+            if cite.path not in self.snapshot.source.list_files(cite.side):
+                problems.append(
+                    _problem(
+                        at, "file_not_in_snapshot", f"{cite.path} is not in the frozen snapshot."
+                    )
+                )
+                continue
+            span = ReferenceRange(start_line=cite.start_line, end_line=cite.end_line)
+            try:
+                text = slice_source(self.snapshot.source.read_text(cite.side, cite.path), span)
+            except ValueError:
+                problems.append(
+                    _problem(at, "range_out_of_bounds", "The line range is outside the file.")
+                )
+                continue
+            if cite.quote not in text:
+                problems.append(
+                    _problem(
+                        at,
+                        "quote_not_found",
+                        "The quote is not in that range of the frozen file; read it again through the CLI.",
+                    )
+                )
+                continue
+            resolved.append(self._register(cite.side, cite.path, span).evidence_id)
+        return list(dict.fromkeys(resolved))
+
+    def _facts_in(self, evidence_ids) -> list[str]:
+        """Fingerprints of facts inside short cited ranges, in evaluation order."""
+        found = []
+        for evidence_id in evidence_ids:
+            ref = self.evidence(evidence_id)
+            if ref is None or ref.range.end_line - ref.range.start_line >= ANCHOR_RANGE_LINES:
+                continue
+            for symbol, facts in self.by_symbol.items():
+                if symbol.partition("#")[0] != ref.path:
+                    continue
+                if symbol.endswith("#<module>"):
+                    # A decorator or default value runs at import time, not in the flow.
+                    continue
+                found += [
+                    fact.fingerprint
+                    for fact in facts
+                    if fact.kind not in {FactKind.breaks, FactKind.continues}
+                    and fact.boundary != CallBoundary.builtin
+                    and ref.range.start_line <= fact.range.start_line
+                    and fact.range.end_line <= ref.range.end_line
+                ]
+        return found
+
+    # ----- context and queries -----------------------------------------------------
+
+    def _source(self, symbol_id: str) -> dict:
+        symbol = self.symbols[symbol_id]
+        span = ReferenceRange(start_line=symbol.range.start_line, end_line=symbol.range.end_line)
+        text = slice_source(self.snapshot.source.read_text(HEAD, symbol.path), span)
+        return {
+            "symbol_id": symbol_id,
+            "path": symbol.path,
+            "start_line": span.start_line,
+            "end_line": span.end_line,
+            "text": text[:SOURCE_CHARS],
+            "truncated": len(text) > SOURCE_CHARS,
+        }
+
+    def _fact_view(self, fact: CodeFact) -> dict:
+        view = {
+            "fingerprint": fact.fingerprint,
+            "kind": fact.kind.value,
+            "text": fact.text[:400],
+            "symbol_id": fact.symbol_id,
+            "line": fact.range.start_line,
+            "evidence_id": fact.evidence_ids[0],
+        }
+        if fact.branches:
+            view["branches"] = list(fact.branches)
+        if fact.guards:
+            view["guards"] = [
+                {"fingerprint": g.fingerprint, "branch": g.branch} for g in fact.guards
+            ]
+        if fact.kind == FactKind.call:
+            view["boundary"] = fact.boundary.value
+            view["targets"] = list(fact.target.targets)
+        return view
+
+    def _callees(self, symbol_ids) -> list[str]:
+        found = []
+        for symbol in symbol_ids:
+            for fact in self.by_symbol.get(symbol, ()):
+                if fact.kind == FactKind.call:
+                    found += [t for t in fact.target.targets if t in self.symbols]
+        return sorted(set(found) - set(symbol_ids))
+
+    def context(self, task_id: str, claim: bool = False) -> dict:
+        if task_id == CHANGE_TASK:
+            if not self.is_change:
+                self.change_summary()
+            return self.changes.context(self.stored_map())
+        task = self.task(task_id)
+        if claim:
+            current = self._stored(task_id, "claim.json")
+            if current and current["expires_at"] > time.time():
+                raise LoopError("task_claimed", "Another worker holds this task for now.")
+            write_json(
+                self._task_file(task_id, "claim.json"), {"expires_at": time.time() + CLAIM_SECONDS}
+            )
+        entries = self.entries()
+        chosen = [entries[item] for item in task["entry_ids"]]
+        symbols = [entry.symbol_id for entry in chosen]
+        accepted = self._stored(task_id, "accepted.json")
+        return {
+            "task_id": task_id,
+            "kind": task["kind"],
+            "state": self.task_state(task),
+            "flow_id": task["flow_id"],
+            "entries": [
+                {
+                    "entry_id": entry.entry_id,
+                    "symbol_id": entry.symbol_id,
+                    "kind": entry.kind.value,
+                    "detection": entry.detection.value,
+                    "framework": entry.framework,
+                    "attributes": entry.attributes,
+                    "anchor": self.entry_anchor(entry),
+                    "evidence_ids": list(entry.evidence_ids),
+                }
+                for entry in chosen
+            ],
+            "source": [self._source(symbol) for symbol in symbols],
+            "accountable": [self._fact_view(self.by_fingerprint[fp]) for fp in task["accountable"]],
+            "accountable_truncated": task["truncated"],
+            "other_facts": [
+                self._fact_view(fact)
+                for symbol in symbols
+                for fact in self.by_symbol.get(symbol, ())
+                if fact.fingerprint not in task["accountable"]
+                and fact.kind not in {FactKind.breaks, FactKind.continues}
+                and fact.boundary != CallBoundary.builtin
+            ][:OTHER_FACT_LIMIT],
+            "callees": self._callees(symbols),
+            "previous": accepted["result"] if accepted else None,
+            "rules": list(RULES),
+        }
+
+    def query_symbol(self, symbol_id: str) -> dict:
+        if symbol_id not in self.symbols:
+            near = sorted(key for key in self.symbols if key.endswith(symbol_id.rsplit("#", 1)[-1]))
+            raise LoopError(
+                "unknown_symbol",
+                f"No symbol {symbol_id}.",
+                [_problem("symbol", "candidates", ", ".join(near[:10]) or "none")],
+            )
+        callers = sorted(
+            {
+                fact.symbol_id
+                for fact in self.by_fingerprint.values()
+                if fact.kind == FactKind.call and symbol_id in fact.target.targets
+            }
+        )
+        return {
+            "source": self._source(symbol_id),
+            "facts": [self._fact_view(fact) for fact in self.by_symbol.get(symbol_id, ())],
+            "callers": callers,
+            "callees": self._callees([symbol_id]),
+        }
+
+    def search(self, text: str) -> dict:
+        if not text.strip():
+            raise LoopError("empty_search", "Search text must not be empty.")
+        matches, truncated = [], False
+        for path in self.snapshot.source.list_files(HEAD):
+            lines = self.snapshot.source.read_text(HEAD, path).split("\n")
+            for number, line in enumerate(lines, 1):
+                if text in line:
+                    if len(matches) >= SEARCH_LIMIT:
+                        truncated = True
+                        break
+                    span = ReferenceRange(start_line=number, end_line=number)
+                    matches.append(
+                        {
+                            "path": path,
+                            "line": number,
+                            "text": line.strip()[:240],
+                            "evidence_id": self._register(HEAD, path, span).evidence_id,
+                        }
+                    )
+            if truncated:
+                break
+        return {"matches": matches, "truncated": truncated}
+
+    def read(self, evidence_id: str) -> dict:
+        ref = self.evidence(evidence_id)
+        if ref is None:
+            raise LoopError("unknown_evidence", f"No evidence {evidence_id} in this session.")
+        text = slice_source(self.snapshot.source.read_text(ref.side, ref.path), ref.range)
+        return {
+            "evidence_id": evidence_id,
+            "side": ref.side.value,
+            "path": ref.path,
+            "start_line": ref.range.start_line,
+            "end_line": ref.range.end_line,
+            "text": text[:SOURCE_CHARS],
+            "truncated": len(text) > SOURCE_CHARS,
+        }
+
+    # ----- submission --------------------------------------------------------------
+
+    def _root(self, symbol: str) -> str:
+        return fact_fingerprint(symbol=symbol, kind="entry", text="<enter>")
+
+    def _graph(self, symbol: str) -> dict:
+        cache = self.__dict__.setdefault("_graphs", {})
+        if symbol not in cache:
+            cache[symbol] = control_edges(self.by_symbol.get(symbol, ()), self._root(symbol))
+        return cache[symbol]
+
+    def _reach(self, symbol: str, starts) -> set[str]:
+        """Facts of a symbol that control can reach from `starts`, the starts included."""
+        graph, seen, pending = self._graph(symbol), set(starts), list(starts)
+        while pending:
+            for target, _ in graph.get(pending.pop(), ()):
+                if target not in seen:
+                    seen.add(target)
+                    pending.append(target)
+        return seen
+
+    def _passes(self, starts: dict[str, set[str]], targets: list[str], symbols: dict) -> bool:
+        """Whether control can pass from `starts` (facts by symbol) to any target fact.
+
+        Inside one function the target must be reachable in its control structure. Across
+        functions, a reachable call must lead into the target's function, or the target
+        must come after a call into the function control is leaving.
+        """
+        goals: dict[str, set[str]] = {}
+        for fingerprint in targets:
+            goals.setdefault(symbols[fingerprint], set()).add(fingerprint)
+        for symbol, nodes in starts.items():
+            reached = self._reach(symbol, nodes)
+            if reached & goals.get(symbol, set()):
+                return True
+            for fact in self.by_symbol.get(symbol, ()):
+                if (
+                    fact.kind == FactKind.call
+                    and fact.fingerprint in reached
+                    and set(fact.target.targets) & goals.keys()
+                ):
+                    return True
+            for callee_of, wanted in goals.items():
+                returns_to = {
+                    fact.fingerprint
+                    for fact in self.by_symbol.get(callee_of, ())
+                    if fact.kind == FactKind.call and symbol in fact.target.targets
+                }
+                if returns_to and self._reach(callee_of, returns_to) & wanted:
+                    return True
+        return False
+
+    def _nodes(self, anchors: list[str], symbols: dict, entry_anchors: set[str]) -> dict:
+        """Group a step's anchors by symbol; an entry anchor stands for entering it."""
+        grouped: dict[str, set[str]] = {}
+        for fingerprint in anchors:
+            symbol = symbols[fingerprint]
+            node = self._root(symbol) if fingerprint in entry_anchors else fingerprint
+            grouped.setdefault(symbol, set()).add(node)
+        return grouped
+
+    def submit(self, task_id: str, raw) -> dict:
+        if task_id == CHANGE_TASK:
+            if not self.is_change:
+                self.change_summary()
+            return self._submit_change(raw)
+        task = self.task(task_id)
+        try:
+            submission = FlowSubmission.model_validate(raw)
+        except ValidationError as error:
+            return self._reject(task, _pydantic_problems(error))
+        entries = self.entries()
+        chosen = [entries[item] for item in task["entry_ids"]]
+        anchor_symbols = {fp: fact.symbol_id for fp, fact in self.by_fingerprint.items()}
+        entry_anchors = {self.entry_anchor(entry) for entry in chosen}
+        anchor_symbols.update((self.entry_anchor(entry), entry.symbol_id) for entry in chosen)
+        problems: list[dict] = []
+        steps, by_key, cited, taken_ids = [], {}, set(), set()
+        # Steps whose citations failed: report that once, not every consequence of it.
+        broken: set[str] = set()
+        for index, step in enumerate(submission.steps):
+            where = f"steps[{index}]"
+            before = len(problems)
+            evidence = self._cite(step.evidence, where + ".evidence", problems)
+            if len(problems) > before:
+                broken.add(step.key)
+            unknown = [fp for fp in step.anchors if fp not in anchor_symbols]
+            if unknown:
+                problems.append(_problem(where + ".anchors", "unknown_anchor", ", ".join(unknown)))
+            anchors = list(
+                dict.fromkeys(
+                    [
+                        *(fp for fp in step.anchors if fp in anchor_symbols),
+                        *self._facts_in(evidence),
+                    ]
+                )
+            )
+            if step.key in broken:
+                pass
+            elif step.resolution == "resolved" and not anchors:
+                short = all(
+                    (ref := self.evidence(item)).range.end_line - ref.range.start_line
+                    < ANCHOR_RANGE_LINES
+                    for item in evidence
+                )
+                problems.append(
+                    _problem(
+                        where,
+                        "step_not_anchored",
+                        (
+                            "The cited lines contain no analyzer fact; a plain assignment has "
+                            "none. Fold this into a neighbouring step, list the fingerprint of a "
+                            "fact in `anchors`, or submit the step as candidate with a reason."
+                            if evidence and short
+                            else "A resolved step needs an analyzer fact: list anchors, cite a "
+                            f"range of at most {ANCHOR_RANGE_LINES} lines that contains one, or "
+                            "submit the step as candidate with a reason."
+                        ),
+                    )
+                )
+            if step.key not in broken and step.resolution != "unknown" and not evidence:
+                problems.append(
+                    _problem(where + ".evidence", "evidence_required", "Cite the code.")
+                )
+            if step.resolution != "resolved" and not step.reason:
+                problems.append(
+                    _problem(where + ".reason", "reason_required", "Say what is uncertain.")
+                )
+            if len(problems) > before:
+                broken.add(step.key)
+            identity = anchors[0] if anchors else "key:" + step.key
+            step_id = "step_" + _digest(task["flow_id"] + "\0" + identity, 16)
+            if step_id in taken_ids:
+                step_id = "step_" + _digest(task["flow_id"] + "\0" + identity + "\0" + step.key, 16)
+            taken_ids.add(step_id)
+            cited.update(evidence)
+            item = {
+                "step_id": step_id,
+                "name": step.name,
+                "kind": step.kind.value,
+                "support": "agent_synthesis",
+                "resolution": step.resolution.value,
+                "anchors": anchors,
+                "evidence_ids": evidence,
+                "finding_ids": [],
+            }
+            if step.reason:
+                item["reason"] = step.reason
+            steps.append(item)
+            by_key[step.key] = item
+        edges = []
+        for index, edge in enumerate(submission.edges):
+            where = f"edges[{index}]"
+            source, target = by_key[edge.source], by_key[edge.target]
+            evidence = self._cite(edge.evidence, where + ".evidence", problems)
+            cited.update(evidence)
+            if broken & {edge.source, edge.target}:
+                continue
+            item = {
+                "source": source["step_id"],
+                "target": target["step_id"],
+                "relation": edge.relation.value,
+            }
+            if edge.label and edge.relation != EdgeRelation.branch:
+                item["label"] = edge.label
+            if edge.relation == EdgeRelation.branch:
+                conditions = [
+                    fp
+                    for fp in source["anchors"]
+                    if fp in self.by_fingerprint and edge.branch in self.by_fingerprint[fp].branches
+                ]
+                if source["kind"] != StepKind.decision.value or not conditions:
+                    valid = sorted(
+                        {
+                            branch
+                            for fp in source["anchors"]
+                            if fp in self.by_fingerprint
+                            for branch in self.by_fingerprint[fp].branches
+                        }
+                    )
+                    problems.append(
+                        _problem(
+                            where + ".branch",
+                            "unknown_branch",
+                            "The source must be a decision step anchored on a condition with this "
+                            f"branch. Branches available there: {', '.join(valid) or 'none'}.",
+                        )
+                    )
+                    continue
+                taken = {
+                    target
+                    for target, branch in self._graph(anchor_symbols[conditions[0]]).get(
+                        conditions[0], ()
+                    )
+                    if branch == edge.branch
+                }
+                if not (
+                    target["anchors"]
+                    and self._passes(
+                        {anchor_symbols[conditions[0]]: taken}, target["anchors"], anchor_symbols
+                    )
+                ):
+                    problems.append(
+                        _problem(
+                            where,
+                            "branch_target_not_reachable",
+                            f"Taking the '{edge.branch}' branch does not lead to the target step. "
+                            "Point the edge at the step that branch reaches, or submit the "
+                            "relation as a candidate sequence with a reason.",
+                        )
+                    )
+                    continue
+                item.update(
+                    condition={
+                        "label": edge.label or edge.branch,
+                        "branch": edge.branch,
+                        "anchor": conditions[0],
+                    },
+                    support="static_fact",
+                    resolution="resolved",
+                    evidence_ids=evidence or list(self.by_fingerprint[conditions[0]].evidence_ids),
+                )
+            elif edge.resolution == "resolved":
+                supported = (
+                    source["anchors"]
+                    and target["anchors"]
+                    and self._passes(
+                        self._nodes(source["anchors"], anchor_symbols, entry_anchors),
+                        [
+                            self._root(anchor_symbols[fp]) if fp in entry_anchors else fp
+                            for fp in target["anchors"]
+                        ],
+                        {
+                            **anchor_symbols,
+                            **{self._root(s): s for s in set(anchor_symbols.values())},
+                        },
+                    )
+                )
+                if not supported:
+                    problems.append(
+                        _problem(
+                            where,
+                            "edge_not_supported",
+                            "The code's control structure does not let execution pass from the "
+                            "source step to the target step. Check the order and the branches, "
+                            "or submit the edge as candidate with a reason.",
+                        )
+                    )
+                    continue
+                item.update(
+                    support="static_fact",
+                    resolution="resolved",
+                    anchors=sorted({source["anchors"][0], target["anchors"][0]}),
+                    evidence_ids=evidence or target["evidence_ids"] or source["evidence_ids"],
+                )
+            else:
+                if not edge.reason:
+                    problems.append(
+                        _problem(where + ".reason", "reason_required", "Say what is uncertain.")
+                    )
+                item.update(
+                    support="agent_synthesis",
+                    resolution=edge.resolution.value,
+                    reason=edge.reason or "",
+                    evidence_ids=evidence or target["evidence_ids"] or source["evidence_ids"],
+                )
+            cited.update(item["evidence_ids"])
+            edges.append(item)
+        used = {fp for step in steps for fp in step["anchors"]}
+        used.update(fp for edge in edges for fp in edge.get("anchors", ()))
+        used.update(edge["condition"]["anchor"] for edge in edges if "condition" in edge)
+        accountable = list(task["accountable"])
+        omitted = []
+        for index, item in enumerate(submission.omitted):
+            where = f"omitted[{index}].anchor"
+            if item.anchor not in accountable:
+                problems.append(
+                    _problem(where, "not_accountable", "This fact is not on the task's list.")
+                )
+            elif item.anchor in used:
+                problems.append(
+                    _problem(where, "omitted_but_used", "A step or branch already uses it.")
+                )
+            else:
+                entry = {"anchor": item.anchor, "reason": item.reason.value}
+                if item.note:
+                    entry["note"] = item.note
+                omitted.append(entry)
+        left_out = {item["anchor"] for item in omitted}
+        unaccounted = [fp for fp in accountable if fp not in used and fp not in left_out]
+        findings = []
+        for index, item in enumerate(submission.observations):
+            evidence = self._cite(item.evidence, f"observations[{index}].evidence", problems)
+            cited.update(evidence)
+            finding_id = "find_" + _digest(task["flow_id"] + "\0" + item.statement)
+            if evidence:
+                finding = {
+                    "finding_id": finding_id,
+                    "source": "agent_observation",
+                    "severity": item.severity.value,
+                    "statement": item.statement,
+                    "evidence_ids": evidence,
+                }
+                if item.gap:
+                    finding["gap"] = item.gap
+                findings.append(finding)
+                by_key[item.step]["finding_ids"].append(finding_id)
+        flow = {
+            "flow_id": task["flow_id"],
+            "name": submission.name,
+            "stage": "synthesized",
+            "support": "agent_synthesis",
+            "entries": [
+                entry.model_dump(mode="json", exclude={"side"}, exclude_none=True)
+                for entry in chosen
+            ],
+            "steps": steps,
+            "edges": edges,
+            "accounting": {
+                "accountable": len(accountable),
+                "covered": len(accountable) - len(omitted) - len(unaccounted),
+                "omitted": len(omitted),
+                "unaccounted": len(unaccounted),
+                "truncated": task["truncated"],
+            },
+            "omitted": omitted,
+            "unaccounted": unaccounted,
+        }
+        if submission.summary:
+            flow["summary"] = submission.summary
+        cited.update(ref for entry in chosen for ref in entry.evidence_ids)
+        if not problems:
+            try:
+                MapFlow.model_validate(flow)
+            except ValidationError as error:
+                problems = _pydantic_problems(error)
+        if problems:
+            return self._reject(task, problems)
+        result = {
+            "task_id": task_id,
+            "status": "accepted",
+            "flow_id": task["flow_id"],
+            "steps": {step.key: by_key[step.key]["step_id"] for step in submission.steps},
+            "accounting": flow["accounting"],
+            "unaccounted": [self._fact_view(self.by_fingerprint[fp]) for fp in unaccounted],
+            "errors": [],
+        }
+        accepted = self._task_file(task_id, "accepted.json")
+        previous = accepted.read_text(encoding="utf-8") if accepted.is_file() else None
+        write_json(
+            accepted,
+            {"flow": flow, "findings": findings, "evidence_ids": sorted(cited), "result": result},
+        )
+        try:
+            assembled = self.assemble()
+        except ValidationError as error:
+            # Never keep a submission the whole map cannot be built with.
+            if previous is None:
+                accepted.unlink()
+            else:
+                accepted.write_text(previous, encoding="utf-8")
+            return self._reject(task, _pydantic_problems(error))
+        self._task_file(task_id, "rejected.json").unlink(missing_ok=True)
+        return {**result, "analysis_status": assembled.analysis_status}
+
+    def _reject(self, task: dict, problems: list[dict]) -> dict:
+        """Keep the last accepted version; record why this attempt was refused."""
+        counter = self._stored(task["task_id"], "attempts.json") or {"rejected": 0}
+        counter["rejected"] += 1
+        write_json(self._task_file(task["task_id"], "attempts.json"), counter)
+        kept = self._stored(task["task_id"], "accepted.json") is not None
+        if not kept:
+            write_json(self._task_file(task["task_id"], "rejected.json"), {"errors": problems})
+            self.assemble()
+        return {
+            "task_id": task["task_id"],
+            "status": "rejected",
+            "flow_id": task["flow_id"],
+            "rejections": counter["rejected"],
+            "accepted_version_kept": kept,
+            "errors": problems,
+        }
+
+    # ----- assembly and status -----------------------------------------------------
+
+    def assemble(self) -> BusinessMap:
+        """Rebuild the map from the plan, the accepted submissions and the facts."""
+        if self.plan is None:
+            raise LoopError("no_plan", "Nothing to assemble before a plan exists.")
+        plan, entries = self.plan["plan"], self.entries()
+        shown = shown_facts(self.facts)
+        flows, findings, cited, states = [], [], set(), []
+        flow_of_key = {}
+        for task in self.plan["tasks"]:
+            accepted = self._stored(task["task_id"], "accepted.json")
+            states.append(self.task_state(task))
+            if accepted is not None:
+                flow = accepted["flow"]
+                findings += accepted["findings"]
+                cited.update(accepted["evidence_ids"])
+            else:
+                flow, evidence = skeleton_flow([entries[item] for item in task["entry_ids"]], shown)
+                cited.update(evidence)
+            if task["truncated"] and accepted is not None:
+                flow = {
+                    **flow,
+                    "limitations": [
+                        {
+                            "code": "accountable_truncated",
+                            "message": "More code facts are reachable than this task lists.",
+                            "affects_completeness": True,
+                        }
+                    ],
+                }
+            flows.append(flow)
+            flow_of_key[task["flow_key"]] = flow["flow_id"]
+        grouping = "agent_synthesis" if self.plan["origin"] == "agent" else "path_grouping"
+        domains = []
+        for domain in plan.get("domains", []):
+            members = [
+                flow_of_key[flow["key"]]
+                for flow in plan.get("flows", [])
+                if flow.get("domain") == domain["key"]
+            ]
+            if members:
+                domains.append(
+                    {
+                        "domain_id": "domain_" + _digest(domain["key"]),
+                        "name": domain["name"],
+                        "support": grouping,
+                        "flow_ids": members,
+                    }
+                )
+        planned = sum(len(task["entry_ids"]) for task in self.plan["tasks"])
+        skipped_entries = [
+            {
+                "entry_id": item["entry_id"],
+                "symbol_id": entries[item["entry_id"]].symbol_id,
+                "reason": item["reason"],
+                **({"note": item["note"]} if item.get("note") else {}),
+            }
+            for item in plan.get("skipped", [])
+        ]
+        skipped = len(skipped_entries)
+        coverage = {
+            "scope": f"{len(flows)} planned flows covering {planned} of {len(entries)} entries.",
+            "entries_total": len(entries),
+            "entries_planned": planned,
+            "entries_skipped": skipped,
+            "skipped_entries": skipped_entries,
+            "entries_unhandled": len(entries) - planned - skipped,
+            "tasks_total": len(states),
+            "tasks_validated": states.count("validated"),
+            "tasks_pending": states.count("pending") + states.count("claimed"),
+            "tasks_failed": states.count("failed"),
+        }
+        document = {
+            "snapshot_id": self.facts.snapshot_id,
+            "side": "head",
+            "domains": domains,
+            "flows": flows,
+            "findings": findings,
+            "coverage": coverage,
+            "evidence": [self.evidence(key).model_dump(mode="json") for key in sorted(cited)],
+        }
+        try:
+            assembled = BusinessMap.model_validate({**document, "analysis_status": "complete"})
+        except ValidationError:
+            assembled = BusinessMap.model_validate({**document, "analysis_status": "partial"})
+        self._publish(assembled)
+        return assembled
+
+    def status(self) -> dict:
+        """Session state plus the entries a plan can refer to."""
+
+        def view(entry):
+            return {
+                "entry_id": entry.entry_id,
+                "symbol_id": entry.symbol_id,
+                "kind": entry.kind.value,
+                "detection": entry.detection.value,
+                "framework": entry.framework,
+                "attributes": entry.attributes,
+            }
+
+        entries = sorted(self.entries().values(), key=lambda item: item.symbol_id)
+        roots = [item for item in entries if item.detection == "root_heuristic"]
+        return {
+            **self._status(),
+            "entries": [view(item) for item in entries if item.detection != "root_heuristic"],
+            "root_candidates": [view(item) for item in roots[:ROOT_CANDIDATE_LIMIT]],
+            "root_candidates_total": len(roots),
+        }
+
+    def _status(self) -> dict:
+        stored = BusinessMap.model_validate_json(
+            (self.root / "business-map.json").read_text(encoding="utf-8")
+        )
+        overall = {
+            "analysis_status": stored.analysis_status,
+            "coverage": stored.coverage.model_dump(
+                mode="json", exclude={"limitations", "scope", "skipped_entries"}
+            ),
+        }
+        change, affected = {}, set()
+        report = self.stored_report()
+        if report is not None:
+            affected = {
+                target.flow_id
+                for item in report.changes
+                for target in (item.projection, *item.other_projections)
+                if target.flow_id
+            }
+            change = {
+                "change": {
+                    "task_id": CHANGE_TASK,
+                    **self._change_progress(report),
+                    # The flows the changes land on: the only ones this report needs described.
+                    "affected_flows": [
+                        {
+                            "flow_id": flow.flow_id,
+                            "name": flow.name,
+                            "stage": flow.stage.value,
+                            "entry_ids": [entry.entry_id for entry in flow.entries],
+                        }
+                        for flow in stored.flows
+                        if flow.flow_id in affected
+                    ],
+                }
+            }
+        if self.plan is None:
+            return {
+                **self.session,
+                "plan": None,
+                **overall,
+                **change,
+                "tasks": [],
+                "next_task": None,
+            }
+        flows = {flow["key"]: flow for flow in self.plan["plan"].get("flows", [])}
+        tasks = []
+        for task in self.plan["tasks"]:
+            accepted = self._stored(task["task_id"], "accepted.json")
+            rejected = self._stored(task["task_id"], "rejected.json")
+            tasks.append(
+                {
+                    "task_id": task["task_id"],
+                    "kind": task["kind"],
+                    "state": self.task_state(task),
+                    "flow_key": task["flow_key"],
+                    "flow_id": task["flow_id"],
+                    "name": (accepted or {}).get("flow", {}).get("name")
+                    or flows[task["flow_key"]].get("name"),
+                    "entry_ids": task["entry_ids"],
+                    "accountable": len(task["accountable"]),
+                    "accounting": (accepted or {}).get("flow", {}).get("accounting"),
+                    "errors": len((rejected or {}).get("errors", [])),
+                    "rejections": (self._stored(task["task_id"], "attempts.json") or {}).get(
+                        "rejected", 0
+                    ),
+                }
+            )
+
+        def first(wanted, among=tasks):
+            return next((item["task_id"] for item in among if wanted(item)), None)
+
+        def open_work(among):
+            # Untouched work first, then refused work, then accepted flows that left facts out.
+            return (
+                first(lambda item: item["state"] == "pending", among)
+                or first(lambda item: item["state"] == "failed", among)
+                or first(lambda item: (item["accounting"] or {}).get("unaccounted"), among)
+            )
+
+        # A change session needs the flows the changes land on, then the changes themselves.
+        touched = [item for item in tasks if item["flow_id"] in affected]
+        waiting = change and change["change"]["changes_waiting"]
+        return {
+            **self.session,
+            "plan": self.plan["origin"],
+            **overall,
+            **change,
+            "tasks": tasks,
+            "next_task": open_work(touched)
+            or (CHANGE_TASK if waiting else None)
+            or open_work(tasks),
+        }

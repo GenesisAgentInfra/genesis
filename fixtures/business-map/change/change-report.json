@@ -1,0 +1,360 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+  "analysis_status": "complete",
+  "changes": [
+    {
+      "change_id": "chg_threshold_condition",
+      "kind": "condition_modified",
+      "symbol_id": "src/expense/api.py#submit_report",
+      "before": {
+        "side": "base",
+        "text": "amount >= THRESHOLD",
+        "anchor": "fp_24b298722b77b5a089188b7a",
+        "evidence_ids": [
+          "ev_f73dd8cae6a1a2b8762f971a"
+        ]
+      },
+      "after": {
+        "side": "head",
+        "text": "amount > THRESHOLD",
+        "anchor": "fp_b1a57d59111caa78d0142aa9",
+        "evidence_ids": [
+          "ev_cecaff33bce043dfec4776e4"
+        ]
+      },
+      "projection": {
+        "status": "projected",
+        "flow_id": "flow_submit_report",
+        "step_id": "step_choose_path"
+      },
+      "other_projections": [],
+      "explanation": {
+        "support": "agent_synthesis",
+        "summary": "分流条件从“大于等于阈值”改为“大于阈值”。",
+        "effect": "金额恰好等于阈值的报销从模型审核路径转入自动批准路径。"
+      },
+      "tests": {
+        "verdict": "reached_only",
+        "basis": [
+          "static_fact",
+          "agent_assessment"
+        ],
+        "execution_data": "not_collected",
+        "note": "有 1 个参数化测试调用了提交报销，取值为 50 和 500，未发现取值等于阈值的用例。",
+        "items": [
+          {
+            "test_id": "head::tests/test_submit.py#test_submit_report_status",
+            "tags": [
+              "related",
+              "assertion_found"
+            ],
+            "evidence_ids": [
+              "ev_792c72cb0845bdd7d0d0b0a1"
+            ]
+          }
+        ]
+      },
+      "finding_ids": []
+    },
+    {
+      "change_id": "chg_review_loop",
+      "kind": "loop_added",
+      "symbol_id": "src/expense/review.py#review_with_model",
+      "after": {
+        "side": "head",
+        "text": "while True",
+        "anchor": "fp_c719c7ba82e728836ba40d7e",
+        "evidence_ids": [
+          "ev_bd78dd75a662860768229b4c"
+        ]
+      },
+      "projection": {
+        "status": "projected",
+        "flow_id": "flow_submit_report",
+        "step_id": "step_model_review"
+      },
+      "other_projections": [],
+      "explanation": {
+        "support": "agent_synthesis",
+        "summary": "模型审核改为循环调用，直到模型返回内容为止。",
+        "effect": "模型一直不返回内容时，提交请求不会结束。"
+      },
+      "tests": {
+        "verdict": "reached_only",
+        "basis": [
+          "static_fact"
+        ],
+        "execution_data": "not_collected",
+        "note": "测试经由提交报销间接触达模型审核，未发现针对重复调用的断言。",
+        "items": [
+          {
+            "test_id": "head::tests/test_submit.py#test_submit_report_status",
+            "tags": [
+              "related"
+            ],
+            "evidence_ids": [
+              "ev_792c72cb0845bdd7d0d0b0a1"
+            ]
+          }
+        ]
+      },
+      "finding_ids": [
+        "find_loop_no_count_bound"
+      ]
+    }
+  ],
+  "removed_flows": [],
+  "possibly_affected": [],
+  "unanalyzed_changes": [
+    {
+      "path": "docs/policy.md",
+      "change": "modified",
+      "reason": "不是受支持的源码文件，未做事实分析。"
+    }
+  ],
+  "finding_changes": [
+    {
+      "status": "introduced",
+      "finding": {
+        "finding_id": "find_loop_no_count_bound",
+        "source": "rule",
+        "rule": "loop_no_count_bound",
+        "severity": "medium",
+        "statement": "模型调用位于没有静态次数上限的循环中。",
+        "anchors": [
+          "fp_c719c7ba82e728836ba40d7e"
+        ],
+        "evidence_ids": [
+          "ev_bd78dd75a662860768229b4c"
+        ],
+        "condition": "只识别静态可见的循环与调用；运行时的提前退出不在判断范围内。"
+      },
+      "flow_id": "flow_submit_report",
+      "step_id": "step_model_review"
+    },
+    {
+      "status": "persisting",
+      "finding": {
+        "finding_id": "find_review_failure_unhandled",
+        "source": "agent_observation",
+        "severity": "low",
+        "statement": "模型审核调用失败时没有处理，异常会直接中断提交。",
+        "anchors": [],
+        "evidence_ids": [
+          "ev_5101a0eb0cc60d89fdfd4dec"
+        ],
+        "gap": "只读取了这一处调用；上层框架是否统一处理异常不在已读取范围内。"
+      },
+      "flow_id": "flow_submit_report",
+      "step_id": "step_model_review"
+    }
+  ],
+  "limitations": [],
+  "evidence": [
+    {
+      "evidence_id": "ev_0baa0b69f641833af563e3f1",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 16,
+        "end_line": 16
+      },
+      "snippet_digest": "sha256:fdafa4d581b8744a3f193eb39167dc9d8ae2ed7fdb6da130ee31a0ff9b76bb38",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_11e34c30927eff3c1a47a80d",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 28,
+        "end_line": 28
+      },
+      "snippet_digest": "sha256:4ee1e02b60b6edcb141aa303547dd6b80d0842d48a9399afcaa624370b57180f",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_237d9bbc7a2ab5dc5b58ef11",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 17,
+        "end_line": 17
+      },
+      "snippet_digest": "sha256:269906f5b5d32993c6efb70d784466b0812db11898639514b3d3d09babe66ac1",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_245934cd191b3b99e2f603b0",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 27,
+        "end_line": 27
+      },
+      "snippet_digest": "sha256:8f47bf6f11ca6e0d645b94a1704ea5f0818b90c880e095f2a2afdb485273c615",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_44b279843b5a4755be9e0a9f",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 18,
+        "end_line": 18
+      },
+      "snippet_digest": "sha256:0afa65fbddfa42394d34d8362c76a61a4123629eb83661ed45d370bcb9105a1c",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_5101a0eb0cc60d89fdfd4dec",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 15,
+        "end_line": 15
+      },
+      "snippet_digest": "sha256:5cdef26af3921e7865415dc40f6af982623095342e3649e0df7dc936705b5215",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_792c72cb0845bdd7d0d0b0a1",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "tests/test_submit.py",
+      "range": {
+        "start_line": 7,
+        "end_line": 9
+      },
+      "snippet_digest": "sha256:db34931e36585a82f9febbcdb7a16b7c8e2f1501744fa6b531e73edad8a4e2ff",
+      "kind": "test"
+    },
+    {
+      "evidence_id": "ev_7cec55c66ab76feea751e195",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 22,
+        "end_line": 23
+      },
+      "snippet_digest": "sha256:c42ac4f4724bfe990da54bb375b61267d3e46f811604ccc07332a128a99bc35e",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_9020feed882321d4c234f772",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 26,
+        "end_line": 26
+      },
+      "snippet_digest": "sha256:4927605ffa9a9152f2669f18524f16d40bd5dc450da995190b3902043a89cd68",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_94b56c754c971b8e399258d7",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 25,
+        "end_line": 25
+      },
+      "snippet_digest": "sha256:4ee8f177ee4ccfd3efbfaf4f5a4f9a7d1df656b42c7e651f629edaec3626f3c3",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_9691c5c52acd65d1a5a0b2e8",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 13,
+        "end_line": 13
+      },
+      "snippet_digest": "sha256:3881af4945e4a8020a656ba92effebe12c538e38f0bc4c0ebabc11ed003e40cb",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_a812ec283078ffb7bbc0a97c",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 10,
+        "end_line": 11
+      },
+      "snippet_digest": "sha256:bafac1315a105c1b9906ca653f23fe26aa1673266c0380f8a5075d5e2c3a05ca",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_bd78dd75a662860768229b4c",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/review.py",
+      "range": {
+        "start_line": 7,
+        "end_line": 10
+      },
+      "snippet_digest": "sha256:6e45f4e19d3114dd3a83183e642d406cc7b2c0d4a6a6b151d0095901c181438e",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_cecaff33bce043dfec4776e4",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 14,
+        "end_line": 14
+      },
+      "snippet_digest": "sha256:f6b781b85218091397028be72e12787c842706f6bb87f1e79a13e40a7ff90810",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_f0fbe2d4db33358bcb92b989",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 24,
+        "end_line": 24
+      },
+      "snippet_digest": "sha256:cbaae58f4c6b380d07426a4ea7e006cd9eec53894a1778d770397aba17fee57c",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_f73dd8cae6a1a2b8762f971a",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "base",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 14,
+        "end_line": 14
+      },
+      "snippet_digest": "sha256:e944dbefb95c22684f99d7f2d14b9385da22c3bf7e0c36d2ea75291663bd2c4b",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_fb5ec9e0ee8e24a85d2c5aa6",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 19,
+        "end_line": 19
+      },
+      "snippet_digest": "sha256:34d318b77ab0b6bc843b9eba9f5e3d29f72008b268472de3300f783276cae9b3",
+      "kind": "code"
+    }
+  ]
+}

@@ -29,7 +29,7 @@ def user_home(tmp_path, monkeypatch):
 def test_user_install_registers_both_agents_and_is_idempotent(user_home):
     result = CliRunner().invoke(app, ["agent", "install", "--agent", "both"])
     assert result.exit_code == 0, result.output
-    expected = [user_home / name / "skills/genesis-review" for name in (".agents", ".claude")]
+    expected = [user_home / name / "skills/genesis" for name in (".agents", ".claude")]
     for directory in expected:
         frontmatter = (directory / "SKILL.md").read_text().split("---", 2)[1]
         metadata = yaml.safe_load(frontmatter)
@@ -39,7 +39,7 @@ def test_user_install_registers_both_agents_and_is_idempotent(user_home):
         assert runtime == {"format_version": 1, "python": str(Path(sys.executable).absolute())}
         ui = yaml.safe_load((directory / "agents/openai.yaml").read_text())
         assert ui["policy"]["allow_implicit_invocation"] is True
-        assert "$genesis-review" in ui["interface"]["default_prompt"]
+        assert "$genesis " in ui["interface"]["default_prompt"]
     before = {str(p): p.stat().st_mtime_ns for d in expected for p in d.rglob("*")}
     again = CliRunner().invoke(app, ["agent", "install", "--agent", "both"])
     assert again.exit_code == 0 and again.output.count("unchanged:") == 2
@@ -108,13 +108,78 @@ def test_project_scope_accepts_linked_worktree(source_repo, tmp_path):
 
 
 def test_preflight_preserves_existing_skills_and_does_not_partially_install(user_home):
-    existing = user_home / ".claude/skills/genesis-review"
+    existing = user_home / ".claude/skills/genesis"
     existing.mkdir(parents=True)
     (existing / "SKILL.md").write_text("My custom skill")
     result = CliRunner().invoke(app, ["agent", "install", "--agent", "both", "--update"])
     assert result.exit_code == 1
     assert (existing / "SKILL.md").read_text() == "My custom skill"
     assert not (user_home / ".agents").exists()
+
+
+def test_install_replaces_an_untouched_skill_under_its_earlier_name(user_home):
+    [(destination, _)] = install_skills(Agent.codex, Scope.user, None)
+    legacy = destination.with_name("genesis-review")
+    destination.rename(legacy)
+    preview = install_skills(Agent.codex, Scope.user, None, dry_run=True)
+    assert preview == [(destination, "install"), (legacy, "remove (renamed to genesis)")]
+    assert legacy.is_dir() and not destination.exists()
+    status = CliRunner().invoke(app, ["agent", "status", "--agent", "codex"])
+    assert "not installed" in status.output and "earlier name" in status.output
+    result = CliRunner().invoke(app, ["agent", "install", "--agent", "codex"])
+    assert result.exit_code == 0, result.output
+    assert destination.is_dir() and not legacy.exists()
+    assert "$genesis | Claude Code: /genesis" in result.output
+
+
+def test_install_keeps_an_edited_skill_under_its_earlier_name(user_home):
+    [(destination, _)] = install_skills(Agent.claude, Scope.user, None)
+    legacy = destination.with_name("genesis-review")
+    destination.rename(legacy)
+    (legacy / "SKILL.md").write_text("My own notes")
+    planned = install_skills(Agent.claude, Scope.user, None)
+    assert planned == [(destination, "install"), (legacy, "kept (edited or not ours)")]
+    assert (legacy / "SKILL.md").read_text() == "My own notes" and destination.is_dir()
+    unrelated = destination.with_name("genesis-review-notes")
+    unrelated.mkdir()
+    assert install_skills(Agent.claude, Scope.user, None)[0] == (destination, "unchanged")
+    assert unrelated.is_dir()
+
+
+def test_bundled_skill_examples_match_the_contracts_and_the_cli(user_home):
+    import re
+
+    from genesis_contracts.map_tasks import ChangeSubmission, FlowSubmission, MapPlan
+
+    [(destination, _)] = install_skills(Agent.codex, Scope.user, None)
+    text = (destination / "SKILL.md").read_text()
+    examples = [json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S)]
+    assert [sorted(example)[0] for example in examples] == ["domains", "edges", "changes"]
+    MapPlan.model_validate(examples[0])
+    FlowSubmission.model_validate(examples[1])
+    ChangeSubmission.model_validate(examples[2])
+    commands = set(re.findall(r"genesis map ([a-z]+)", text))
+
+    def help_of(*command):
+        # On CI the help is styled, which splits option names with escape codes.
+        output = CliRunner().invoke(app, ["map", *command, "--help"]).output
+        return re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+    help_text = help_of()
+    assert commands == {
+        "prepare",
+        "render",
+        "status",
+        "plan",
+        "context",
+        "query",
+        "read",
+        "submit",
+        "diff",
+    }
+    assert all(command in help_text for command in commands)
+    for flag in set(re.findall(r"(?<![-\w])(--[a-z][a-z-]+)", text)):
+        assert any(flag in help_of(command) for command in commands), flag
 
 
 def test_update_refreshes_only_unmodified_managed_skill(user_home, monkeypatch):

@@ -1,0 +1,75 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+  "share_mode": false,
+  "excerpts": [
+    {
+      "evidence_id": "ev_0baa0b69f641833af563e3f1",
+      "text": "        save_status(report[\"id\"], \"pending_approval\")"
+    },
+    {
+      "evidence_id": "ev_11e34c30927eff3c1a47a80d",
+      "text": "    return {\"status\": \"approved\", \"id\": report_id}"
+    },
+    {
+      "evidence_id": "ev_237d9bbc7a2ab5dc5b58ef11",
+      "text": "        return {\"status\": \"pending_approval\", \"review\": verdict}"
+    },
+    {
+      "evidence_id": "ev_245934cd191b3b99e2f603b0",
+      "text": "    save_status(report_id, \"approved\")"
+    },
+    {
+      "evidence_id": "ev_44b279843b5a4755be9e0a9f",
+      "text": "    save_status(report[\"id\"], \"approved\")"
+    },
+    {
+      "evidence_id": "ev_5101a0eb0cc60d89fdfd4dec",
+      "text": "        verdict = await review_with_model(report)"
+    },
+    {
+      "evidence_id": "ev_792c72cb0845bdd7d0d0b0a1",
+      "text": "async def test_submit_report_status(amount):\n    result = await submit_report({\"id\": \"r1\", \"amount\": amount})\n    assert result[\"status\"] in {\"approved\", \"pending_approval\"}"
+    },
+    {
+      "evidence_id": "ev_7cec55c66ab76feea751e195",
+      "text": "@router.post(\"/reports/{report_id}/approve\")\nasync def approve_report(report_id):"
+    },
+    {
+      "evidence_id": "ev_9020feed882321d4c234f772",
+      "text": "        raise ValueError(\"report is not waiting for approval\")"
+    },
+    {
+      "evidence_id": "ev_94b56c754c971b8e399258d7",
+      "text": "    if report[\"status\"] != \"pending_approval\":"
+    },
+    {
+      "evidence_id": "ev_9691c5c52acd65d1a5a0b2e8",
+      "text": "    logger.info(\"report received\")"
+    },
+    {
+      "evidence_id": "ev_a812ec283078ffb7bbc0a97c",
+      "text": "@router.post(\"/reports\")\nasync def submit_report(report):"
+    },
+    {
+      "evidence_id": "ev_bd78dd75a662860768229b4c",
+      "text": "    while True:\n        response = await client.responses.create(model=\"gpt-5\", input=str(report))\n        if response.output_text:\n            return response.output_text"
+    },
+    {
+      "evidence_id": "ev_cecaff33bce043dfec4776e4",
+      "text": "    if amount > THRESHOLD:"
+    },
+    {
+      "evidence_id": "ev_f0fbe2d4db33358bcb92b989",
+      "text": "    report = load_report(report_id)"
+    },
+    {
+      "evidence_id": "ev_f73dd8cae6a1a2b8762f971a",
+      "text": "    if amount >= THRESHOLD:"
+    },
+    {
+      "evidence_id": "ev_fb5ec9e0ee8e24a85d2c5aa6",
+      "text": "    return {\"status\": \"approved\"}"
+    }
+  ]
+}

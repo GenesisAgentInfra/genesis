@@ -1,0 +1,680 @@
+"""The agent loop: plan, context, query, submit and the map assembled from them."""
+
+import copy
+import json
+
+import pytest
+from genesis_ci.business_map.session import prepare
+from genesis_ci.business_map.workspace import LoopError, Workspace
+from genesis_ci.cli import app
+from genesis_contracts.business_map import BusinessMap
+from genesis_contracts.map_tasks import MapPlan
+from test_git_snapshot import commit, write
+from typer.testing import CliRunner
+
+API = "expense/api.py"
+REVIEW = "expense/review.py"
+FILES = {
+    "expense/__init__.py": "",
+    API: """from fastapi import APIRouter
+
+from .review import review_with_model
+from .store import load_report, save_status
+
+router = APIRouter()
+THRESHOLD = 100
+
+
+@router.post("/reports")
+async def submit_report(report):
+    amount = report["amount"]
+    if amount >= THRESHOLD:
+        verdict = await review_with_model(report)
+        save_status(report["id"], "pending_approval")
+        return {"status": "pending_approval", "review": verdict}
+    save_status(report["id"], "approved")
+    return {"status": "approved"}
+
+
+@router.post("/reports/{report_id}/approve")
+async def approve_report(report_id):
+    report = load_report(report_id)
+    if report["status"] != "pending_approval":
+        raise ValueError("report is not waiting for approval")
+    save_status(report_id, "approved")
+    return {"status": "approved", "id": report_id}
+
+
+@router.get("/healthz")
+def healthz():
+    return {"ok": True}
+""",
+    REVIEW: """from openai import AsyncOpenAI
+
+client = AsyncOpenAI()
+
+
+async def review_with_model(report):
+    while True:
+        response = await client.responses.create(model="gpt-5", input=str(report))
+        if response.output_text:
+            return response.output_text
+""",
+    "expense/store.py": """REPORTS = {}
+
+
+def save_status(report_id, status):
+    REPORTS.setdefault(report_id, {})["status"] = status
+
+
+def load_report(report_id):
+    return REPORTS[report_id]
+
+
+def nightly_cleanup():
+    REPORTS.clear()
+""",
+}
+
+
+def src(path, line, quote, end=None):
+    return {"path": path, "start_line": line, "end_line": end or line, "quote": quote}
+
+
+@pytest.fixture
+def workspace(source_repo):
+    for path, text in FILES.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    session = prepare(source_repo, head="HEAD")["session_id"]
+    return Workspace(source_repo, session)
+
+
+def entry(workspace, name):
+    return next(item for item in workspace.entries().values() if item.symbol_id.endswith(name))
+
+
+def planned(workspace):
+    """An agent plan: two flows in one domain, the health check skipped."""
+    plan = MapPlan.model_validate(
+        {
+            "domains": [{"key": "expense", "name": "报销"}],
+            "flows": [
+                {
+                    "key": "submit",
+                    "name": "提交报销",
+                    "domain": "expense",
+                    "entry_ids": [entry(workspace, "#submit_report").entry_id],
+                },
+                {
+                    "key": "approve",
+                    "name": "经理审批",
+                    "domain": "expense",
+                    "entry_ids": [entry(workspace, "#approve_report").entry_id],
+                },
+            ],
+            "skipped": [
+                {"entry_id": entry(workspace, "#healthz").entry_id, "reason": "infrastructure"}
+            ],
+        }
+    )
+    status = workspace.save_plan(plan)
+    return {task["name"]: task["task_id"] for task in status["tasks"]}
+
+
+def submit_flow(workspace, task_id):
+    context = workspace.context(task_id)
+    return {
+        "name": "提交报销",
+        "summary": "金额达到阈值时先由模型审核，否则自动批准。",
+        "steps": [
+            {
+                "key": "recv",
+                "name": "收到报销提交",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src(API, 10, '@router.post("/reports")', 11)],
+            },
+            {
+                "key": "choose",
+                "name": "根据金额选择处理路径",
+                "kind": "decision",
+                "evidence": [src(API, 13, "amount >= THRESHOLD")],
+            },
+            {
+                "key": "review",
+                "name": "模型审核",
+                "kind": "external",
+                "evidence": [
+                    src(API, 14, "review_with_model(report)"),
+                    src(REVIEW, 7, "while True", 10),
+                ],
+            },
+            {
+                "key": "pending",
+                "name": "标记为待审批",
+                "kind": "action",
+                "evidence": [src(API, 15, '"pending_approval"')],
+            },
+            {
+                "key": "ret_pending",
+                "name": "返回待审批结果",
+                "kind": "result",
+                "evidence": [src(API, 16, '"review": verdict')],
+            },
+            {
+                "key": "auto",
+                "name": "自动批准",
+                "kind": "action",
+                "evidence": [src(API, 17, 'save_status(report["id"], "approved")')],
+            },
+            {
+                "key": "ret_ok",
+                "name": "返回已批准结果",
+                "kind": "result",
+                "evidence": [src(API, 18, 'return {"status": "approved"}')],
+            },
+        ],
+        "edges": [
+            {"source": "recv", "target": "choose", "relation": "sequence"},
+            {
+                "source": "choose",
+                "target": "review",
+                "relation": "branch",
+                "branch": "true",
+                "label": "达到阈值",
+            },
+            {
+                "source": "choose",
+                "target": "auto",
+                "relation": "branch",
+                "branch": "false",
+                "label": "低于阈值",
+            },
+            {"source": "review", "target": "pending", "relation": "sequence"},
+            {"source": "pending", "target": "ret_pending", "relation": "sequence"},
+            {"source": "auto", "target": "ret_ok", "relation": "sequence"},
+        ],
+        "observations": [
+            {
+                "statement": "模型审核在没有次数上限的循环里调用模型。",
+                "severity": "medium",
+                "step": "review",
+                "evidence": [src(REVIEW, 7, "while True", 8)],
+            }
+        ],
+    }
+
+
+def approve_flow(workspace, task_id):
+    context = workspace.context(task_id)
+    return {
+        "name": "经理审批",
+        "steps": [
+            {
+                "key": "recv",
+                "name": "经理发起审批",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src(API, 21, "/approve", 22)],
+            },
+            {
+                "key": "check",
+                "name": "检查是否待审批",
+                "kind": "decision",
+                "evidence": [src(API, 24, 'report["status"]')],
+            },
+            {
+                "key": "reject",
+                "name": "拒绝",
+                "kind": "result",
+                "evidence": [src(API, 25, "raise ValueError")],
+            },
+            {
+                "key": "done",
+                "name": "返回已批准结果",
+                "kind": "result",
+                "evidence": [src(API, 27, '"id": report_id')],
+            },
+        ],
+        "edges": [
+            {"source": "recv", "target": "check", "relation": "sequence"},
+            {"source": "check", "target": "reject", "relation": "branch", "branch": "true"},
+            {"source": "check", "target": "done", "relation": "branch", "branch": "false"},
+        ],
+    }
+
+
+def codes(result):
+    return [(item["path"], item["code"]) for item in result["errors"]]
+
+
+def test_default_plan_makes_one_task_per_framework_entry(workspace):
+    assert workspace.status()["plan"] is None
+    with pytest.raises(LoopError, match="genesis map plan"):
+        workspace.context("task_missing")
+    status = workspace.save_plan(None)
+    assert status["plan"] == "default" and len(status["tasks"]) == 3
+    assert {task["state"] for task in status["tasks"]} == {"pending"}
+    assert status["coverage"]["entries_planned"] == 3
+    stored = BusinessMap.model_validate_json((workspace.root / "business-map.json").read_text())
+    assert {flow.stage for flow in stored.flows} == {"skeleton"}
+    assert [domain.support for domain in stored.domains] == ["path_grouping"]
+
+
+def test_agent_plan_groups_skips_and_can_propose_entries(workspace):
+    tasks = planned(workspace)
+    status = workspace.status()
+    assert set(tasks) == {"提交报销", "经理审批"} and status["plan"] == "agent"
+    coverage = status["coverage"]
+    assert (coverage["entries_planned"], coverage["entries_skipped"]) == (2, 1)
+    assert coverage["entries_unhandled"] == len(workspace.entries()) - 3
+    proposal = {
+        "symbol_id": "expense/store.py#nightly_cleanup",
+        "kind": "scheduled",
+        "reason": "由外部定时器调用",
+        "evidence": [src("expense/store.py", 12, "def nightly_cleanup")],
+    }
+    plan = MapPlan.model_validate(
+        {
+            "flows": [{"key": "cleanup", "entry_ids": ["entry_placeholder"]}],
+            "proposed_entries": [proposal],
+        }
+    )
+    with pytest.raises(LoopError) as refused:
+        workspace.save_plan(plan)
+    assert [item["code"] for item in refused.value.errors] == ["already_an_entry", "unknown_entry"]
+    hidden = {**proposal, "symbol_id": "expense/store.py#missing"}
+    with pytest.raises(LoopError) as refused:
+        workspace.save_plan(MapPlan.model_validate({"proposed_entries": [hidden]}))
+    assert refused.value.errors[0]["code"] == "unknown_symbol"
+    # A refused plan leaves the accepted one in place.
+    assert workspace.status()["plan"] == "agent"
+
+
+def test_context_lists_what_the_flow_has_to_account_for(workspace):
+    tasks = planned(workspace)
+    context = workspace.context(tasks["提交报销"], claim=True)
+    assert context["entries"][0]["attributes"] == {"method": "POST", "path": "/reports"}
+    # A definition is shown from its first decorator.
+    assert context["source"][0]["text"].startswith(
+        '@router.post("/reports")\nasync def submit_report'
+    )
+    kinds = [(item["kind"], item["symbol_id"].split("#")[1]) for item in context["accountable"]]
+    assert kinds == [
+        ("condition", "submit_report"),
+        ("return", "submit_report"),
+        ("return", "submit_report"),
+        ("loop", "review_with_model"),
+        ("call", "review_with_model"),
+        ("condition", "review_with_model"),
+    ]
+    assert context["accountable"][0]["branches"] == ["true", "false"]
+    assert context["callees"] == [
+        "expense/review.py#review_with_model",
+        "expense/store.py#save_status",
+    ]
+    assert workspace.status()["tasks"][0]["state"] == "claimed"
+    with pytest.raises(LoopError, match="holds this task"):
+        workspace.context(tasks["提交报销"], claim=True)
+
+
+def test_accepted_flows_assemble_into_a_complete_map(workspace):
+    tasks = planned(workspace)
+    first = workspace.submit(tasks["提交报销"], submit_flow(workspace, tasks["提交报销"]))
+    assert (first["status"], first["analysis_status"]) == ("accepted", "partial")
+    assert first["accounting"] == {
+        "accountable": 6,
+        "covered": 6,
+        "omitted": 0,
+        "unaccounted": 0,
+        "truncated": False,
+    }
+    again = workspace.submit(tasks["提交报销"], submit_flow(workspace, tasks["提交报销"]))
+    assert again["steps"] == first["steps"] and len(set(first["steps"].values())) == 7
+    second = workspace.submit(tasks["经理审批"], approve_flow(workspace, tasks["经理审批"]))
+    assert second["analysis_status"] == "complete"
+    stored = BusinessMap.model_validate_json((workspace.root / "business-map.json").read_text())
+    assert stored.analysis_status == "complete"
+    assert [(domain.name, domain.support) for domain in stored.domains] == [
+        ("报销", "agent_synthesis")
+    ]
+    submit = next(flow for flow in stored.flows if flow.name == "提交报销")
+    assert submit.stage == "synthesized" and submit.flow_id == first["flow_id"]
+    branch = next(
+        edge for edge in submit.edges if edge.condition and edge.condition.branch == "true"
+    )
+    assert (branch.support, branch.condition.label) == ("static_fact", "达到阈值")
+    review = next(step for step in submit.steps if step.name == "模型审核")
+    assert len(review.anchors) >= 3 and len(review.finding_ids) == 1
+    assert stored.findings[0].source == "agent_observation"
+    status = workspace.status()
+    assert status["next_task"] is None and status["coverage"]["tasks_validated"] == 2
+
+
+def test_one_bad_citation_is_reported_once_and_keeps_the_accepted_version(workspace):
+    tasks = planned(workspace)
+    task = tasks["提交报销"]
+    good = submit_flow(workspace, task)
+    bad = copy.deepcopy(good)
+    bad["steps"][1]["evidence"] = [src(API, 13, "amount > THRESHOLD")]
+    refused = workspace.submit(task, bad)
+    assert refused["status"] == "rejected"
+    assert codes(refused) == [("steps[1].evidence[0]", "quote_not_found")]
+    assert workspace.status()["tasks"][0]["state"] == "failed"
+    assert workspace.submit(task, good)["status"] == "accepted"
+    assert workspace.submit(task, bad)["status"] == "rejected"
+    assert workspace.status()["tasks"][0]["state"] == "validated"
+
+
+def test_submissions_cannot_claim_more_than_the_facts_support(workspace):
+    tasks = planned(workspace)
+    task = tasks["提交报销"]
+    base = submit_flow(workspace, task)
+
+    def refused(mutate):
+        changed = copy.deepcopy(base)
+        mutate(changed)
+        result = workspace.submit(task, changed)
+        assert result["status"] == "rejected"
+        return codes(result)
+
+    assert refused(lambda d: d["steps"][3].update(anchors=["fp_" + "0" * 24])) == [
+        ("steps[3].anchors", "unknown_anchor")
+    ]
+    assert refused(lambda d: d["steps"][3].update(evidence=[src(API, 1, "from fastapi")])) == [
+        ("steps[3]", "step_not_anchored")
+    ]
+    assert refused(lambda d: d["steps"][3].update(evidence=[src("missing.py", 1, "x")])) == [
+        ("steps[3].evidence[0]", "file_not_in_snapshot")
+    ]
+    assert refused(lambda d: d["steps"][3].update(evidence=[src(API, 900, "x")])) == [
+        ("steps[3].evidence[0]", "range_out_of_bounds")
+    ]
+    assert refused(lambda d: d["edges"][1].update(branch="maybe")) == [
+        ("edges[1].branch", "unknown_branch")
+    ]
+    assert refused(
+        lambda d: d["edges"][3].update(
+            source="pending", target="review", relation="branch", branch="true"
+        )
+    ) == [("edges[3].branch", "unknown_branch")]
+    assert refused(
+        lambda d: d.update(omitted=[{"anchor": "fp_" + "0" * 24, "reason": "logging"}])
+    ) == [("omitted[0].anchor", "not_accountable")]
+    assert refused(lambda d: d["steps"][3].update(resolution="candidate")) == [
+        ("steps[3].reason", "reason_required")
+    ]
+    assert refused(lambda d: d["steps"].append(d["steps"][0])) == [
+        ("(document)", "invalid_value_error")
+    ]
+
+
+def test_unsupported_relations_must_be_submitted_as_candidates(workspace):
+    tasks = planned(workspace)
+    task = tasks["提交报销"]
+    data = submit_flow(workspace, task)
+    data["steps"].append(
+        {
+            "key": "cleanup",
+            "name": "夜间清理",
+            "kind": "action",
+            "evidence": [src("expense/store.py", 13, "REPORTS.clear()")],
+            "resolution": "candidate",
+            "reason": "没有找到调用它的代码。",
+        }
+    )
+    data["edges"].append({"source": "ret_ok", "target": "cleanup", "relation": "sequence"})
+    refused = workspace.submit(task, data)
+    assert codes(refused) == [("edges[6]", "edge_not_supported")]
+    data["edges"][-1].update(resolution="candidate", reason="时间上可能在之后，代码没有体现。")
+    accepted = workspace.submit(task, data)
+    assert accepted["status"] == "accepted"
+    stored = BusinessMap.model_validate_json((workspace.root / "business-map.json").read_text())
+    flow = next(item for item in stored.flows if item.name == "提交报销")
+    assert (flow.edges[-1].support, flow.edges[-1].resolution) == ("agent_synthesis", "candidate")
+
+
+def test_facts_left_out_are_listed_until_used_or_omitted_with_a_reason(workspace):
+    tasks = planned(workspace)
+    task = tasks["提交报销"]
+    data = submit_flow(workspace, task)
+    data["steps"][2]["evidence"] = [src(API, 14, "review_with_model(report)")]
+    data["observations"] = []
+    partial = workspace.submit(task, data)
+    assert partial["status"] == "accepted" and partial["accounting"]["unaccounted"] == 3
+    left = [item["fingerprint"] for item in partial["unaccounted"]]
+    assert [item["kind"] for item in partial["unaccounted"]] == ["loop", "call", "condition"]
+    workspace.submit(tasks["经理审批"], approve_flow(workspace, tasks["经理审批"]))
+    assert workspace.status()["analysis_status"] == "partial"
+    data["omitted"] = [
+        {"anchor": fp, "reason": "merged_into_step", "note": "模型审核的内部细节"} for fp in left
+    ]
+    complete = workspace.submit(task, data)
+    assert complete["accounting"] == {
+        "accountable": 6,
+        "covered": 3,
+        "omitted": 3,
+        "unaccounted": 0,
+        "truncated": False,
+    }
+    assert complete["analysis_status"] == "complete"
+    used = copy.deepcopy(data)
+    used["steps"][2]["anchors"] = [left[0]]
+    assert codes(workspace.submit(task, used)) == [("omitted[0].anchor", "omitted_but_used")]
+
+
+def test_queries_read_only_the_frozen_snapshot(workspace):
+    symbol = workspace.query_symbol("expense/review.py#review_with_model")
+    assert symbol["callers"] == ["expense/api.py#submit_report"]
+    assert symbol["source"]["text"].startswith("async def review_with_model")
+    with pytest.raises(LoopError) as missing:
+        workspace.query_symbol("expense/api.py#review_with_model")
+    assert "expense/review.py#review_with_model" in missing.value.errors[0]["message"]
+    write(workspace.repo, API, FILES[API].replace("pending_approval", "waiting"))
+    found = workspace.search("pending_approval")
+    assert [(item["path"], item["line"]) for item in found["matches"]] == [
+        (API, 15),
+        (API, 16),
+        (API, 24),
+    ]
+    text = workspace.read(found["matches"][0]["evidence_id"])
+    assert "pending_approval" in text["text"] and text["path"] == API
+    # Evidence registered by a search can be cited by id from another process.
+    reopened = Workspace(workspace.repo, workspace.session["session_id"])
+    assert reopened.read(found["matches"][0]["evidence_id"]) == text
+    with pytest.raises(LoopError, match="No evidence"):
+        workspace.read("ev_missing")
+    with pytest.raises(LoopError):
+        workspace.search("  ")
+
+
+def test_cli_reports_refusals_as_json_with_exit_code_one(workspace, tmp_path, monkeypatch):
+    monkeypatch.setenv("GENESIS_NO_BROWSER", "1")
+    runner = CliRunner()
+    common = ["--repo", str(workspace.repo), "--session", workspace.session["session_id"]]
+    planned = runner.invoke(app, ["map", "plan", *common])
+    task = json.loads(planned.stdout)["next_task"]
+    assert planned.exit_code == 0
+    context = runner.invoke(app, ["map", "context", *common, "--task", task])
+    assert context.exit_code == 0 and json.loads(context.stdout)["task_id"] == task
+    bad = tmp_path / "submission.json"
+    bad.write_text(json.dumps({"name": "x", "steps": []}))
+    refused = runner.invoke(app, ["map", "submit", *common, "--task", task, "--input", str(bad)])
+    assert refused.exit_code == 1 and json.loads(refused.stdout)["status"] == "rejected"
+    unknown = runner.invoke(app, ["map", "context", *common, "--task", "task_none"])
+    assert unknown.exit_code == 1 and json.loads(unknown.stdout)["error"]["code"] == "unknown_task"
+    both = runner.invoke(app, ["map", "query", *common])
+    assert both.exit_code != 0
+    assert runner.invoke(app, ["map", "status", *common]).exit_code == 0
+    assert runner.invoke(app, ["map", "render", *common]).exit_code == 2
+
+
+def test_edges_must_follow_the_control_structure(workspace):
+    tasks = planned(workspace)
+    task = tasks["提交报销"]
+    base = submit_flow(workspace, task)
+
+    def refused(*edge):
+        changed = copy.deepcopy(base)
+        fields = dict(zip(("source", "target", "relation", "branch"), edge))
+        changed["edges"].append(fields)
+        result = workspace.submit(task, changed)
+        assert result["status"] == "rejected", edge
+        return codes(result)
+
+    last = "edges[6]"
+    # A result ends its path: nothing follows a return, not even the other branch.
+    assert refused("ret_ok", "review", "sequence") == [(last, "edge_not_supported")]
+    assert refused("ret_ok", "recv", "sequence") == [(last, "edge_not_supported")]
+    assert refused("ret_pending", "auto", "sequence") == [(last, "edge_not_supported")]
+    # The two sides of a condition do not flow into each other, and order matters.
+    assert refused("pending", "auto", "sequence") == [(last, "edge_not_supported")]
+    assert refused("pending", "choose", "sequence") == [(last, "edge_not_supported")]
+    # A branch has to lead where the edge points.
+    assert refused("choose", "auto", "branch", "true") == [(last, "branch_target_not_reachable")]
+    assert refused("choose", "ret_pending", "branch", "false") == [
+        (last, "branch_target_not_reachable")
+    ]
+    approve = tasks["经理审批"]
+    flow = approve_flow(workspace, approve)
+    flow["edges"].append({"source": "reject", "target": "done", "relation": "sequence"})
+    assert codes(workspace.submit(approve, flow)) == [("edges[3]", "edge_not_supported")]
+    # Skipping over steps along a real path is fine.
+    skipping = copy.deepcopy(base)
+    skipping["edges"].append({"source": "recv", "target": "ret_ok", "relation": "sequence"})
+    skipping["edges"].append(
+        {"source": "choose", "target": "pending", "relation": "branch", "branch": "true"}
+    )
+    assert workspace.submit(task, skipping)["status"] == "accepted"
+
+
+def test_preparing_unchanged_code_again_keeps_accepted_work(workspace):
+    tasks = planned(workspace)
+    workspace.submit(tasks["提交报销"], submit_flow(workspace, tasks["提交报销"]))
+    workspace.submit(tasks["经理审批"], approve_flow(workspace, tasks["经理审批"]))
+    again = prepare(workspace.repo, head="HEAD")
+    assert again["session_id"] == workspace.session["session_id"]
+    assert (again["resumed"], again["analysis_status"]) == (True, "complete")
+    status = Workspace(workspace.repo, again["session_id"]).status()
+    assert status["coverage"]["tasks_validated"] == 2 and status["next_task"] is None
+
+
+def test_status_orders_the_work_and_counts_refusals(workspace):
+    before = workspace.status()
+    assert (before["plan"], before["analysis_status"]) == (None, "partial")
+    assert (
+        before["coverage"]["entries_total"]
+        == len(before["entries"]) + before["root_candidates_total"]
+    )
+    tasks = planned(workspace)
+    first, second = tasks["提交报销"], tasks["经理审批"]
+    assert workspace.status()["next_task"] == first
+    bad = submit_flow(workspace, first)
+    bad["steps"][1]["evidence"] = [src(API, 13, "not there")]
+    for expected in (1, 2):
+        refused = workspace.submit(first, bad)
+        assert (refused["rejections"], refused["accepted_version_kept"]) == (expected, False)
+    status = workspace.status()
+    # A refused task does not hide the untouched one.
+    assert status["next_task"] == second
+    assert [(item["state"], item["rejections"]) for item in status["tasks"]] == [
+        ("failed", 2),
+        ("pending", 0),
+    ]
+    workspace.submit(second, approve_flow(workspace, second))
+    assert workspace.status()["next_task"] == first
+    partial = submit_flow(workspace, first)
+    partial["steps"][2]["evidence"] = [src(API, 14, "review_with_model(report)")]
+    partial["observations"] = []
+    workspace.submit(first, partial)
+    status = workspace.status()
+    # Accepted, but facts are still unaccounted: the task stays the next thing to do.
+    assert status["tasks"][0]["state"] == "validated" and status["next_task"] == first
+    assert workspace.submit(first, bad)["accepted_version_kept"] is True
+    workspace.submit(first, submit_flow(workspace, first))
+    assert workspace.status()["next_task"] is None
+
+
+def test_map_and_summary_record_what_is_skipped_and_uncertain(workspace):
+    from genesis_ci.business_map.render import render_html, render_summary
+
+    tasks = planned(workspace)
+    data = submit_flow(workspace, tasks["提交报销"])
+    data["steps"].append(
+        {
+            "key": "notify",
+            "name": "通知报销人",
+            "kind": "external",
+            "resolution": "unknown",
+            "reason": "没有找到发送通知的代码。",
+        }
+    )
+    data["edges"].append(
+        {
+            "source": "pending",
+            "target": "notify",
+            "relation": "call",
+            "resolution": "unknown",
+            "reason": "没有静态调用关系。",
+        }
+    )
+    workspace.submit(tasks["提交报销"], data)
+    workspace.submit(tasks["经理审批"], approve_flow(workspace, tasks["经理审批"]))
+    stored = BusinessMap.model_validate_json((workspace.root / "business-map.json").read_text())
+    # Uncertain items do not make the map partial; they are listed instead.
+    assert stored.analysis_status == "complete"
+    skipped = stored.coverage.skipped_entries
+    assert [(item.symbol_id, item.reason) for item in skipped] == [
+        ("expense/api.py#healthz", "infrastructure")
+    ]
+    summary = render_summary(stored)
+    assert (
+        "## Uncertain" in summary and "通知报销人 (unknown) - 没有找到发送通知的代码。" in summary
+    )
+    assert "标记为待审批 -> 通知报销人 (unknown)" in summary
+    assert "## Skipped entries" in summary and "expense/api.py#healthz: infrastructure" in summary
+    assert "## Risk findings" in summary and "medium (agent observation)" in summary
+    assert "Skipped entries" in render_html(stored)
+
+
+def test_bundled_skill_examples_are_accepted_and_leave_nothing_unaccounted(workspace):
+    import re
+    from importlib.resources import files
+
+    text = files("genesis_ci").joinpath("assets/skills/genesis/SKILL.md").read_text()
+    plan, flow, _ = (json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S))
+    status = workspace.save_plan(MapPlan.model_validate(plan))
+    assert status["status"] == "accepted" and status["tasks"][0]["flow_key"] == "submit"
+    result = workspace.submit(status["next_task"], flow)
+    assert result["status"] == "accepted", result
+    assert result["accounting"]["unaccounted"] == 0 and result["accounting"]["omitted"] == 1
+    assert result["analysis_status"] == "complete"
+
+
+def test_a_label_on_any_edge_is_kept_and_shown(workspace):
+    from genesis_ci.business_map.render import render_html
+
+    tasks = planned(workspace)
+    data = submit_flow(workspace, tasks["提交报销"])
+    data["edges"][3]["label"] = "审核完成"
+    assert workspace.submit(tasks["提交报销"], data)["status"] == "accepted"
+    stored = BusinessMap.model_validate_json((workspace.root / "business-map.json").read_text())
+    labels = [edge.label for flow in stored.flows for edge in flow.edges if edge.label]
+    assert labels == ["审核完成"] and "审核完成" in render_html(stored)
+
+
+def test_a_step_on_lines_without_any_fact_is_told_so(workspace):
+    tasks = planned(workspace)
+    data = submit_flow(workspace, tasks["提交报销"])
+    data["steps"].append(
+        {
+            "key": "read",
+            "name": "读取金额",
+            "kind": "action",
+            "evidence": [src(API, 12, "amount =")],
+        }
+    )
+    result = workspace.submit(tasks["提交报销"], data)
+    assert codes(result) == [("steps[7]", "step_not_anchored")]
+    assert "a plain assignment has none" in result["errors"][0]["message"]

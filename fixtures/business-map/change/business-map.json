@@ -1,0 +1,698 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+  "side": "head",
+  "analysis_status": "complete",
+  "domains": [
+    {
+      "domain_id": "domain_expense",
+      "name": "报销",
+      "support": "agent_synthesis",
+      "flow_ids": [
+        "flow_submit_report",
+        "flow_approve_report"
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "flow_id": "flow_submit_report",
+      "name": "提交报销",
+      "summary": "员工提交报销单；金额达到阈值时先由模型审核，再等待经理审批，否则自动批准。",
+      "stage": "synthesized",
+      "support": "agent_synthesis",
+      "entries": [
+        {
+          "entry_id": "entry_submit_report",
+          "symbol_id": "src/expense/api.py#submit_report",
+          "kind": "http_route",
+          "detection": "adapter",
+          "framework": "fastapi",
+          "attributes": {
+            "method": "POST",
+            "path": "/reports"
+          },
+          "evidence_ids": [
+            "ev_a812ec283078ffb7bbc0a97c"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "step_id": "step_submit_received",
+          "name": "收到报销提交",
+          "kind": "trigger",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_30a8c07aa220864778ee6934"
+          ],
+          "evidence_ids": [
+            "ev_a812ec283078ffb7bbc0a97c"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_choose_path",
+          "name": "根据金额选择处理路径",
+          "kind": "decision",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_b1a57d59111caa78d0142aa9"
+          ],
+          "evidence_ids": [
+            "ev_cecaff33bce043dfec4776e4"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_model_review",
+          "name": "模型审核",
+          "kind": "external",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_d87d422b58eaede7aa06d752",
+            "fp_c719c7ba82e728836ba40d7e"
+          ],
+          "evidence_ids": [
+            "ev_5101a0eb0cc60d89fdfd4dec",
+            "ev_bd78dd75a662860768229b4c"
+          ],
+          "finding_ids": [
+            "find_loop_no_count_bound",
+            "find_review_failure_unhandled"
+          ]
+        },
+        {
+          "step_id": "step_mark_pending",
+          "name": "标记为待审批",
+          "kind": "action",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_3a8167b812c3a4885103417a"
+          ],
+          "evidence_ids": [
+            "ev_0baa0b69f641833af563e3f1"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_return_pending",
+          "name": "返回待审批结果",
+          "kind": "result",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_7c9c3849a52d7432306bec56"
+          ],
+          "evidence_ids": [
+            "ev_237d9bbc7a2ab5dc5b58ef11"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_auto_approve",
+          "name": "自动批准",
+          "kind": "action",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_b3da2057ae0a37c06628c24a"
+          ],
+          "evidence_ids": [
+            "ev_44b279843b5a4755be9e0a9f"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_return_approved",
+          "name": "返回已批准结果",
+          "kind": "result",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_4c389c569da88d7f7d7d9734"
+          ],
+          "evidence_ids": [
+            "ev_fb5ec9e0ee8e24a85d2c5aa6"
+          ],
+          "finding_ids": []
+        }
+      ],
+      "edges": [
+        {
+          "source": "step_submit_received",
+          "target": "step_choose_path",
+          "relation": "sequence",
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_30a8c07aa220864778ee6934",
+            "fp_b1a57d59111caa78d0142aa9"
+          ],
+          "evidence_ids": [
+            "ev_cecaff33bce043dfec4776e4"
+          ]
+        },
+        {
+          "source": "step_choose_path",
+          "target": "step_model_review",
+          "relation": "branch",
+          "condition": {
+            "label": "达到阈值",
+            "branch": "true",
+            "anchor": "fp_b1a57d59111caa78d0142aa9"
+          },
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [],
+          "evidence_ids": [
+            "ev_cecaff33bce043dfec4776e4"
+          ]
+        },
+        {
+          "source": "step_choose_path",
+          "target": "step_auto_approve",
+          "relation": "branch",
+          "condition": {
+            "label": "低于阈值",
+            "branch": "false",
+            "anchor": "fp_b1a57d59111caa78d0142aa9"
+          },
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [],
+          "evidence_ids": [
+            "ev_cecaff33bce043dfec4776e4"
+          ]
+        },
+        {
+          "source": "step_model_review",
+          "target": "step_mark_pending",
+          "relation": "sequence",
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_d87d422b58eaede7aa06d752",
+            "fp_3a8167b812c3a4885103417a"
+          ],
+          "evidence_ids": [
+            "ev_0baa0b69f641833af563e3f1"
+          ]
+        },
+        {
+          "source": "step_mark_pending",
+          "target": "step_return_pending",
+          "relation": "sequence",
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_3a8167b812c3a4885103417a",
+            "fp_7c9c3849a52d7432306bec56"
+          ],
+          "evidence_ids": [
+            "ev_237d9bbc7a2ab5dc5b58ef11"
+          ]
+        },
+        {
+          "source": "step_auto_approve",
+          "target": "step_return_approved",
+          "relation": "sequence",
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_b3da2057ae0a37c06628c24a",
+            "fp_4c389c569da88d7f7d7d9734"
+          ],
+          "evidence_ids": [
+            "ev_fb5ec9e0ee8e24a85d2c5aa6"
+          ]
+        }
+      ],
+      "accounting": {
+        "accountable": 8,
+        "covered": 7,
+        "omitted": 1,
+        "unaccounted": 0,
+        "truncated": false
+      },
+      "omitted": [
+        {
+          "anchor": "fp_3733bfdb66bfc1588a1e0f14",
+          "reason": "logging"
+        }
+      ],
+      "unaccounted": [],
+      "finding_ids": [],
+      "limitations": []
+    },
+    {
+      "flow_id": "flow_approve_report",
+      "name": "经理审批",
+      "summary": "经理批准一张处于待审批状态的报销单。",
+      "stage": "synthesized",
+      "support": "agent_synthesis",
+      "entries": [
+        {
+          "entry_id": "entry_approve_report",
+          "symbol_id": "src/expense/api.py#approve_report",
+          "kind": "http_route",
+          "detection": "adapter",
+          "framework": "fastapi",
+          "attributes": {
+            "method": "POST",
+            "path": "/reports/{report_id}/approve"
+          },
+          "evidence_ids": [
+            "ev_7cec55c66ab76feea751e195"
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "step_id": "step_approve_received",
+          "name": "经理发起审批",
+          "kind": "trigger",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_f51f54522563810dbe370b4f"
+          ],
+          "evidence_ids": [
+            "ev_7cec55c66ab76feea751e195"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_load_report",
+          "name": "读取报销单",
+          "kind": "action",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_3e260a76ce176cad18427489"
+          ],
+          "evidence_ids": [
+            "ev_f0fbe2d4db33358bcb92b989"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_check_pending",
+          "name": "检查是否处于待审批状态",
+          "kind": "decision",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_e0a6a278bd81b36b0eedc59a"
+          ],
+          "evidence_ids": [
+            "ev_94b56c754c971b8e399258d7"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_reject",
+          "name": "拒绝：报销单不在待审批状态",
+          "kind": "result",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_b063b884c727d57eac80e38a"
+          ],
+          "evidence_ids": [
+            "ev_9020feed882321d4c234f772"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_mark_approved",
+          "name": "标记为已批准",
+          "kind": "action",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_676b8d4625c1a51b83da9f67"
+          ],
+          "evidence_ids": [
+            "ev_245934cd191b3b99e2f603b0"
+          ],
+          "finding_ids": []
+        },
+        {
+          "step_id": "step_approve_done",
+          "name": "返回已批准结果",
+          "kind": "result",
+          "support": "agent_synthesis",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_8b09c9e9aad52b5df54b5bf1"
+          ],
+          "evidence_ids": [
+            "ev_11e34c30927eff3c1a47a80d"
+          ],
+          "finding_ids": []
+        }
+      ],
+      "edges": [
+        {
+          "source": "step_approve_received",
+          "target": "step_load_report",
+          "relation": "sequence",
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_f51f54522563810dbe370b4f",
+            "fp_3e260a76ce176cad18427489"
+          ],
+          "evidence_ids": [
+            "ev_f0fbe2d4db33358bcb92b989"
+          ]
+        },
+        {
+          "source": "step_load_report",
+          "target": "step_check_pending",
+          "relation": "sequence",
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_3e260a76ce176cad18427489",
+            "fp_e0a6a278bd81b36b0eedc59a"
+          ],
+          "evidence_ids": [
+            "ev_94b56c754c971b8e399258d7"
+          ]
+        },
+        {
+          "source": "step_check_pending",
+          "target": "step_reject",
+          "relation": "branch",
+          "condition": {
+            "label": "不在待审批状态",
+            "branch": "true",
+            "anchor": "fp_e0a6a278bd81b36b0eedc59a"
+          },
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [],
+          "evidence_ids": [
+            "ev_94b56c754c971b8e399258d7"
+          ]
+        },
+        {
+          "source": "step_check_pending",
+          "target": "step_mark_approved",
+          "relation": "branch",
+          "condition": {
+            "label": "处于待审批状态",
+            "branch": "false",
+            "anchor": "fp_e0a6a278bd81b36b0eedc59a"
+          },
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [],
+          "evidence_ids": [
+            "ev_94b56c754c971b8e399258d7"
+          ]
+        },
+        {
+          "source": "step_mark_approved",
+          "target": "step_approve_done",
+          "relation": "sequence",
+          "support": "static_fact",
+          "resolution": "resolved",
+          "anchors": [
+            "fp_676b8d4625c1a51b83da9f67",
+            "fp_8b09c9e9aad52b5df54b5bf1"
+          ],
+          "evidence_ids": [
+            "ev_11e34c30927eff3c1a47a80d"
+          ]
+        }
+      ],
+      "accounting": {
+        "accountable": 5,
+        "covered": 5,
+        "omitted": 0,
+        "unaccounted": 0,
+        "truncated": false
+      },
+      "omitted": [],
+      "unaccounted": [],
+      "finding_ids": [],
+      "limitations": []
+    }
+  ],
+  "links": [
+    {
+      "link_id": "link_submit_to_approve",
+      "source": {
+        "flow_id": "flow_submit_report",
+        "step_id": "step_mark_pending"
+      },
+      "target": {
+        "flow_id": "flow_approve_report",
+        "step_id": "step_check_pending"
+      },
+      "relation": "state_handoff",
+      "name": "写入“待审批”状态",
+      "support": "agent_synthesis",
+      "resolution": "candidate",
+      "reason": "两条流程通过同一个状态值衔接，静态分析无法确认运行时的先后。",
+      "anchors": [],
+      "source_evidence_ids": [
+        "ev_0baa0b69f641833af563e3f1"
+      ],
+      "target_evidence_ids": [
+        "ev_94b56c754c971b8e399258d7"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "find_loop_no_count_bound",
+      "source": "rule",
+      "rule": "loop_no_count_bound",
+      "severity": "medium",
+      "statement": "模型调用位于没有静态次数上限的循环中。",
+      "anchors": [
+        "fp_c719c7ba82e728836ba40d7e"
+      ],
+      "evidence_ids": [
+        "ev_bd78dd75a662860768229b4c"
+      ],
+      "condition": "只识别静态可见的循环与调用；运行时的提前退出不在判断范围内。"
+    },
+    {
+      "finding_id": "find_review_failure_unhandled",
+      "source": "agent_observation",
+      "severity": "low",
+      "statement": "模型审核调用失败时没有处理，异常会直接中断提交。",
+      "anchors": [],
+      "evidence_ids": [
+        "ev_5101a0eb0cc60d89fdfd4dec"
+      ],
+      "gap": "只读取了这一处调用；上层框架是否统一处理异常不在已读取范围内。"
+    }
+  ],
+  "unassigned_finding_ids": [],
+  "coverage": {
+    "scope": "规划中的 2 条流程，覆盖全部 2 个框架入口。",
+    "entries_total": 2,
+    "entries_planned": 2,
+    "entries_skipped": 0,
+    "skipped_entries": [],
+    "entries_unhandled": 0,
+    "tasks_total": 3,
+    "tasks_validated": 3,
+    "tasks_pending": 0,
+    "tasks_failed": 0,
+    "limitations": []
+  },
+  "limitations": [],
+  "evidence": [
+    {
+      "evidence_id": "ev_0baa0b69f641833af563e3f1",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 16,
+        "end_line": 16
+      },
+      "snippet_digest": "sha256:fdafa4d581b8744a3f193eb39167dc9d8ae2ed7fdb6da130ee31a0ff9b76bb38",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_11e34c30927eff3c1a47a80d",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 28,
+        "end_line": 28
+      },
+      "snippet_digest": "sha256:4ee1e02b60b6edcb141aa303547dd6b80d0842d48a9399afcaa624370b57180f",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_237d9bbc7a2ab5dc5b58ef11",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 17,
+        "end_line": 17
+      },
+      "snippet_digest": "sha256:269906f5b5d32993c6efb70d784466b0812db11898639514b3d3d09babe66ac1",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_245934cd191b3b99e2f603b0",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 27,
+        "end_line": 27
+      },
+      "snippet_digest": "sha256:8f47bf6f11ca6e0d645b94a1704ea5f0818b90c880e095f2a2afdb485273c615",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_44b279843b5a4755be9e0a9f",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 18,
+        "end_line": 18
+      },
+      "snippet_digest": "sha256:0afa65fbddfa42394d34d8362c76a61a4123629eb83661ed45d370bcb9105a1c",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_5101a0eb0cc60d89fdfd4dec",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 15,
+        "end_line": 15
+      },
+      "snippet_digest": "sha256:5cdef26af3921e7865415dc40f6af982623095342e3649e0df7dc936705b5215",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_7cec55c66ab76feea751e195",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 22,
+        "end_line": 23
+      },
+      "snippet_digest": "sha256:c42ac4f4724bfe990da54bb375b61267d3e46f811604ccc07332a128a99bc35e",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_9020feed882321d4c234f772",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 26,
+        "end_line": 26
+      },
+      "snippet_digest": "sha256:4927605ffa9a9152f2669f18524f16d40bd5dc450da995190b3902043a89cd68",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_94b56c754c971b8e399258d7",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 25,
+        "end_line": 25
+      },
+      "snippet_digest": "sha256:4ee8f177ee4ccfd3efbfaf4f5a4f9a7d1df656b42c7e651f629edaec3626f3c3",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_9691c5c52acd65d1a5a0b2e8",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 13,
+        "end_line": 13
+      },
+      "snippet_digest": "sha256:3881af4945e4a8020a656ba92effebe12c538e38f0bc4c0ebabc11ed003e40cb",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_a812ec283078ffb7bbc0a97c",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 10,
+        "end_line": 11
+      },
+      "snippet_digest": "sha256:bafac1315a105c1b9906ca653f23fe26aa1673266c0380f8a5075d5e2c3a05ca",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_bd78dd75a662860768229b4c",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/review.py",
+      "range": {
+        "start_line": 7,
+        "end_line": 10
+      },
+      "snippet_digest": "sha256:6e45f4e19d3114dd3a83183e642d406cc7b2c0d4a6a6b151d0095901c181438e",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_cecaff33bce043dfec4776e4",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 14,
+        "end_line": 14
+      },
+      "snippet_digest": "sha256:f6b781b85218091397028be72e12787c842706f6bb87f1e79a13e40a7ff90810",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_f0fbe2d4db33358bcb92b989",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 24,
+        "end_line": 24
+      },
+      "snippet_digest": "sha256:cbaae58f4c6b380d07426a4ea7e006cd9eec53894a1778d770397aba17fee57c",
+      "kind": "code"
+    },
+    {
+      "evidence_id": "ev_fb5ec9e0ee8e24a85d2c5aa6",
+      "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
+      "side": "head",
+      "path": "src/expense/api.py",
+      "range": {
+        "start_line": 19,
+        "end_line": 19
+      },
+      "snippet_digest": "sha256:34d318b77ab0b6bc843b9eba9f5e3d29f72008b268472de3300f783276cae9b3",
+      "kind": "code"
+    }
+  ]
+}

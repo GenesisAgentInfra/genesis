@@ -20,6 +20,7 @@ jobs:
           uv run --all-packages --frozen python scripts/evaluate_analysis.py
           uv run --all-packages --frozen python scripts/check_public_boundary.py
           uv run --all-packages --frozen python scripts/build_fixtures.py
+          uv run --all-packages --frozen python scripts/build_map_fixtures.py
           git diff --exit-code
       - name: Build isolated client wheels
         run: |
