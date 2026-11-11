@@ -18,15 +18,15 @@
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a> &nbsp;·&nbsp; <a href="README.ja.md">日本語</a> &nbsp;·&nbsp; <a href="README.ko.md">한국어</a> &nbsp;·&nbsp; <strong>Deutsch</strong> &nbsp;·&nbsp; <a href="README.fr.md">Français</a> &nbsp;·&nbsp; <a href="README.es.md">Español</a></p>
 
 <p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis-cli?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub-Sterne" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis-cli?style=flat-square&amp;color=34a853" alt="Lizenz: Apache-2.0" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Unterstützt Codex und Claude Code" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="Unterstützte Analysesprache: Python" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis-cli%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="Version des CLI-Pakets" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub-Sterne" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis?style=flat-square&amp;color=34a853" alt="Lizenz: Apache-2.0" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Unterstützt Codex und Claude Code" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="Unterstützte Analysesprache: Python" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="Version des CLI-Pakets" height="24"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md">
     <picture>
       <source media="(max-width: 600px) and (prefers-reduced-motion: reduce)" srcset="assets/readme/code-intelligence-animation-mobile-poster.png">
       <source media="(max-width: 600px)" srcset="assets/readme/code-intelligence-animation-mobile.gif">
@@ -36,7 +36,7 @@
   </a>
 </p>
 
-<p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">Der Review-Ablauf im Überblick</a></sub></p>
+<p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md">Der Review-Ablauf im Überblick</a></sub></p>
 
 <a id="genesis-benchmarks"></a>
 
@@ -72,7 +72,7 @@ Zustimmung übertragen.
 Füge diese Anfrage in Codex oder Claude Code im zu prüfenden Projekt ein:
 
 ```text
-Richte Genesis von https://github.com/GenesisAgentInfra/genesis-cli ein.
+Richte Genesis von https://github.com/GenesisAgentInfra/genesis ein.
 Lies README und docs/coding-agents.md. Installiere die CLI außerhalb dieses Projekts
 und den genesis-review-Skill für meinen aktuellen Agenten auf Benutzerebene.
 Verwende eine vorhandene Installation und aktualisiere bei Bedarf einen unveränderten verwalteten Skill.
@@ -95,8 +95,8 @@ Merge-Sperre. Der Skill gilt auf Benutzerebene, die Regel für dieses Projekt. D
 Führe diese Befehle außerhalb der Anwendung aus, die du prüfen möchtest:
 
 ```sh
-git clone https://github.com/GenesisAgentInfra/genesis-cli.git
-cd genesis-cli
+git clone https://github.com/GenesisAgentInfra/genesis.git
+cd genesis
 uv sync --python 3.12 --package genesis-ci --no-dev --frozen
 uv run --package genesis-ci --no-dev --frozen genesis version
 uv run --package genesis-ci --no-dev --frozen genesis agent install --agent codex
@@ -127,7 +127,7 @@ Der offizielle gemeinsame Testzugang funktioniert ohne `genesis auth`, sofern
 keine persönlichen Verbindungseinstellungen konfiguriert sind. Er nutzt ein
 begrenztes Kontingent, das sich alle Nutzer teilen. Ein API-Schlüssel eines
 Modellanbieters ist nicht erforderlich.
-[Zugang und Grenzen des Testzugangs](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md#default-shared-trial).
+[Zugang und Grenzen des Testzugangs](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md#default-shared-trial).
 
 ## Was dein Review abdeckt
 
@@ -170,35 +170,35 @@ ist nicht für den Eigenbetrieb enthalten.
 Vorschau und Offline-Analyse bleiben lokal. Die Installation des Skills aktiviert
 keine automatischen Reviews nach jeder Änderung.
 
-[Datenverarbeitung, persönliche Schlüssel und Konfiguration](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md).
+[Datenverarbeitung, persönliche Schlüssel und Konfiguration](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md).
 
 <a id="genesis-docs"></a>
 
 ## Dokumentation
 
-- [Leitfaden für Coding-Agents](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md): Einrichtung, Skill-Erkennung, Team-Anweisungen und Fehlerbehebung.
-- [CLI-Leitfaden](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md): Befehle, optionaler Kontext, Zugangsdaten und Datenverarbeitung.
-- [GitHub Action](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/github-action.md): Repository-Automatisierung einrichten; die gehostete Analyse erfordert einen explizit angegebenen Genesis-Schlüssel.
-- [Mitwirken](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/CONTRIBUTING.md): Den Client entwickeln und testen.
-- [Repository-Abgrenzung](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/repository-boundary.md) und [Berichtsschemas](https://github.com/GenesisAgentInfra/code-intelligence-protocol).
+- [Leitfaden für Coding-Agents](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md): Einrichtung, Skill-Erkennung, Team-Anweisungen und Fehlerbehebung.
+- [CLI-Leitfaden](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md): Befehle, optionaler Kontext, Zugangsdaten und Datenverarbeitung.
+- [GitHub Action](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/github-action.md): Repository-Automatisierung einrichten; die gehostete Analyse erfordert einen explizit angegebenen Genesis-Schlüssel.
+- [Mitwirken](https://github.com/GenesisAgentInfra/genesis/blob/main/CONTRIBUTING.md): Den Client entwickeln und testen.
+- [Repository-Abgrenzung](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/repository-boundary.md) und [Berichtsschemas](https://github.com/GenesisAgentInfra/code-intelligence-protocol).
 
 <a id="genesis-stars"></a>
 
 ## Star-Verlauf
 
-<a href="https://www.star-history.com/#GenesisAgentInfra/genesis-cli&amp;Date">
+<a href="https://www.star-history.com/#GenesisAgentInfra/genesis&amp;Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date&amp;theme=dark">
-    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date" alt="Star-Verlauf von GenesisAgentInfra/genesis-cli" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&amp;type=Date&amp;theme=dark">
+    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&amp;type=Date" alt="Star-Verlauf von GenesisAgentInfra/genesis" width="100%">
   </picture>
 </a>
 
-[Auf Star History ansehen](https://www.star-history.com/#GenesisAgentInfra/genesis-cli&Date)
+[Auf Star History ansehen](https://www.star-history.com/#GenesisAgentInfra/genesis&Date)
 
 
 ## Lizenz
 
-Der ursprüngliche Genesis-CLI-Code steht unter der [Apache-2.0-Lizenz](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE).
+Der ursprüngliche Genesis-CLI-Code steht unter der [Apache-2.0-Lizenz](https://github.com/GenesisAgentInfra/genesis/blob/main/LICENSE).
 Diese Lizenz gewährt keinen Zugang zum separat betriebenen Genesis-Dienst.
-Mitgelieferte Komponenten behalten ihre jeweiligen Lizenzen; siehe [NOTICE](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/NOTICE)
-und [Drittanbieterhinweise](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/THIRD_PARTY_NOTICES.md).
+Mitgelieferte Komponenten behalten ihre jeweiligen Lizenzen; siehe [NOTICE](https://github.com/GenesisAgentInfra/genesis/blob/main/NOTICE)
+und [Drittanbieterhinweise](https://github.com/GenesisAgentInfra/genesis/blob/main/THIRD_PARTY_NOTICES.md).

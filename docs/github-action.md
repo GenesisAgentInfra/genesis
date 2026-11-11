@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: GenesisAgentInfra/genesis-cli/action@REVIEWED_FULL_COMMIT_SHA
+      - uses: GenesisAgentInfra/genesis/action@REVIEWED_FULL_COMMIT_SHA
         with:
           base: ${{ github.event.pull_request.base.sha }}
           service-url: ${{ vars.GENESIS_SERVICE_URL }}

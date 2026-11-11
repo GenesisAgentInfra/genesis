@@ -18,15 +18,15 @@
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a> &nbsp;·&nbsp; <a href="README.ja.md">日本語</a> &nbsp;·&nbsp; <strong>한국어</strong> &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a> &nbsp;·&nbsp; <a href="README.fr.md">Français</a> &nbsp;·&nbsp; <a href="README.es.md">Español</a></p>
 
 <p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis-cli?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub 스타 수" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis-cli?style=flat-square&amp;color=34a853" alt="라이선스: Apache-2.0" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Codex 및 Claude Code 지원" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="분석 지원 언어: Python" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis-cli%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="CLI 패키지 버전" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub 스타 수" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis?style=flat-square&amp;color=34a853" alt="라이선스: Apache-2.0" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="Codex 및 Claude Code 지원" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="분석 지원 언어: Python" height="24"></a>
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="CLI 패키지 버전" height="24"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">
+  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md">
     <picture>
       <source media="(max-width: 600px) and (prefers-reduced-motion: reduce)" srcset="assets/readme/code-intelligence-animation-mobile-poster.png">
       <source media="(max-width: 600px)" srcset="assets/readme/code-intelligence-animation-mobile.gif">
@@ -36,7 +36,7 @@
   </a>
 </p>
 
-<p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md">코드 리뷰 흐름 예시</a></sub></p>
+<p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md">코드 리뷰 흐름 예시</a></sub></p>
 
 <a id="genesis-benchmarks"></a>
 
@@ -70,7 +70,7 @@ CLI와 정적 분석은 오픈 소스입니다. 의미 분석을 포함한 리�
 리뷰할 프로젝트에서 Codex 또는 Claude Code를 열고 다음 요청을 붙여 넣으세요.
 
 ```text
-https://github.com/GenesisAgentInfra/genesis-cli 에서 Genesis를 설정해 주세요.
+https://github.com/GenesisAgentInfra/genesis 에서 Genesis를 설정해 주세요.
 README와 docs/coding-agents.md를 읽고 CLI는 프로젝트 밖에, genesis-review skill은
 현재 에이전트의 사용자 범위에 설치하세요. 기존 설치를 재사용하고 수정되지 않은 관리형 skill은 필요하면 갱신하세요.
 docs/coding-agents.md#configure-cr-preparation-in-this-project의 설정 절차에 따라 기존 내용을 보존하면서
@@ -91,8 +91,8 @@ CLI, skill, 프로젝트 지침을 확인하고 변경한 파일을 알려 주�
 리뷰할 애플리케이션의 외부에서 다음 명령을 실행하세요.
 
 ```sh
-git clone https://github.com/GenesisAgentInfra/genesis-cli.git
-cd genesis-cli
+git clone https://github.com/GenesisAgentInfra/genesis.git
+cd genesis
 uv sync --python 3.12 --package genesis-ci --no-dev --frozen
 uv run --package genesis-ci --no-dev --frozen genesis version
 uv run --package genesis-ci --no-dev --frozen genesis agent install --agent codex
@@ -118,7 +118,7 @@ uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 다른 범위를 리뷰하려면 비교할 브랜치나 커밋 쌍을 지정하세요. 작업 설명과 흐름도는 필요에 따라 추가할 수 있는 컨텍스트입니다.
 
 개인 연결 설정이 없으면 `genesis auth` 없이 공식 공유 체험판을 사용할 수 있습니다. 사용량은 모든 사용자가 함께 쓰는 제한된 할당량에서 차감됩니다. 모델 제공업체의 API 키는 필요하지 않습니다.
-[접근 방법 및 체험판 제한](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md#default-shared-trial).
+[접근 방법 및 체험판 제한](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md#default-shared-trial).
 
 ## 리뷰에서 확인하는 내용
 
@@ -150,34 +150,34 @@ uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
 
 미리보기와 오프라인 분석은 로컬에서만 수행됩니다. 스킬을 설치해도 매번 편집할 때마다 리뷰가 자동으로 실행되지는 않습니다.
 
-[데이터 처리, 개인 키 및 설정](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md).
+[데이터 처리, 개인 키 및 설정](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md).
 
 <a id="genesis-docs"></a>
 
 ## 문서
 
-- [코딩 에이전트 가이드](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/coding-agents.md): 설정, 스킬 검색, 팀 지침 및 문제 해결.
-- [CLI 가이드](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/usage.md): 명령, 선택적 컨텍스트, 자격 증명 및 데이터 처리.
-- [GitHub Action](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/github-action.md): 저장소 자동화를 설정합니다. 호스팅 분석에는 Genesis 키를 명시적으로 설정해야 합니다.
-- [기여 가이드](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/CONTRIBUTING.md): 클라이언트 개발 및 테스트.
-- [저장소 범위](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/docs/repository-boundary.md)와 [보고서 스키마](https://github.com/GenesisAgentInfra/code-intelligence-protocol).
+- [코딩 에이전트 가이드](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md): 설정, 스킬 검색, 팀 지침 및 문제 해결.
+- [CLI 가이드](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md): 명령, 선택적 컨텍스트, 자격 증명 및 데이터 처리.
+- [GitHub Action](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/github-action.md): 저장소 자동화를 설정합니다. 호스팅 분석에는 Genesis 키를 명시적으로 설정해야 합니다.
+- [기여 가이드](https://github.com/GenesisAgentInfra/genesis/blob/main/CONTRIBUTING.md): 클라이언트 개발 및 테스트.
+- [저장소 범위](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/repository-boundary.md)와 [보고서 스키마](https://github.com/GenesisAgentInfra/code-intelligence-protocol).
 
 <a id="genesis-stars"></a>
 
 ## 스타 기록
 
-<a href="https://www.star-history.com/#GenesisAgentInfra/genesis-cli&amp;Date">
+<a href="https://www.star-history.com/#GenesisAgentInfra/genesis&amp;Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date&amp;theme=dark">
-    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis-cli&amp;type=Date" alt="GenesisAgentInfra/genesis-cli의 스타 기록" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&amp;type=Date&amp;theme=dark">
+    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&amp;type=Date" alt="GenesisAgentInfra/genesis의 스타 기록" width="100%">
   </picture>
 </a>
 
-[Star History에서 보기](https://www.star-history.com/#GenesisAgentInfra/genesis-cli&Date)
+[Star History에서 보기](https://www.star-history.com/#GenesisAgentInfra/genesis&Date)
 
 
 ## 라이선스
 
-Genesis CLI의 자체 코드는 [Apache-2.0](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/LICENSE) 라이선스로 제공됩니다. 이 라이선스는 별도로 운영되는 Genesis 서비스의 접근 권한을 부여하지 않습니다.
+Genesis CLI의 자체 코드는 [Apache-2.0](https://github.com/GenesisAgentInfra/genesis/blob/main/LICENSE) 라이선스로 제공됩니다. 이 라이선스는 별도로 운영되는 Genesis 서비스의 접근 권한을 부여하지 않습니다.
 
-번들 구성 요소에는 각자의 라이선스가 적용됩니다. [NOTICE](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/NOTICE)와 [서드파티 고지](https://github.com/GenesisAgentInfra/genesis-cli/blob/main/THIRD_PARTY_NOTICES.md)를 확인하세요.
+번들 구성 요소에는 각자의 라이선스가 적용됩니다. [NOTICE](https://github.com/GenesisAgentInfra/genesis/blob/main/NOTICE)와 [서드파티 고지](https://github.com/GenesisAgentInfra/genesis/blob/main/THIRD_PARTY_NOTICES.md)를 확인하세요.
