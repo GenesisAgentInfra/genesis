@@ -298,6 +298,37 @@ def test_agent_plan_groups_skips_and_can_propose_entries(workspace):
     assert workspace.status()["plan"] == "agent"
 
 
+def test_a_proposed_entry_stays_usable_in_the_plans_that_follow(workspace):
+    proposal = {
+        "symbol_id": "expense/store.py#load_report",
+        "kind": "public_api",
+        "reason": "由报表脚本直接调用",
+        "evidence": [src("expense/store.py", 8, "def load_report")],
+    }
+    first = workspace.save_plan(MapPlan.model_validate({"proposed_entries": [proposal]}))
+    proposed = entry(workspace, "#load_report")
+    assert proposed.detection == "agent_proposed"
+    # The plan that proposes an entry answers with its id.
+    assert proposed.entry_id in [item["entry_id"] for item in first["entries"]]
+    # The next plan uses that id and does not propose the entry again.
+    flow = {"key": "load", "name": "查看报销", "entry_ids": [proposed.entry_id]}
+    status = workspace.save_plan(MapPlan.model_validate({"flows": [flow]}))
+    assert [task["name"] for task in status["tasks"]] == ["查看报销"]
+    assert entry(workspace, "#load_report").attributes == {"reason": "由报表脚本直接调用"}
+    # So does a plan that sets it aside, and proposing it again replaces the reason.
+    skip = {"entry_id": proposed.entry_id, "reason": "out_of_scope"}
+    workspace.save_plan(MapPlan.model_validate({"skipped": [skip]}))
+    again = {**proposal, "reason": "由对账任务调用"}
+    workspace.save_plan(MapPlan.model_validate({"flows": [flow], "proposed_entries": [again]}))
+    assert entry(workspace, "#load_report").attributes == {"reason": "由对账任务调用"}
+    # A plan that no longer mentions the entry withdraws it.
+    planned(workspace)
+    assert proposed.entry_id not in workspace.entries()
+    with pytest.raises(LoopError) as refused:
+        workspace.save_plan(MapPlan.model_validate({"flows": [flow]}))
+    assert [item["code"] for item in refused.value.errors] == ["unknown_entry"]
+
+
 def test_context_lists_what_the_flow_has_to_account_for(workspace):
     tasks = planned(workspace)
     context = workspace.context(tasks["提交报销"], claim=True)
