@@ -360,6 +360,12 @@ class ChangeAnalysis:
         for fact in self.workspace.facts.facts:
             if fact.kind == FactKind.call:
                 internal = [item for item in fact.target.targets if item in known[fact.side]]
+                # Creating an object also runs its initializer.
+                internal += [
+                    item + ".__init__"
+                    for item in internal
+                    if item + ".__init__" in known[fact.side]
+                ]
                 graph[fact.side].setdefault(fact.symbol_id, set()).update(internal)
         return graph
 

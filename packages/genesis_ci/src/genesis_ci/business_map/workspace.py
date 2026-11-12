@@ -299,6 +299,20 @@ class Workspace:
             ],
         )
 
+    def _entered(self, targets) -> list[str]:
+        """The definitions a call runs. Creating an object runs its `__init__`, never the
+        class body, which ran once when the module was imported."""
+        found = []
+        for target in targets:
+            symbol = self.symbols.get(target)
+            if symbol is None:
+                continue
+            if symbol.kind != "class":
+                found.append(target)
+            elif target + ".__init__" in self.symbols:
+                found.append(target + ".__init__")
+        return found
+
     def accountable(self, symbol_ids) -> tuple[list[CodeFact], bool]:
         """Facts a flow has to account for, breadth first from its entry symbols."""
         chosen, seen, frontier = [], set(symbol_ids), list(symbol_ids)
@@ -307,7 +321,7 @@ class Workspace:
             for symbol in frontier:
                 for fact in self.by_symbol.get(symbol, ()):
                     if fact.kind == FactKind.call:
-                        internal = [t for t in fact.target.targets if t in self.symbols]
+                        internal = self._entered(fact.target.targets)
                         following += [t for t in internal if t not in seen]
                         seen.update(internal)
                         if fact.boundary == CallBoundary.external or (
@@ -483,7 +497,7 @@ class Workspace:
         return list(dict.fromkeys(resolved))
 
     def _facts_in(self, evidence_ids) -> list[str]:
-        """Fingerprints of facts inside short cited ranges, in evaluation order."""
+        """Fingerprints of facts that start inside short cited ranges, in evaluation order."""
         found = []
         for evidence_id in evidence_ids:
             ref = self.evidence(evidence_id)
@@ -500,8 +514,9 @@ class Workspace:
                     for fact in facts
                     if fact.kind not in {FactKind.breaks, FactKind.continues}
                     and fact.boundary != CallBoundary.builtin
-                    and ref.range.start_line <= fact.range.start_line
-                    and fact.range.end_line <= ref.range.end_line
+                    # A fact belongs to the range it starts in. A call written over many
+                    # lines is cited by its first lines, not by all of them.
+                    and ref.range.start_line <= fact.range.start_line <= ref.range.end_line
                 ]
         return found
 
@@ -545,7 +560,7 @@ class Workspace:
         for symbol in symbol_ids:
             for fact in self.by_symbol.get(symbol, ()):
                 if fact.kind == FactKind.call:
-                    found += [t for t in fact.target.targets if t in self.symbols]
+                    found += self._entered(fact.target.targets)
         return sorted(set(found) - set(symbol_ids))
 
     def context(self, task_id: str, claim: bool = False) -> dict:
@@ -770,7 +785,7 @@ class Workspace:
                         where,
                         "step_not_anchored",
                         (
-                            "The cited lines contain no analyzer fact; a plain assignment has "
+                            "No analyzer fact starts in the cited lines; a plain assignment has "
                             "none. Fold this into a neighbouring step, list the fingerprint of a "
                             "fact in `anchors`, or submit the step as candidate with a reason."
                             if evidence and short

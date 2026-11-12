@@ -678,3 +678,94 @@ def test_a_step_on_lines_without_any_fact_is_told_so(workspace):
     result = workspace.submit(tasks["提交报销"], data)
     assert codes(result) == [("steps[7]", "step_not_anchored")]
     assert "a plain assignment has none" in result["errors"][0]["message"]
+
+
+SERVICE_APP = {
+    "shop/__init__.py": "",
+    "shop/api.py": """from fastapi import APIRouter
+from pydantic import Field
+
+from .store import save
+
+router = APIRouter()
+
+
+class Reply:
+    note = Field("", description="shown to the user")
+
+    def __init__(self, data):
+        if not data:
+            raise ValueError("nothing to reply with")
+        self.data = data
+
+
+@router.post("/orders")
+def create_order(order):
+    saved = save(
+        order,
+        mode="create",
+    )
+    return Reply(saved)
+""",
+    "shop/store.py": "def save(order, mode):\n    return {**order, 'mode': mode}\n",
+}
+
+
+def test_creating_an_object_accounts_for_its_initializer_not_its_class_body(source_repo):
+    for path, text in SERVICE_APP.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    task = workspace.save_plan(None)["tasks"][0]["task_id"]
+    context = workspace.context(task)
+    listed = [(item["kind"], item["text"].split("(")[0]) for item in context["accountable"]]
+    # The field declaration ran when the module was imported, not when a reply is built.
+    assert listed == [
+        ("return", "return Reply"),
+        ("condition", "not data"),
+        ("raise", "raise ValueError"),
+    ]
+    assert "shop/api.py#Reply.__init__" in context["callees"]
+
+
+def test_a_call_written_over_several_lines_is_cited_by_its_first_line(source_repo):
+    for path, text in SERVICE_APP.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    task = workspace.save_plan(None)["tasks"][0]["task_id"]
+    context = workspace.context(task)
+    flow = {
+        "name": "下单",
+        "steps": [
+            {
+                "key": "in",
+                "name": "收到订单",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src("shop/api.py", 18, '@router.post("/orders")', 19)],
+            },
+            {
+                "key": "save",
+                "name": "保存订单",
+                "kind": "action",
+                "evidence": [src("shop/api.py", 20, "saved = save(")],
+            },
+            {
+                "key": "out",
+                "name": "返回结果",
+                "kind": "result",
+                "evidence": [
+                    src("shop/api.py", 24, "return Reply(saved)"),
+                    src("shop/api.py", 13, "not data", 14),
+                ],
+            },
+        ],
+        "edges": [
+            {"source": "in", "target": "save", "relation": "sequence"},
+            {"source": "save", "target": "out", "relation": "sequence"},
+        ],
+    }
+    result = workspace.submit(task, flow)
+    assert result["status"] == "accepted", result
+    assert result["accounting"]["unaccounted"] == 0
