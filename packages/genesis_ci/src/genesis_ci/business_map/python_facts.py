@@ -4,9 +4,11 @@ Reuses the parsed syntax trees and the call resolution of the Python extractor,
 and adds what the map workflow needs on top: position-independent fingerprints,
 the branch each fact sits on, enclosing loops, and returns and raises.
 
-Limits: lambda bodies are not descended into, and `try`/`except` is not modelled as
-a branch. A call in a decorator or default value belongs to the enclosing scope, so
-it carries no guards of the decorated function.
+A function handed to another call as an argument, and a call inside a lambda, are
+call facts marked `deferred`: they are written here and run by whoever receives them.
+
+Limits: `try`/`except` is not modelled as a branch. A call in a decorator or default
+value belongs to the enclosing scope, so it carries no guards of the decorated function.
 """
 
 from __future__ import annotations
@@ -160,6 +162,8 @@ class _Collector(cst.CSTVisitor):
         # Where a decorated definition really starts: at its first decorator.
         self.decorated: dict[str, tuple[int, int]] = {}
         self.bom = int(file.raw_text.startswith("﻿"))
+        # Inside a lambda nothing runs where it is written.
+        self.lambdas = 0
 
     @property
     def frame(self) -> _Frame:
@@ -235,8 +239,11 @@ class _Collector(cst.CSTVisitor):
     def leave_ClassDef(self, node) -> None:
         self._leave_scope()
 
-    def visit_Lambda(self, node) -> bool:
-        return False
+    def visit_Lambda(self, node) -> None:
+        self.lambdas += 1
+
+    def leave_Lambda(self, node) -> None:
+        self.lambdas -= 1
 
     def visit_If(self, node) -> None:
         self.frame.conditions.append(
@@ -335,6 +342,7 @@ class _Collector(cst.CSTVisitor):
             target=_UNRESOLVED,
             awaited=bool(parsed and parsed.awaited),
             boundary=CallBoundary.unknown,
+            deferred=self.lambdas > 0,
         )
 
     def visit_Return(self, node) -> None:
@@ -420,6 +428,61 @@ def collect_file(file: ParsedFile, wrapper: MetadataWrapper, registry) -> dict:
     }
 
 
+IN_LAMBDA = "Inside a lambda; it runs when and if the lambda is called"
+
+
+def _handed(fact: CodeFact, parsed, extraction: Extraction, ordinals: Counter):
+    """The functions of this code base that a call hands to its callee as arguments.
+
+    `executor.submit(self.work, item)` does not call `work`; the executor does, later and
+    elsewhere. Read as calls only, a flow would end at such a line while its real work
+    sits in the function handed over. Any argument that is a plain reference to a local
+    function counts, whoever receives it: a pool, a retry helper, a registry. A class as
+    an argument does not, or `isinstance(x, Foo)` would read as creating a `Foo`.
+    """
+    resolver = extraction.resolver
+    receiver = " ".join(parsed.callee.text.split())[:120]
+    for argument in parsed.arguments:
+        value = argument.value
+        if value.kind not in {"name", "attribute"} or not value.evidence_ids:
+            continue
+        resolved = resolver.resolve(value, fact.side, parsed.path)
+        targets = tuple(
+            item
+            for item in resolved.targets
+            if resolver.kinds.get((fact.side, item)) == {"function"}
+        )
+        ref = extraction.registry.get(value.evidence_ids[0])
+        if not targets or len(targets) != len(resolved.targets) or ref is None:
+            continue
+        canonical = canonical_python(value.text)
+        # A bare reference never has the text of a call, so these count on their own.
+        ordinal = ordinals[(fact.symbol_id, canonical)]
+        ordinals[(fact.symbol_id, canonical)] += 1
+        yield CodeFact(
+            fingerprint=fact_fingerprint(
+                symbol=fact.symbol_id, kind=FactKind.call.value, text=canonical, ordinal=ordinal
+            ),
+            kind=FactKind.call,
+            side=fact.side,
+            language=Language.python,
+            symbol_id=fact.symbol_id,
+            text=value.text.strip()[:12000],
+            ordinal=ordinal,
+            range=ref.range,
+            evidence_ids=(ref.evidence_id,),
+            guards=fact.guards,
+            loops=fact.loops,
+            target=Resolution(
+                status="candidate",
+                targets=targets,
+                reason=f"Handed to {receiver}; it runs when and if the receiver calls it",
+            ),
+            boundary=CallBoundary.internal,
+            deferred=True,
+        )
+
+
 def python_facts(extraction: Extraction) -> FactSet:
     """Convert every parsed Python file of an extraction into language-neutral facts."""
     analysis = extraction.analysis
@@ -433,12 +496,21 @@ def python_facts(extraction: Extraction) -> FactSet:
         if gathered is None:
             wrapper = MetadataWrapper(file.module, unsafe_skip_copy=True)
             gathered = collect_file(file, wrapper, extraction.registry)
+        handed: Counter = Counter()
         for index, fact in enumerate(gathered["facts"]):
             call = gathered["parsed_call"].get(index)
-            if call is not None:
-                target = file.calls[call].target
-                fact = fact.model_copy(update={"target": target, "boundary": call_boundary(target)})
+            if call is None:
+                facts.append(fact)
+                continue
+            target = file.calls[call].target
+            if fact.deferred and target.targets:
+                # Whatever else is uncertain about it, it does not run where it is written.
+                target = Resolution(status="candidate", targets=target.targets, reason=IN_LAMBDA)
+            fact = fact.model_copy(update={"target": target, "boundary": call_boundary(target)})
             facts.append(fact)
+            for passed in _handed(fact, file.calls[call], extraction, handed):
+                facts.append(passed)
+                refs[passed.evidence_ids[0]] = extraction.registry.get(passed.evidence_ids[0])
         refs.update(gathered["refs"])
         decorated.update(
             ((file.side, name), value) for name, value in gathered["decorated"].items()

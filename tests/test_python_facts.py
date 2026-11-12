@@ -213,7 +213,9 @@ class Service:
     outer = one(result, "return", "return inner(1)")
     assert outer.symbol_id == "app.py#Service.run"
     assert [guard.branch for guard in outer.guards] == ["true"]
-    assert not [fact for fact in select(result, "call") if fact.text == "missing(x)"]
+    # A call in a lambda belongs to the function it is written in, as one that runs later.
+    in_lambda = one(result, "call", "missing(x)")
+    assert (in_lambda.symbol_id, in_lambda.deferred) == ("app.py#Service.run", True)
     symbols = {symbol.symbol_id: symbol for symbol in result.symbols if symbol.side == HEAD}
     assert symbols["app.py#Service.run.inner"].decorators == ("cached",)
     assert symbols["app.py#Service"].kind == "class"

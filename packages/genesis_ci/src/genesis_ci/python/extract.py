@@ -1142,17 +1142,24 @@ def extract_python(
             if o.reason == "submodule"
         )
         resolver = Resolver(parsed, options.source_roots, unavailable)
+
+        def resolved(call, file):
+            target = resolver.callable_target(
+                resolver.resolve(call.callee, file.side, file.path), file.side
+            )
+            return call.model_copy(update={"target": target})
+
+        for file in parsed.values():
+            file.calls[:] = [resolved(call, file) for call in file.calls]
+        # A second pass over what stayed unknown, now that it is known who calls what:
+        # a parameter without an annotation is typed by what its callers pass.
+        resolver.learn_call_sites()
         for file in parsed.values():
             file.calls[:] = [
-                call.model_copy(
-                    update={
-                        "target": resolver.callable_target(
-                            resolver.resolve(call.callee, file.side, file.path), file.side
-                        )
-                    }
-                )
+                resolved(call, file) if call.target.status == "unknown" else call
                 for call in file.calls
             ]
+        for file in parsed.values():
             for call in file.calls:
                 if call.target.status != "resolved":
                     file.unresolved.append(

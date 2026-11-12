@@ -100,6 +100,9 @@ class CodeFact(ContractModel):
     target: Resolution | None = None
     awaited: bool = False
     boundary: CallBoundary | None = None
+    # Written here and run by someone else: a function handed to another call as an
+    # argument, or a call inside a lambda. When and whether it runs is up to the receiver.
+    deferred: bool = False
 
     @model_validator(mode="after")
     def call_details_only_on_calls(self) -> CodeFact:
@@ -108,6 +111,8 @@ class CodeFact(ContractModel):
             raise ValueError("exactly the call facts carry a target and a boundary")
         if self.awaited and not is_call:
             raise ValueError("only a call can be awaited")
+        if self.deferred and (not is_call or self.target.status == "resolved"):
+            raise ValueError("only a call can be deferred, and never as a resolved target")
         if self.branches and self.kind not in {FactKind.condition, FactKind.loop}:
             raise ValueError("only a condition or a loop has branches")
         return self

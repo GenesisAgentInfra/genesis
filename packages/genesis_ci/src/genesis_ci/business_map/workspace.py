@@ -684,6 +684,10 @@ class Workspace:
         if fact.kind == FactKind.call:
             view["boundary"] = fact.boundary.value
             view["targets"] = list(fact.target.targets)
+            if fact.deferred:
+                # Handed to another call or written in a lambda: run by the receiver.
+                view["deferred"] = True
+                view["note"] = fact.target.reason
         return view
 
     def _callees(self, symbol_ids) -> list[str]:
