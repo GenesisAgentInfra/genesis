@@ -329,3 +329,68 @@ def test_source_roots_follow_the_package_layout():
         "docs/conf.py",
     ]
     assert python_source_roots(paths) == (".", "src", "packages/api", "packages/core/src")
+
+
+def test_files_analyzed_in_worker_processes_give_the_same_facts(source_repo, monkeypatch):
+    import genesis_ci.python.extract as extract
+    from genesis_ci.business_map.python_facts import collect_file
+
+    files = {"app.py": APP, "helpers.py": HELPERS, "broken.py": "def (:\n"}
+    # Workers start in the analyzed repository. Its files must never be imported in
+    # place of a real module, or analyzing a repository would run its code.
+    files.update(
+        {"pickle.py": 'raise SystemExit("shadowed")\n', "genesis_ci.py": "import nothing\n"}
+    )
+    monkeypatch.chdir(source_repo)
+    files.update(
+        {
+            f"pkg/mod_{index}.py": HELPERS + f"\n\nVALUE_{index} = review({index})\n"
+            for index in range(6)
+        }
+    )
+    for path, text in files.items():
+        write(source_repo, path, text)
+    head = commit(source_repo)
+    snapshot = capture_snapshot(source_repo, SnapshotSpec(base=head, head=head))
+
+    def dumped(extraction):
+        return python_facts(extraction).model_dump(mode="json")
+
+    plain = dumped(extract_python(snapshot))
+    hooked = extract_python(snapshot, collect=collect_file)
+    # With the hook the syntax trees are released, and nothing downstream needs them.
+    assert all(file.module is None for file in hooked.files.values())
+    assert dumped(hooked) == plain
+
+    pooled = []
+    real = extract._extract_in_processes
+
+    def recorded(jobs, workers):
+        pooled.append(real(jobs, workers))
+        return pooled[-1]
+
+    monkeypatch.setattr(extract, "_extract_in_processes", recorded)
+    parallel = extract_python(snapshot, workers=2, collect=collect_file)
+    assert len(pooled) == 1
+    assert dumped(parallel) == plain
+    assert parallel.analysis.evidence == hooked.analysis.evidence
+    assert [(item.path, item.syntax.status) for item in parallel.analysis.coverage] == [
+        (item.path, item.syntax.status) for item in hooked.analysis.coverage
+    ]
+    if pooled[0] is None:
+        pytest.skip("no worker process could start here; the in-process fallback was used")
+
+
+def test_extraction_falls_back_when_no_process_pool_can_start(source_repo, monkeypatch):
+    import genesis_ci.python.extract as extract
+    from genesis_ci.business_map.python_facts import collect_file
+
+    monkeypatch.setattr(extract, "_extract_in_processes", lambda jobs, workers: None)
+    result = analyze(source_repo, {"app.py": APP, "helpers.py": HELPERS})
+    for path, text in {"app.py": APP, "helpers.py": HELPERS}.items():
+        write(source_repo, path, text)
+    snapshot = capture_snapshot(source_repo, SnapshotSpec(head="HEAD"))
+    fallback = python_facts(extract_python(snapshot, workers=4, collect=collect_file))
+    assert {fact.fingerprint for fact in select(fallback)} == {
+        fact.fingerprint for fact in select(result)
+    }

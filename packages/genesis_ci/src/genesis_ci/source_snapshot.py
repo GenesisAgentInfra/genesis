@@ -16,7 +16,7 @@ from genesis_contracts.models import (
     validate_repo_path,
 )
 
-from .snapshot import FrozenSnapshotReader, slice_source
+from .snapshot import FrozenSnapshotReader, physical_lines, slice_lines
 
 
 def content_digest(raw: bytes) -> str:
@@ -42,6 +42,10 @@ class FrozenSourceSnapshot:
         self._manifest = manifest
         self._files = MappingProxyType(captured)
         self._catalog = MappingProxyType(catalog)
+        # Decoded text and its lines, kept per file: evidence is cut from the same file
+        # thousands of times, and decoding or splitting it each time dominated analysis.
+        self._texts: dict[tuple[EvidenceSide, str], str] = {}
+        self._lines: dict[tuple[EvidenceSide, str], tuple[str, ...]] = {}
 
     @property
     def manifest(self) -> SnapshotManifest:
@@ -59,26 +63,59 @@ class FrozenSourceSnapshot:
 
     def read_text(self, side: EvidenceSide, path: str) -> str:
         # UTF-8 is the initial supported capture encoding; preserve BOM and CRLF.
-        return self.read_bytes(side, path).decode("utf-8")
+        key = (side, path)
+        if key not in self._texts:
+            self._texts[key] = self.read_bytes(side, path).decode("utf-8")
+        return self._texts[key]
+
+    def slice(self, side: EvidenceSide, path: str, span: ReferenceRange) -> str:
+        """The text of one range of a captured file."""
+        key = (side, path)
+        if key not in self._lines:
+            self._lines[key] = physical_lines(self.read_text(side, path))
+        return slice_lines(self._lines[key], span)
 
     def evidence(self, side: EvidenceSide, path: str, span: ReferenceRange) -> EvidenceRef:
-        snippet = slice_source(self.read_text(side, path), span)
-        digest = content_digest(snippet.encode("utf-8"))
-        return EvidenceRef(
-            evidence_id=evidence_id_for(
-                snapshot_id=self.manifest.snapshot_id,
-                side=side,
-                path=path,
-                range=span,
-                digest=digest,
-            ),
-            snapshot_id=self.manifest.snapshot_id,
-            side=side,
-            path=path,
-            range=span,
-            snippet_digest=digest,
-            kind=self._catalog[(side, path)].kind,
+        return _evidence_ref(
+            self.manifest.snapshot_id,
+            side,
+            path,
+            span,
+            self.slice(side, path, span),
+            self._catalog[(side, path)].kind,
         )
+
+
+def _evidence_ref(snapshot_id: str, side, path: str, span, snippet: str, kind) -> EvidenceRef:
+    digest = content_digest(snippet.encode("utf-8"))
+    return EvidenceRef(
+        evidence_id=evidence_id_for(
+            snapshot_id=snapshot_id, side=side, path=path, range=span, digest=digest
+        ),
+        snapshot_id=snapshot_id,
+        side=side,
+        path=path,
+        range=span,
+        snippet_digest=digest,
+        kind=kind,
+    )
+
+
+class SingleFileSource:
+    """The evidence view of one captured file, for analyzing it in another process.
+
+    It yields the same references as the whole snapshot would for that file.
+    """
+
+    def __init__(self, snapshot_id: str, side: EvidenceSide, path: str, raw: bytes, kind):
+        self._snapshot_id, self._key, self._kind = snapshot_id, (side, path), kind
+        self._lines = physical_lines(raw.decode("utf-8"))
+
+    def evidence(self, side: EvidenceSide, path: str, span: ReferenceRange) -> EvidenceRef:
+        if (side, path) != self._key:
+            raise KeyError(f"file not captured: {side}/{path}")
+        snippet = slice_lines(self._lines, span)
+        return _evidence_ref(self._snapshot_id, side, path, span, snippet, self._kind)
 
 
 class EvidenceRegistry:
@@ -93,12 +130,22 @@ class EvidenceRegistry:
         self._refs[ref.evidence_id] = ref
         return ref
 
+    def get(self, evidence_id: str) -> EvidenceRef | None:
+        return self._refs.get(evidence_id)
+
+    def refs(self) -> dict[str, EvidenceRef]:
+        return dict(self._refs)
+
+    def adopt(self, refs: dict[str, EvidenceRef]) -> None:
+        """Take over references registered for one file in another process."""
+        self._refs.update(refs)
+
     def freeze(self) -> FrozenSnapshotReader:
         refs = tuple(self._refs[key] for key in sorted(self._refs))
         excerpts = tuple(
             SourceExcerpt(
                 evidence_id=ref.evidence_id,
-                text=slice_source(self._source.read_text(ref.side, ref.path), ref.range),
+                text=self._source.slice(ref.side, ref.path, ref.range),
             )
             for ref in refs
         )

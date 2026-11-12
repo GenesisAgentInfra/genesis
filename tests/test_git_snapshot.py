@@ -618,3 +618,22 @@ def test_loaded_metadata_rejects_changed_mode_or_delta(repo, tmp_path):
     metadata.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="file delta"):
         load_snapshot(directory)
+
+
+def test_a_link_to_a_document_does_not_make_the_snapshot_partial(repo):
+    (repo / "GUIDE.md").symlink_to("README.md")
+    commit(repo)
+    result = capture_snapshot(repo, SnapshotSpec(base="HEAD", head="HEAD"))
+    listed = [item for item in result.capture.omissions if item.path == "GUIDE.md"]
+    # The link is still recorded on both sides and never read, but it cannot hide source.
+    assert {(item.reason, item.affects_completeness) for item in listed} == {("symlink", False)}
+    assert result.capture.manifest.integrity_status == "complete"
+
+
+def test_a_link_that_may_be_a_directory_still_makes_the_snapshot_partial(repo, tmp_path):
+    outside = tmp_path / "vendored"
+    outside.mkdir()
+    (repo / "vendored").symlink_to(outside, target_is_directory=True)
+    commit(repo)
+    result = capture_snapshot(repo, SnapshotSpec(base="HEAD", head="HEAD"))
+    assert result.capture.manifest.integrity_status == "partial"
