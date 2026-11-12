@@ -207,14 +207,18 @@ def map_render(
     """
     from .business_map.render import render_html, render_summary
     from .business_map.session import load, load_report, publish
+    from .business_map.view import render_view
 
     try:
         stored, business_map, bundle = load(repo, session)
         report = load_report(repo, session)
         # The share page sits beside the private one and never replaces it.
         name = "graph.share.html" if share else "graph.html"
+        # The interactive viewer is written beside the outline; --open shows the viewer.
+        view_name = "view.share.html" if share else "view.html"
         files = {
             name: render_html(business_map, None if share else bundle, report),
+            view_name: render_view(business_map, None if share else bundle, report),
             "summary.md": render_summary(business_map, report),
             "business-map.json": business_map.model_dump_json(indent=2, exclude_none=True) + "\n",
         }
@@ -224,11 +228,12 @@ def map_render(
     except (ValueError, OSError) as error:
         raise _map_failure(error) from error
     page = latest / name
+    view = latest / view_name
     opened = False
     if open_browser and not os.environ.get("GENESIS_NO_BROWSER"):
         import webbrowser
 
-        opened = bool(webbrowser.open(page.as_uri()))
+        opened = bool(webbrowser.open(view.as_uri()))
     typer.echo(
         json.dumps(
             {
@@ -237,6 +242,7 @@ def map_render(
                 **({} if report is None else {"change_status": report.analysis_status}),
                 "share": share,
                 "graph": str(page),
+                "view": str(view),
                 "summary": str(latest / "summary.md"),
                 **({} if report is None else {"change_report": str(latest / "change-report.json")}),
                 "opened": opened,

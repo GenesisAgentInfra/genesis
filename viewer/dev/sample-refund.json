@@ -1,0 +1,2452 @@
+{
+ "format_version": 1,
+ "share": false,
+ "map": {
+  "snapshot_id": "sha256:sample",
+  "side": "head",
+  "analysis_status": "partial",
+  "domains": [
+   {
+    "domain_id": "dom_refund",
+    "name": "退款",
+    "support": "agent_synthesis",
+    "flow_ids": [
+     "flow_refund",
+     "flow_progress",
+     "flow_cancel"
+    ]
+   },
+   {
+    "domain_id": "dom_payments",
+    "name": "支付渠道",
+    "support": "agent_synthesis",
+    "flow_ids": [
+     "flow_callback"
+    ]
+   },
+   {
+    "domain_id": "dom_notify",
+    "name": "通知",
+    "support": "agent_synthesis",
+    "flow_ids": [
+     "flow_email"
+    ]
+   },
+   {
+    "domain_id": "dom_reconcile",
+    "name": "对账",
+    "support": "agent_synthesis",
+    "flow_ids": [
+     "flow_reconcile"
+    ]
+   }
+  ],
+  "flows": [
+   {
+    "flow_id": "flow_refund",
+    "name": "申请退款",
+    "summary": "买家申请退款。已发货的订单先退货；未发货的订单按金额决定是否需要人工审批，然后调用支付渠道退款，失败会自动重试。",
+    "stage": "synthesized",
+    "support": "agent_synthesis",
+    "entries": [
+     {
+      "entry_id": "entry_refund",
+      "symbol_id": "refunds/api.py#create_refund",
+      "kind": "http_route",
+      "detection": "adapter",
+      "framework": "fastapi",
+      "attributes": {
+       "method": "POST",
+       "path": "/orders/{order_id}/refunds"
+      },
+      "evidence_ids": [
+       "ev_0000h"
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "step_id": "step_received",
+      "name": "收到退款申请",
+      "kind": "trigger",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_received"
+      ],
+      "evidence_ids": [
+       "ev_0001h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_load",
+      "name": "读取订单和支付记录",
+      "kind": "action",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_load"
+      ],
+      "evidence_ids": [
+       "ev_0002h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_shipped",
+      "name": "订单是否已经发货",
+      "kind": "decision",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_shipped"
+      ],
+      "evidence_ids": [
+       "ev_0003h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_return",
+      "name": "生成退货单",
+      "kind": "action",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_return"
+      ],
+      "evidence_ids": [
+       "ev_0004h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_await",
+      "name": "等待买家寄回商品",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_await"
+      ],
+      "evidence_ids": [
+       "ev_0005h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_amount",
+      "name": "退款金额是否超过 500 元",
+      "kind": "decision",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_amount_new"
+      ],
+      "evidence_ids": [
+       "ev_0006h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_review",
+      "name": "交给客服人工审批",
+      "kind": "external",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_review"
+      ],
+      "evidence_ids": [
+       "ev_0007h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_approved",
+      "name": "审批是否通过",
+      "kind": "decision",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_approved_new"
+      ],
+      "evidence_ids": [
+       "ev_0008h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_rejected",
+      "name": "退款被拒绝",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_rejected"
+      ],
+      "evidence_ids": [
+       "ev_0009h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_pay",
+      "name": "调用支付渠道退款",
+      "kind": "external",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_pay",
+       "fp_retry_new"
+      ],
+      "evidence_ids": [
+       "ev_0010h"
+      ],
+      "finding_ids": [
+       "find_retry"
+      ]
+     },
+     {
+      "step_id": "step_paid",
+      "name": "渠道是否返回成功",
+      "kind": "decision",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_paid"
+      ],
+      "evidence_ids": [
+       "ev_0011h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_mark",
+      "name": "把订单标为已退款",
+      "kind": "action",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_mark"
+      ],
+      "evidence_ids": [
+       "ev_0012h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_done",
+      "name": "退款完成，通知买家",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_done"
+      ],
+      "evidence_ids": [
+       "ev_0013h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_failed",
+      "name": "退款异常，转人工处理",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "candidate",
+      "anchors": [
+       "fp_failed"
+      ],
+      "evidence_ids": [
+       "ev_0014h"
+      ],
+      "finding_ids": [],
+      "reason": "渠道抛出异常时会进入 except 分支，静态分析没有覆盖 try/except。"
+     }
+    ],
+    "edges": [
+     {
+      "source": "step_received",
+      "target": "step_load",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0015h"
+      ]
+     },
+     {
+      "source": "step_load",
+      "target": "step_shipped",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0016h"
+      ]
+     },
+     {
+      "source": "step_shipped",
+      "target": "step_return",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0017h"
+      ],
+      "condition": {
+       "label": "已发货",
+       "branch": "true",
+       "anchor": "fp_shipped"
+      }
+     },
+     {
+      "source": "step_return",
+      "target": "step_await",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0018h"
+      ]
+     },
+     {
+      "source": "step_shipped",
+      "target": "step_amount",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0019h"
+      ],
+      "condition": {
+       "label": "未发货",
+       "branch": "false",
+       "anchor": "fp_shipped"
+      }
+     },
+     {
+      "source": "step_amount",
+      "target": "step_review",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0020h"
+      ],
+      "condition": {
+       "label": "超过 500 元",
+       "branch": "true",
+       "anchor": "fp_amount"
+      }
+     },
+     {
+      "source": "step_review",
+      "target": "step_approved",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0021h"
+      ]
+     },
+     {
+      "source": "step_approved",
+      "target": "step_rejected",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0022h"
+      ],
+      "condition": {
+       "label": "审批没通过",
+       "branch": "true",
+       "anchor": "fp_approved"
+      }
+     },
+     {
+      "source": "step_approved",
+      "target": "step_pay",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0023h"
+      ],
+      "condition": {
+       "label": "审批通过",
+       "branch": "false",
+       "anchor": "fp_approved"
+      }
+     },
+     {
+      "source": "step_amount",
+      "target": "step_pay",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0024h"
+      ],
+      "condition": {
+       "label": "不超过 500 元",
+       "branch": "false",
+       "anchor": "fp_amount"
+      }
+     },
+     {
+      "source": "step_pay",
+      "target": "step_paid",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0025h"
+      ]
+     },
+     {
+      "source": "step_paid",
+      "target": "step_mark",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0026h"
+      ],
+      "condition": {
+       "label": "成功",
+       "branch": "true",
+       "anchor": "fp_paid"
+      }
+     },
+     {
+      "source": "step_paid",
+      "target": "step_pay",
+      "relation": "loop",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0027h"
+      ],
+      "label": "失败时重试，最多 3 次"
+     },
+     {
+      "source": "step_mark",
+      "target": "step_done",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0028h"
+      ]
+     },
+     {
+      "source": "step_pay",
+      "target": "step_failed",
+      "relation": "exception",
+      "support": "agent_synthesis",
+      "resolution": "candidate",
+      "evidence_ids": [
+       "ev_0029h"
+      ],
+      "label": "渠道报错",
+      "reason": "try/except 没有被分析"
+     }
+    ],
+    "accounting": {
+     "accountable": 9,
+     "covered": 9,
+     "omitted": 0,
+     "unaccounted": 0
+    },
+    "finding_ids": []
+   },
+   {
+    "flow_id": "flow_progress",
+    "name": "查询退款进度",
+    "summary": "买家在订单页查看退款走到了哪一步。",
+    "stage": "synthesized",
+    "support": "agent_synthesis",
+    "entries": [
+     {
+      "entry_id": "entry_progress",
+      "symbol_id": "refunds/api.py#refund_status",
+      "kind": "http_route",
+      "detection": "adapter",
+      "attributes": {
+       "method": "GET",
+       "path": "/orders/{order_id}/refunds"
+      },
+      "evidence_ids": [
+       "ev_0030h"
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "step_id": "step_q_received",
+      "name": "收到查询",
+      "kind": "trigger",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_q_received"
+      ],
+      "evidence_ids": [
+       "ev_0031h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_q_lookup",
+      "name": "向支付渠道查询退款状态",
+      "kind": "external",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_q_lookup"
+      ],
+      "evidence_ids": [
+       "ev_0032h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_q_known",
+      "name": "渠道是否知道这笔退款",
+      "kind": "decision",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_q_known"
+      ],
+      "evidence_ids": [
+       "ev_0033h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_q_missing",
+      "name": "显示“还没有提交到渠道”",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_q_missing"
+      ],
+      "evidence_ids": [
+       "ev_0034h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_q_show",
+      "name": "显示渠道返回的进度",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_q_show"
+      ],
+      "evidence_ids": [
+       "ev_0035h"
+      ],
+      "finding_ids": []
+     }
+    ],
+    "edges": [
+     {
+      "source": "step_q_received",
+      "target": "step_q_lookup",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0036h"
+      ]
+     },
+     {
+      "source": "step_q_lookup",
+      "target": "step_q_known",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0037h"
+      ]
+     },
+     {
+      "source": "step_q_known",
+      "target": "step_q_missing",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0038h"
+      ],
+      "condition": {
+       "label": "渠道没有记录",
+       "branch": "true",
+       "anchor": "fp_q_known"
+      }
+     },
+     {
+      "source": "step_q_known",
+      "target": "step_q_show",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0039h"
+      ],
+      "condition": {
+       "label": "渠道有记录",
+       "branch": "false",
+       "anchor": "fp_q_known"
+      }
+     }
+    ],
+    "accounting": {
+     "accountable": 3,
+     "covered": 3,
+     "omitted": 0,
+     "unaccounted": 0
+    }
+   },
+   {
+    "flow_id": "flow_cancel",
+    "name": "POST /refunds/{refund_id}/cancel · cancel_refund",
+    "stage": "skeleton",
+    "support": "static_fact",
+    "entries": [
+     {
+      "entry_id": "entry_cancel",
+      "symbol_id": "refunds/api.py#cancel_refund",
+      "kind": "http_route",
+      "detection": "adapter",
+      "attributes": {
+       "method": "POST",
+       "path": "/refunds/{refund_id}/cancel"
+      },
+      "evidence_ids": [
+       "ev_0040h"
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "step_id": "step_c_entry",
+      "name": "cancel_refund(refund_id)",
+      "kind": "trigger",
+      "support": "static_fact",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_c_entry"
+      ],
+      "evidence_ids": [
+       "ev_0041h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_c_cond",
+      "name": "refund.status != 'pending'",
+      "kind": "decision",
+      "support": "static_fact",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_c_cond"
+      ],
+      "evidence_ids": [
+       "ev_0042h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_c_raise",
+      "name": "raise RefundLocked(refund_id)",
+      "kind": "result",
+      "support": "static_fact",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_c_raise"
+      ],
+      "evidence_ids": [
+       "ev_0043h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_c_call",
+      "name": "refunds.cancel(refund)",
+      "kind": "action",
+      "support": "static_fact",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_c_call"
+      ],
+      "evidence_ids": [
+       "ev_0044h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_c_ret",
+      "name": "return {'status': 'cancelled'}",
+      "kind": "result",
+      "support": "static_fact",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_c_ret"
+      ],
+      "evidence_ids": [
+       "ev_0045h"
+      ],
+      "finding_ids": []
+     }
+    ],
+    "edges": [
+     {
+      "source": "step_c_entry",
+      "target": "step_c_cond",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0046h"
+      ]
+     },
+     {
+      "source": "step_c_cond",
+      "target": "step_c_raise",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0047h"
+      ],
+      "condition": {
+       "label": "true",
+       "branch": "true",
+       "anchor": "fp_c_cond"
+      }
+     },
+     {
+      "source": "step_c_cond",
+      "target": "step_c_call",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0048h"
+      ],
+      "condition": {
+       "label": "false",
+       "branch": "false",
+       "anchor": "fp_c_cond"
+      }
+     },
+     {
+      "source": "step_c_call",
+      "target": "step_c_ret",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0049h"
+      ]
+     }
+    ],
+    "accounting": {
+     "accountable": 3,
+     "covered": 2,
+     "omitted": 0,
+     "unaccounted": 1
+    },
+    "unaccounted": [
+     "fp_c_extra"
+    ]
+   },
+   {
+    "flow_id": "flow_callback",
+    "name": "渠道退款回调",
+    "summary": "支付渠道处理完退款后回调我们，更新退款状态。",
+    "stage": "synthesized",
+    "support": "agent_synthesis",
+    "entries": [
+     {
+      "entry_id": "entry_callback",
+      "symbol_id": "payments/webhooks.py#refund_callback",
+      "kind": "http_route",
+      "detection": "adapter",
+      "attributes": {
+       "method": "POST",
+       "path": "/webhooks/refunds"
+      },
+      "evidence_ids": [
+       "ev_0059h"
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "step_id": "step_cb_in",
+      "name": "收到渠道回调",
+      "kind": "trigger",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_cb_in"
+      ],
+      "evidence_ids": [
+       "ev_0060h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_cb_sig",
+      "name": "签名是否有效",
+      "kind": "decision",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_cb_sig"
+      ],
+      "evidence_ids": [
+       "ev_0061h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_cb_update",
+      "name": "更新退款状态",
+      "kind": "action",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_cb_update"
+      ],
+      "evidence_ids": [
+       "ev_0062h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_cb_ok",
+      "name": "回复渠道成功",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_cb_ok"
+      ],
+      "evidence_ids": [
+       "ev_0063h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_cb_reject",
+      "name": "拒绝这次回调",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_cb_reject"
+      ],
+      "evidence_ids": [
+       "ev_0064h"
+      ],
+      "finding_ids": []
+     }
+    ],
+    "edges": [
+     {
+      "source": "step_cb_in",
+      "target": "step_cb_sig",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0065h"
+      ]
+     },
+     {
+      "source": "step_cb_sig",
+      "target": "step_cb_update",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0066h"
+      ],
+      "condition": {
+       "label": "签名有效",
+       "branch": "true",
+       "anchor": "fp_cb_sig"
+      }
+     },
+     {
+      "source": "step_cb_sig",
+      "target": "step_cb_reject",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0067h"
+      ],
+      "condition": {
+       "label": "签名无效",
+       "branch": "false",
+       "anchor": "fp_cb_sig"
+      }
+     },
+     {
+      "source": "step_cb_update",
+      "target": "step_cb_ok",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0068h"
+      ]
+     }
+    ],
+    "accounting": {
+     "accountable": 2,
+     "covered": 2,
+     "omitted": 0,
+     "unaccounted": 0
+    }
+   },
+   {
+    "flow_id": "flow_email",
+    "name": "退款结果邮件",
+    "summary": "退款有结果后给买家发一封邮件。",
+    "stage": "synthesized",
+    "support": "agent_synthesis",
+    "entries": [
+     {
+      "entry_id": "entry_email",
+      "symbol_id": "notify/email.py#send_refund_email",
+      "kind": "task",
+      "detection": "adapter",
+      "attributes": {
+       "name": "send_refund_email"
+      },
+      "evidence_ids": [
+       "ev_0069h"
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "step_id": "step_em_task",
+      "name": "收到发邮件任务",
+      "kind": "trigger",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_em_task"
+      ],
+      "evidence_ids": [
+       "ev_0070h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_em_send",
+      "name": "调用邮件服务",
+      "kind": "external",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_em_send"
+      ],
+      "evidence_ids": [
+       "ev_0071h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_em_log",
+      "name": "记录发送结果",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_em_log"
+      ],
+      "evidence_ids": [
+       "ev_0072h"
+      ],
+      "finding_ids": []
+     }
+    ],
+    "edges": [
+     {
+      "source": "step_em_task",
+      "target": "step_em_send",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0073h"
+      ]
+     },
+     {
+      "source": "step_em_send",
+      "target": "step_em_log",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0074h"
+      ]
+     }
+    ],
+    "accounting": {
+     "accountable": 2,
+     "covered": 2,
+     "omitted": 0,
+     "unaccounted": 0
+    }
+   },
+   {
+    "flow_id": "flow_reconcile",
+    "name": "每日退款对账",
+    "summary": "每天核对渠道账单和我们记的退款是否一致。",
+    "stage": "synthesized",
+    "support": "agent_synthesis",
+    "entries": [
+     {
+      "entry_id": "entry_reconcile",
+      "symbol_id": "reconcile/jobs.py#daily_refunds",
+      "kind": "scheduled",
+      "detection": "adapter",
+      "attributes": {
+       "schedule": "0 3 * * *"
+      },
+      "evidence_ids": [
+       "ev_0075h"
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "step_id": "step_rc_start",
+      "name": "每天凌晨开始",
+      "kind": "trigger",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_rc_start"
+      ],
+      "evidence_ids": [
+       "ev_0076h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_rc_pull",
+      "name": "拉取渠道账单",
+      "kind": "external",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_rc_pull"
+      ],
+      "evidence_ids": [
+       "ev_0077h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_rc_same",
+      "name": "金额是否一致",
+      "kind": "decision",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_rc_same"
+      ],
+      "evidence_ids": [
+       "ev_0078h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_rc_done",
+      "name": "标记已对账",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_rc_done"
+      ],
+      "evidence_ids": [
+       "ev_0079h"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_rc_ticket",
+      "name": "生成差异工单",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_rc_ticket"
+      ],
+      "evidence_ids": [
+       "ev_0080h"
+      ],
+      "finding_ids": []
+     }
+    ],
+    "edges": [
+     {
+      "source": "step_rc_start",
+      "target": "step_rc_pull",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0081h"
+      ]
+     },
+     {
+      "source": "step_rc_pull",
+      "target": "step_rc_same",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0082h"
+      ]
+     },
+     {
+      "source": "step_rc_same",
+      "target": "step_rc_done",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0083h"
+      ],
+      "condition": {
+       "label": "一致",
+       "branch": "true",
+       "anchor": "fp_rc_same"
+      }
+     },
+     {
+      "source": "step_rc_same",
+      "target": "step_rc_ticket",
+      "relation": "branch",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0084h"
+      ],
+      "condition": {
+       "label": "不一致",
+       "branch": "false",
+       "anchor": "fp_rc_same"
+      }
+     }
+    ],
+    "accounting": {
+     "accountable": 2,
+     "covered": 2,
+     "omitted": 0,
+     "unaccounted": 0
+    }
+   }
+  ],
+  "findings": [
+   {
+    "finding_id": "find_retry",
+    "source": "agent_observation",
+    "severity": "medium",
+    "statement": "重试时没有带幂等键。渠道超时但其实已经退款时，再次调用可能给买家退两次钱。",
+    "evidence_ids": [
+     "ev_0085h"
+    ]
+   }
+  ],
+  "coverage": {
+   "scope": "3 planned flows covering 3 of 4 entries.",
+   "entries_total": 4,
+   "entries_planned": 3,
+   "entries_skipped": 1,
+   "skipped_entries": [
+    {
+     "entry_id": "entry_health",
+     "symbol_id": "app.py#health",
+     "reason": "infrastructure"
+    }
+   ],
+   "entries_unhandled": 0,
+   "tasks_total": 3,
+   "tasks_validated": 2,
+   "tasks_pending": 1,
+   "tasks_failed": 0
+  },
+  "limitations": [
+   {
+    "code": "skeleton_flows",
+    "message": "1 flow is still a static skeleton.",
+    "affects_completeness": true
+   }
+  ],
+  "evidence": [
+   {
+    "evidence_id": "ev_0000h",
+    "side": "head",
+    "path": "refunds/api.py",
+    "range": {
+     "start_line": 12,
+     "end_line": 12
+    }
+   },
+   {
+    "evidence_id": "ev_0001h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 12,
+     "end_line": 12
+    }
+   },
+   {
+    "evidence_id": "ev_0002h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 14,
+     "end_line": 14
+    }
+   },
+   {
+    "evidence_id": "ev_0003h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 16,
+     "end_line": 16
+    }
+   },
+   {
+    "evidence_id": "ev_0004h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 17,
+     "end_line": 17
+    }
+   },
+   {
+    "evidence_id": "ev_0005h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 18,
+     "end_line": 18
+    }
+   },
+   {
+    "evidence_id": "ev_0006h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 20,
+     "end_line": 20
+    }
+   },
+   {
+    "evidence_id": "ev_0007h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 21,
+     "end_line": 21
+    }
+   },
+   {
+    "evidence_id": "ev_0008h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 22,
+     "end_line": 22
+    }
+   },
+   {
+    "evidence_id": "ev_0009h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 23,
+     "end_line": 23
+    }
+   },
+   {
+    "evidence_id": "ev_0010h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 25,
+     "end_line": 25
+    }
+   },
+   {
+    "evidence_id": "ev_0011h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 27,
+     "end_line": 27
+    }
+   },
+   {
+    "evidence_id": "ev_0012h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 28,
+     "end_line": 28
+    }
+   },
+   {
+    "evidence_id": "ev_0013h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 29,
+     "end_line": 29
+    }
+   },
+   {
+    "evidence_id": "ev_0014h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 33,
+     "end_line": 33
+    }
+   },
+   {
+    "evidence_id": "ev_0015h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0016h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0017h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0018h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0019h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0020h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0021h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0022h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0023h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0024h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0025h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0026h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0027h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0028h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0029h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0030h",
+    "side": "head",
+    "path": "refunds/api.py",
+    "range": {
+     "start_line": 40,
+     "end_line": 40
+    }
+   },
+   {
+    "evidence_id": "ev_0031h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 40,
+     "end_line": 40
+    }
+   },
+   {
+    "evidence_id": "ev_0032h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 42,
+     "end_line": 42
+    }
+   },
+   {
+    "evidence_id": "ev_0033h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 43,
+     "end_line": 43
+    }
+   },
+   {
+    "evidence_id": "ev_0034h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 44,
+     "end_line": 44
+    }
+   },
+   {
+    "evidence_id": "ev_0035h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 45,
+     "end_line": 45
+    }
+   },
+   {
+    "evidence_id": "ev_0036h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0037h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0038h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0039h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0040h",
+    "side": "head",
+    "path": "refunds/api.py",
+    "range": {
+     "start_line": 52,
+     "end_line": 52
+    }
+   },
+   {
+    "evidence_id": "ev_0041h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 52,
+     "end_line": 52
+    }
+   },
+   {
+    "evidence_id": "ev_0042h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 54,
+     "end_line": 54
+    }
+   },
+   {
+    "evidence_id": "ev_0043h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 55,
+     "end_line": 55
+    }
+   },
+   {
+    "evidence_id": "ev_0044h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 56,
+     "end_line": 56
+    }
+   },
+   {
+    "evidence_id": "ev_0045h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 57,
+     "end_line": 57
+    }
+   },
+   {
+    "evidence_id": "ev_0046h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0047h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0048h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0049h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0050b",
+    "side": "base",
+    "path": "refunds/notify.py",
+    "range": {
+     "start_line": 8,
+     "end_line": 8
+    }
+   },
+   {
+    "evidence_id": "ev_0051h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 8,
+     "end_line": 8
+    }
+   },
+   {
+    "evidence_id": "ev_0052b",
+    "side": "base",
+    "path": "refunds/notify.py",
+    "range": {
+     "start_line": 8,
+     "end_line": 8
+    }
+   },
+   {
+    "evidence_id": "ev_0053h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 10,
+     "end_line": 10
+    }
+   },
+   {
+    "evidence_id": "ev_0054b",
+    "side": "base",
+    "path": "refunds/notify.py",
+    "range": {
+     "start_line": 10,
+     "end_line": 10
+    }
+   },
+   {
+    "evidence_id": "ev_0055h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 12,
+     "end_line": 12
+    }
+   },
+   {
+    "evidence_id": "ev_0056b",
+    "side": "base",
+    "path": "refunds/notify.py",
+    "range": {
+     "start_line": 12,
+     "end_line": 12
+    }
+   },
+   {
+    "evidence_id": "ev_0057h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0058h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0059h",
+    "side": "head",
+    "path": "payments/webhooks.py",
+    "range": {
+     "start_line": 12,
+     "end_line": 12
+    }
+   },
+   {
+    "evidence_id": "ev_0060h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 12,
+     "end_line": 12
+    }
+   },
+   {
+    "evidence_id": "ev_0061h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 14,
+     "end_line": 14
+    }
+   },
+   {
+    "evidence_id": "ev_0062h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 16,
+     "end_line": 16
+    }
+   },
+   {
+    "evidence_id": "ev_0063h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 18,
+     "end_line": 18
+    }
+   },
+   {
+    "evidence_id": "ev_0064h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 20,
+     "end_line": 20
+    }
+   },
+   {
+    "evidence_id": "ev_0065h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0066h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0067h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0068h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0069h",
+    "side": "head",
+    "path": "notify/email.py",
+    "range": {
+     "start_line": 6,
+     "end_line": 6
+    }
+   },
+   {
+    "evidence_id": "ev_0070h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 6,
+     "end_line": 6
+    }
+   },
+   {
+    "evidence_id": "ev_0071h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 8,
+     "end_line": 8
+    }
+   },
+   {
+    "evidence_id": "ev_0072h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 10,
+     "end_line": 10
+    }
+   },
+   {
+    "evidence_id": "ev_0073h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0074h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0075h",
+    "side": "head",
+    "path": "reconcile/jobs.py",
+    "range": {
+     "start_line": 4,
+     "end_line": 4
+    }
+   },
+   {
+    "evidence_id": "ev_0076h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 4,
+     "end_line": 4
+    }
+   },
+   {
+    "evidence_id": "ev_0077h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 6,
+     "end_line": 6
+    }
+   },
+   {
+    "evidence_id": "ev_0078h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 8,
+     "end_line": 8
+    }
+   },
+   {
+    "evidence_id": "ev_0079h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 9,
+     "end_line": 9
+    }
+   },
+   {
+    "evidence_id": "ev_0080h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 11,
+     "end_line": 11
+    }
+   },
+   {
+    "evidence_id": "ev_0081h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0082h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0083h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0084h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 1,
+     "end_line": 1
+    }
+   },
+   {
+    "evidence_id": "ev_0085h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 25,
+     "end_line": 26
+    }
+   },
+   {
+    "evidence_id": "ev_0086b",
+    "side": "base",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 20,
+     "end_line": 20
+    }
+   },
+   {
+    "evidence_id": "ev_0087h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 20,
+     "end_line": 20
+    }
+   },
+   {
+    "evidence_id": "ev_0088h",
+    "side": "head",
+    "path": "tests/test_refund.py",
+    "range": {
+     "start_line": 30,
+     "end_line": 41
+    }
+   },
+   {
+    "evidence_id": "ev_0089h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 22,
+     "end_line": 22
+    }
+   },
+   {
+    "evidence_id": "ev_0090h",
+    "side": "head",
+    "path": "tests/test_refund.py",
+    "range": {
+     "start_line": 50,
+     "end_line": 58
+    }
+   },
+   {
+    "evidence_id": "ev_0091h",
+    "side": "head",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 25,
+     "end_line": 25
+    }
+   },
+   {
+    "evidence_id": "ev_0092b",
+    "side": "base",
+    "path": "refunds/service.py",
+    "range": {
+     "start_line": 30,
+     "end_line": 30
+    }
+   },
+   {
+    "evidence_id": "ev_0093h",
+    "side": "head",
+    "path": "tests/test_refund.py",
+    "range": {
+     "start_line": 70,
+     "end_line": 80
+    }
+   },
+   {
+    "evidence_id": "ev_0094b",
+    "side": "base",
+    "path": "refunds/settings.py",
+    "range": {
+     "start_line": 3,
+     "end_line": 3
+    }
+   },
+   {
+    "evidence_id": "ev_0095h",
+    "side": "head",
+    "path": "refunds/settings.py",
+    "range": {
+     "start_line": 3,
+     "end_line": 3
+    }
+   }
+  ]
+ },
+ "report": {
+  "base_ref": "main",
+  "base_revision": "9c1e2f4b7a0d",
+  "head_ref": "feat/refund-review",
+  "head_revision": "41aa09d3e2c1",
+  "analysis_status": "complete",
+  "changes": [
+   {
+    "change_id": "chg_amount",
+    "kind": "condition_modified",
+    "symbol_id": "refunds/service.py#create_refund",
+    "before": {
+     "side": "base",
+     "text": "if refund.amount > 1000:",
+     "anchor": "fp_amount_old",
+     "evidence_ids": [
+      "ev_0086b"
+     ]
+    },
+    "after": {
+     "side": "head",
+     "text": "if refund.amount > 500:",
+     "anchor": "fp_amount_new",
+     "evidence_ids": [
+      "ev_0087h"
+     ]
+    },
+    "projection": {
+     "status": "projected",
+     "flow_id": "flow_refund",
+     "step_id": "step_amount"
+    },
+    "explanation": {
+     "summary": "需要人工审批的金额门槛从 1000 元降到了 500 元。",
+     "effect": "500 到 1000 元之间、还没发货的退款，现在要等客服审批，不再自动退款。"
+    },
+    "tests": {
+     "verdict": "covered",
+     "basis": [
+      "static_fact",
+      "agent_assessment"
+     ],
+     "execution_data": "not_collected",
+     "note": "测试分别用 499、500、501 元提交，并断言 501 元会进入审批。",
+     "items": [
+      {
+       "test_id": "head::tests/test_refund.py#test_review_threshold",
+       "tags": [
+        "related",
+        "assertion_found"
+       ],
+       "evidence_ids": [
+        "ev_0088h"
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "change_id": "chg_approved",
+    "kind": "condition_added",
+    "symbol_id": "refunds/service.py#create_refund",
+    "after": {
+     "side": "head",
+     "text": "if not decision.approved:",
+     "anchor": "fp_approved_new",
+     "evidence_ids": [
+      "ev_0089h"
+     ]
+    },
+    "projection": {
+     "status": "projected",
+     "flow_id": "flow_refund",
+     "step_id": "step_approved"
+    },
+    "explanation": {
+     "summary": "新增了审批结果判断：客服不同意时直接拒绝退款。",
+     "effect": "以前审批只是记录，现在客服可以真正拦下一笔退款。"
+    },
+    "tests": {
+     "verdict": "unknown",
+     "basis": [
+      "agent_assessment"
+     ],
+     "execution_data": "not_collected",
+     "note": "测试把审批服务换成了固定返回“通过”的替身，看不出拒绝的分支有没有被断言。",
+     "items": [
+      {
+       "test_id": "head::tests/test_refund.py#test_large_refund_waits",
+       "tags": [
+        "related",
+        "fixture_or_mock_related"
+       ],
+       "evidence_ids": [
+        "ev_0090h"
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "change_id": "chg_retry",
+    "kind": "loop_added",
+    "symbol_id": "refunds/service.py#create_refund",
+    "after": {
+     "side": "head",
+     "text": "for attempt in range(3):\n    result = await gateway.refund(order.payment_id, refund.amount)\n    if result.ok:\n        break",
+     "anchor": "fp_retry_new",
+     "evidence_ids": [
+      "ev_0091h"
+     ]
+    },
+    "projection": {
+     "status": "projected",
+     "flow_id": "flow_refund",
+     "step_id": "step_pay"
+    },
+    "other_projections": [
+     {
+      "status": "projected",
+      "flow_id": "flow_progress",
+      "step_id": "step_q_lookup",
+      "reason": "查询进度也会调用同一个渠道客户端。"
+     }
+    ],
+    "explanation": {
+     "summary": "支付渠道失败时会自动重试，最多 3 次。",
+     "effect": "渠道临时故障时买家不用重新申请；但重试没有幂等键，可能重复退款。"
+    },
+    "tests": {
+     "verdict": "not_reached",
+     "basis": [
+      "static_fact"
+     ],
+     "execution_data": "not_collected",
+     "note": "没有测试模拟渠道失败。"
+    },
+    "finding_ids": [
+     "find_retry"
+    ]
+   },
+   {
+    "change_id": "chg_sms",
+    "kind": "call_removed",
+    "symbol_id": "refunds/service.py#create_refund",
+    "before": {
+     "side": "base",
+     "text": "await sms.send(order.buyer_phone, receipt)",
+     "anchor": "fp_sms_old",
+     "evidence_ids": [
+      "ev_0092b"
+     ]
+    },
+    "projection": {
+     "status": "removed_step",
+     "flow_id": "flow_refund",
+     "removed_step": {
+      "step_id": "step_sms",
+      "name": "给买家发退款短信"
+     }
+    },
+    "explanation": {
+     "summary": "退款完成后不再给买家发短信。",
+     "effect": "买家只能在订单页看到退款结果。"
+    },
+    "tests": {
+     "verdict": "reached_only",
+     "basis": [
+      "static_fact",
+      "agent_assessment"
+     ],
+     "execution_data": "not_collected",
+     "note": "退款完成的测试还在，但没有检查是否发了短信。",
+     "items": [
+      {
+       "test_id": "head::tests/test_refund.py#test_small_refund_paid",
+       "tags": [
+        "related"
+       ],
+       "evidence_ids": [
+        "ev_0093h"
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "change_id": "chg_currency",
+    "kind": "source_modified",
+    "symbol_id": "refunds/settings.py",
+    "before": {
+     "side": "base",
+     "text": "DEFAULT_CURRENCY = \"CNY\"",
+     "anchor": "fp_cur_old",
+     "evidence_ids": [
+      "ev_0094b"
+     ]
+    },
+    "after": {
+     "side": "head",
+     "text": "DEFAULT_CURRENCY = \"USD\"",
+     "anchor": "fp_cur_new",
+     "evidence_ids": [
+      "ev_0095h"
+     ]
+    },
+    "projection": {
+     "status": "unassigned",
+     "reason": "No step of the map rests on this code."
+    },
+    "explanation": {
+     "summary": "默认币种从人民币改成了美元。",
+     "effect": "没有指定币种的退款会按美元记账。"
+    }
+   }
+  ],
+  "removed_flows": [
+   {
+    "flow_id": "flow_sms_receipt",
+    "name": "退款短信回执",
+    "summary": "退款完成后给买家发短信，并记录短信是否送达。",
+    "stage": "synthesized",
+    "support": "agent_synthesis",
+    "entries": [
+     {
+      "entry_id": "entry_sms",
+      "symbol_id": "refunds/notify.py#send_receipt",
+      "kind": "task",
+      "detection": "adapter",
+      "attributes": {
+       "name": "send_refund_receipt"
+      },
+      "evidence_ids": [
+       "ev_0050b"
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "step_id": "step_s_task",
+      "name": "收到发送任务",
+      "kind": "trigger",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_s_task"
+      ],
+      "evidence_ids": [
+       "ev_0052b"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_s_send",
+      "name": "发送退款短信",
+      "kind": "external",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_s_send"
+      ],
+      "evidence_ids": [
+       "ev_0054b"
+      ],
+      "finding_ids": []
+     },
+     {
+      "step_id": "step_s_log",
+      "name": "记录送达结果",
+      "kind": "result",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "anchors": [
+       "fp_s_log"
+      ],
+      "evidence_ids": [
+       "ev_0056b"
+      ],
+      "finding_ids": []
+     }
+    ],
+    "edges": [
+     {
+      "source": "step_s_task",
+      "target": "step_s_send",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0057h"
+      ]
+     },
+     {
+      "source": "step_s_send",
+      "target": "step_s_log",
+      "relation": "sequence",
+      "support": "agent_synthesis",
+      "resolution": "resolved",
+      "evidence_ids": [
+       "ev_0058h"
+      ]
+     }
+    ],
+    "accounting": {
+     "accountable": 2,
+     "covered": 2,
+     "omitted": 0,
+     "unaccounted": 0
+    }
+   }
+  ],
+  "possibly_affected": [
+   {
+    "flow_id": "flow_cancel",
+    "change_ids": [
+     "chg_retry"
+    ],
+    "reason": "取消退款会调用改过的渠道客户端。"
+   }
+  ],
+  "unanalyzed_changes": [
+   {
+    "path": "web/src/RefundForm.tsx",
+    "change": "modified",
+    "reason": "TypeScript is not analyzed."
+   }
+  ],
+  "finding_changes": [
+   {
+    "status": "introduced",
+    "finding": {
+     "finding_id": "find_retry",
+     "source": "agent_observation",
+     "severity": "medium",
+     "statement": "重试时没有带幂等键。渠道超时但其实已经退款时，再次调用可能给买家退两次钱。",
+     "evidence_ids": [
+      "ev_0085h"
+     ]
+    },
+    "flow_id": "flow_refund",
+    "step_id": "step_pay"
+   }
+  ],
+  "limitations": [
+   {
+    "code": "no_execution_data",
+    "message": "No test was run; verdicts come from reading source."
+   }
+  ],
+  "evidence": []
+ },
+ "excerpts": {
+  "ev_0001h": "@router.post(\"/orders/{order_id}/refunds\")",
+  "ev_0002h": "order = orders.get(order_id)",
+  "ev_0003h": "if order.shipped:",
+  "ev_0004h": "ticket = returns.open(order)",
+  "ev_0005h": "return {\"status\": \"awaiting_return\"}",
+  "ev_0006h": "if refund.amount > 500:",
+  "ev_0007h": "decision = await approvals.request(refund)",
+  "ev_0008h": "if not decision.approved:",
+  "ev_0009h": "return {\"status\": \"rejected\"}",
+  "ev_0010h": "for attempt in range(3):\n    result = await gateway.refund(order.payment_id, refund.amount)",
+  "ev_0011h": "if result.ok:",
+  "ev_0012h": "orders.mark(order, \"refunded\")",
+  "ev_0013h": "return {\"status\": \"refunded\"}",
+  "ev_0014h": "except GatewayError:\n    return {\"status\": \"manual\"}",
+  "ev_0031h": "@router.get(\"/orders/{order_id}/refunds\")",
+  "ev_0032h": "state = await gateway.status(order.payment_id)",
+  "ev_0033h": "if state is None:",
+  "ev_0034h": "return {\"status\": \"pending\"}",
+  "ev_0035h": "return {\"status\": state.name}",
+  "ev_0086b": "if refund.amount > 1000:",
+  "ev_0087h": "if refund.amount > 500:",
+  "ev_0089h": "if not decision.approved:",
+  "ev_0091h": "for attempt in range(3):\n    result = await gateway.refund(order.payment_id, refund.amount)\n    if result.ok:\n        break",
+  "ev_0092b": "await sms.send(order.buyer_phone, receipt)",
+  "ev_0094b": "DEFAULT_CURRENCY = \"CNY\"",
+  "ev_0095h": "DEFAULT_CURRENCY = \"USD\""
+ }
+}
