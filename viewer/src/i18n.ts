@@ -49,6 +49,8 @@ const zh = {
   sameChange: "同一处改动",
   runFlow: "走一遍",
   skeletonTag: "代码结构",
+  notDescribed: "未归纳",
+  supportingRow: (n: number) => `另有 ${n} 条查询和维护流程`,
   entryKind: {
     http_route: "接口请求",
     cli_command: "命令",
@@ -211,6 +213,8 @@ const en: Strings = {
   sameChange: "Same change",
   runFlow: "Walk through",
   skeletonTag: "Code structure",
+  notDescribed: "Not described yet",
+  supportingRow: (n) => `${n} more lookup and upkeep flow${n === 1 ? "" : "s"}`,
   entryKind: {
     http_route: "HTTP request",
     cli_command: "Command",

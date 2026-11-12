@@ -69,6 +69,10 @@ export interface MapFlow {
   summary?: string
   stage: "skeleton" | "synthesized"
   support: "static_fact" | "agent_synthesis"
+  /** `supporting` flows are lookups and upkeep around the business processes. */
+  tier?: "primary" | "supporting"
+  /** A skeleton flow the plan has named: a business name over steps not described yet. */
+  name_from_plan?: boolean
   entries: MapEntry[]
   steps?: MapStep[]
   edges?: MapEdge[]
