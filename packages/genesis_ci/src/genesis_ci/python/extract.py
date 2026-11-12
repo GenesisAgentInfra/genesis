@@ -83,6 +83,30 @@ class ParsedFile:
     uncertain_imports: set[str] = field(default_factory=set)
     dynamic_namespace: bool = False
     mutable_values: bool = False
+    # Declared types, by the qualified name of the parameter, variable or attribute.
+    annotations: dict[str, ValueExpr] = field(default_factory=dict)
+    # Return annotations by function, and call defaults of parameters (`= Depends(...)`).
+    returns: dict[str, ValueExpr] = field(default_factory=dict)
+    defaults: dict[str, ValueExpr] = field(default_factory=dict)
+    # The values of `a or b` and `a if c else b`, by the binding they are assigned to.
+    alternatives: dict[str, tuple[ValueExpr, ...]] = field(default_factory=dict)
+    # Every module-level import, including the conditional ones `exports` leaves out.
+    imported: dict[str, tuple[NameOrigin, ...]] = field(default_factory=dict)
+    # The base classes a class names, in the order it lists them.
+    bases: dict[str, tuple[ValueExpr, ...]] = field(default_factory=dict)
+
+
+def _timeless(expr: ValueExpr) -> ValueExpr:
+    """An annotation names a type wherever it is defined, so its position does not matter."""
+    return expr.model_copy(
+        update={
+            "position": None,
+            "children": tuple(_timeless(child) for child in expr.children),
+            "arguments": tuple(
+                item.model_copy(update={"value": _timeless(item.value)}) for item in expr.arguments
+            ),
+        }
+    )
 
 
 # Ways of using `globals()` or `locals()` that only look at the names.
@@ -309,6 +333,14 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                 params += (p.star_arg.name.value,)
             if p.star_kwarg:
                 params += (p.star_kwarg.name.value,)
+        if isinstance(node, cst.FunctionDef):
+            self._declarations(node)
+        else:
+            self.file.bases[".".join(item[1] for item in self.stack)] = tuple(
+                self.expr(item.value, with_evidence=False)
+                for item in node.bases
+                if item.keyword is None and not item.star
+            )
         self.file.symbols.append(
             PythonSymbol(
                 symbol_id=self.owner,
@@ -343,6 +375,45 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                 evidence_ids=self.refs(node),
             )
         )
+
+    def _type(self, node) -> ValueExpr:
+        return _timeless(self.expr(node, with_evidence=False))
+
+    def _declarations(self, node) -> None:
+        """Record what a function declares about its parameters and its result."""
+        name = ".".join(item[1] for item in self.stack)
+        params = node.params
+        for item in (*params.posonly_params, *params.params, *params.kwonly_params):
+            key = name + "." + item.name.value
+            if item.annotation is not None:
+                self.file.annotations[key] = self._type(item.annotation.annotation)
+            if isinstance(item.default, cst.Call):
+                self.file.defaults[key] = self.expr(item.default, with_evidence=False)
+        if node.returns is not None:
+            self.file.returns[name] = self._type(node.returns.annotation)
+
+    def _declared_name(self, target) -> str | None:
+        """The qualified name an annotated assignment declares: a variable or `self.attr`."""
+        names = [item[1] for item in self.stack]
+        if isinstance(target, cst.Name):
+            return ".".join([*names, target.value])
+        if (
+            isinstance(target, cst.Attribute)
+            and isinstance(target.value, cst.Name)
+            and target.value.value == "self"
+            and len(self.stack) >= 2
+            and isinstance(self.stack[-1][0], cst.FunctionDef)
+            and isinstance(self.stack[-2][0], cst.ClassDef)
+        ):
+            return ".".join([*names[:-1], target.attr.value])
+        return None
+
+    def _alternatives(self, value) -> list:
+        if isinstance(value, cst.BooleanOperation) and isinstance(value.operator, cst.Or):
+            return [*self._alternatives(value.left), *self._alternatives(value.right)]
+        if isinstance(value, cst.IfExp):
+            return [*self._alternatives(value.body), *self._alternatives(value.orelse)]
+        return [value]
 
     def visit_FunctionDef(self, node):
         self._enter_symbol(node, "function")
@@ -450,9 +521,15 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
         elif not isinstance(target, (cst.Name, cst.Attribute)):
             self.file.dynamic_namespace = True
 
+        binding_id = self.identifier("bind", target)
+        options = [] if unpacked else self._alternatives(value)
+        if len(options) > 1:
+            self.file.alternatives[binding_id] = tuple(
+                self.expr(item, with_evidence=False) for item in options
+            )
         self.file.bindings.append(
             BindingFact(
-                binding_id=self.identifier("bind", target),
+                binding_id=binding_id,
                 side=self.file.side,
                 path=self.file.path,
                 symbol_id=self.owner,
@@ -474,6 +551,9 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
             self._binding(node, target.target, node.value)
 
     def visit_AnnAssign(self, node):
+        name = self._declared_name(node.target)
+        if name is not None:
+            self.file.annotations.setdefault(name, self._type(node.annotation.annotation))
         if node.value:
             self._binding(node, node.target, node.value)
 
@@ -796,10 +876,11 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                     evidence_ids=self.refs(node),
                 )
             )
+            origin = (NameOrigin(name=module if alias.asname else bound, source="import"),)
+            if not self.stack:
+                self.file.imported[bound] = origin
             if not self.stack and not self.controls:
-                self.file.exports[bound] = (
-                    NameOrigin(name=module if alias.asname else bound, source="import"),
-                )
+                self.file.exports[bound] = origin
 
     def visit_ImportFrom(self, node):
         module = "." * len(node.relative) + (self.text(node.module) if node.module else "")
@@ -831,8 +912,10 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                     evidence_ids=self.refs(node),
                 )
             )
+            full = module + ("" if module.endswith(".") else ".") + name
+            if not self.stack:
+                self.file.imported[bound] = (NameOrigin(name=full, source="import"),)
             if not self.stack and not self.controls:
-                full = module + ("" if module.endswith(".") else ".") + name
                 self.file.exports[bound] = (NameOrigin(name=full, source="import"),)
 
     def visit_Del(self, node):

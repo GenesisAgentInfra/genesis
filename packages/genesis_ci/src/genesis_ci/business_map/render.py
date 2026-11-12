@@ -125,6 +125,24 @@ def _evidence(evidence_ids, refs, excerpts, *, sided: bool = False) -> str:
     return "".join(parts)
 
 
+def _inside_text(item) -> str:
+    """What a step leaves out when it stands for a whole function, in a few words."""
+    counts = [
+        f"{count} {name}{'s' * (count != 1)}"
+        for count, name in (
+            (item.conditions, "condition"),
+            (item.loops, "loop"),
+            (item.results, "result"),
+        )
+        if count
+    ]
+    name = item.symbol_id.partition("#")[2]
+    text = f"{name}: " + (", ".join(counts) + " inside" if counts else "nothing to decide inside")
+    if item.reaches:
+        text += "; reaches " + ", ".join(item.reaches)
+    return text
+
+
 def _side_text(part) -> str:
     if part is None:
         return "<em>absent</em>"
@@ -218,6 +236,7 @@ def _flow(flow: MapFlow, refs, excerpts, findings, opened: bool, overlay=None) -
             [
                 _tag(step.resolution.value, "warn") if step.resolution != "resolved" else "",
                 _tag("changed", "warn") if step.step_id in on_step else "",
+                _tag("not expanded") if step.unexpanded else "",
                 *(
                     _tag(f"{findings[fid].severity.value} risk", "bad")
                     for fid in step.finding_ids
@@ -252,6 +271,14 @@ def _flow(flow: MapFlow, refs, excerpts, findings, opened: bool, overlay=None) -
             + "".join(on_step.get(step.step_id, ()))
             + (f'<ul class="next">{nexts}</ul>' if nexts else "")
             + reason
+            # One step for a whole function: say how much is inside and why that is enough.
+            + "".join(
+                f'<p class="muted" style="margin-left:72px">Not expanded · '
+                f"{escape(_inside_text(item))}"
+                + (f" · {escape(item.reason)}" if item.reason else "")
+                + "</p>"
+                for item in step.unexpanded
+            )
             + _evidence(step.evidence_ids, refs, excerpts)
             + "</li>"
         )
@@ -266,7 +293,9 @@ def _flow(flow: MapFlow, refs, excerpts, findings, opened: bool, overlay=None) -
     if entry.detection != "adapter":
         meta += " · candidate entry"
     left_out = "".join(
-        f"<li>{escape(item.reason.value.replace('_', ' '))}: <code>{escape(item.anchor)}</code></li>"
+        f"<li>{escape(item.reason.value.replace('_', ' '))}: "
+        + (escape(item.note) if item.note else f"<code>{escape(item.anchor)}</code>")
+        + "</li>"
         for item in flow.omitted
     )
     notes = "".join(f"<li>{escape(item.message)}</li>" for item in flow.limitations)
@@ -593,6 +622,17 @@ def render_summary(business_map: BusinessMap, report: ChangeReport | None = None
     uncertain = uncertain_items(business_map)
     if uncertain:
         lines += ["", "## Uncertain", ""] + [f"- {item}" for item in uncertain]
+    folded = [
+        f"- {flow.name} / {step.name}: {_inside_text(item)}"
+        + (f" - {item.reason}" if item.reason else "")
+        for flow in business_map.flows
+        for step in flow.steps
+        for item in step.unexpanded
+        if item.conditions + item.loops + item.results >= 3
+    ]
+    if folded:
+        # A reader should see where one step stands for a function with decisions inside.
+        lines += ["", "## Not expanded", ""] + folded
     if business_map.findings:
         lines += ["", "## Risk findings", ""]
         lines += [

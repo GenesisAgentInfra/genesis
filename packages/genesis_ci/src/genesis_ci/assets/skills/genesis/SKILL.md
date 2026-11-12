@@ -137,13 +137,20 @@ The context contains:
 
 - `entries`, each with the `anchor` to use for its trigger step;
 - `source`, the text of each entry function;
-- `accountable`, the facts this flow must account for, with their `fingerprint`,
-  `evidence_id`, and for a condition its `branches`;
-- `other_facts`, further facts of the entry function, such as ordinary calls. They also
-  anchor steps, but nothing obliges you to mention them;
+- `accountable`, what this flow must account for, in units. Each has a `fingerprint`,
+  an `evidence_id` and a `unit`:
+  - `fact`: a condition, loop or result of the entry function; a condition lists its
+    `branches`.
+  - `function`: a function the chain calls, once however often it is called. `inside`
+    says how many conditions, loops and results it holds and which outside systems it
+    `reaches`.
+  - `system`: an outside system the chain talks to, once per system.
+  - `await`: an awaited call that leaves the code.
+- `other_facts`, further facts of the entry function. They also anchor steps, but
+  nothing obliges you to mention them;
 - `callees`, functions you may want to read next;
 - `previous`, the result of the accepted version if there is one. `accountable_truncated`
-  is true when more facts are reachable than the list holds.
+  is true when there are more units than the list holds.
 
 `--claim` is optional. It holds the task for fifteen minutes; another worker asking with
 `--claim` in that time is refused with `task_claimed`. Use it when several workers or
@@ -242,10 +249,24 @@ Rules the CLI enforces:
 - **Error handling.** `try` and `except` are not analyzed. Describe a path into an
   `except` block with `"relation": "exception"`, and submit it as `candidate` with a
   reason when the CLI does not accept it as it is.
-- **Accounting.** Every fact in `accountable` must be an anchor of some step, be the
+- **Accounting.** Every unit in `accountable` must be an anchor of some step, be the
   condition a branch edge takes, or be listed in `omitted` with a reason: `logging`,
   `input_validation`, `error_handling`, `instrumentation`, `merged_into_step` or
-  `out_of_business_scope`.
+  `out_of_business_scope`. The map is about the business chain, not about every line,
+  so the choice for a called function is yours:
+  - **Expand it** when it is part of the chain: anchor a step inside it. Its own
+    conditions, loops and results then become accountable, and the functions it calls
+    become units in turn. The result of `submit` lists what that added.
+  - **Let one step stand for it**: anchor a step on the call. Nothing inside it has to
+    be mentioned, and the page marks the step as not expanded with what it hides. When
+    the function has eight or more conditions, loops and results inside, the step needs
+    `unexpanded_reason`: one sentence on why its inside is not part of the chain.
+  - **Omit it** with a reason when it is not business behaviour, such as logging or
+    formatting a value. One entry covers every call to the same function.
+
+  Read a function with `query --symbol` before choosing; a rule that decides an outcome,
+  such as a limit or a duplicate check, belongs on the map even two calls deep. Do not
+  fold a whole flow into "call the service": the reader would see nothing.
 - **Observations** are optional risks you noticed while reading. They need evidence and
   a `severity` of `info`, `low` or `medium`.
 

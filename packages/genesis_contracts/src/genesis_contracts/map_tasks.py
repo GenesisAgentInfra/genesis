@@ -127,6 +127,8 @@ class SubmittedStep(ContractModel):
     anchors: tuple[Anchor, ...] = ()
     resolution: ResolutionStatus = ResolutionStatus.resolved
     reason: Text | None = None
+    # Why one step is enough for a large function this step calls without describing it.
+    unexpanded_reason: Text | None = None
 
 
 class SubmittedEdge(ContractModel):
