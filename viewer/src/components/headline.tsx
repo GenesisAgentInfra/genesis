@@ -27,7 +27,13 @@ export function overviewText(model: Model, t: Strings): string {
   const apart = model.stops.filter(
     (stop) => stop.kind === "off_map" || stop.kind === "removed_flow"
   ).length
-  return t.overviewSentence(names, modules.length, flows.length, apart)
+  // Flows no change sits on, though their code leads to one.
+  const passing = new Set(
+    model.stops
+      .flatMap((stop) => stop.maybe)
+      .filter((id) => !flows.includes(id))
+  ).size
+  return t.overviewSentence(names, modules.length, flows.length, apart, passing)
 }
 
 function InfoTip({
