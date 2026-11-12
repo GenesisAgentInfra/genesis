@@ -1,31 +1,31 @@
 import type { Edge, Node } from "@xyflow/react"
 
-import {
-  buildGraph,
-  heightOf,
-  type FlowEdge,
-  type StepNode,
-} from "@/canvas/graph"
+import { buildGraph, type FlowEdge, type StepNode } from "@/canvas/graph"
 import type { Strings } from "@/i18n"
 import type { Coupon, FlowView, Model } from "@/model"
 import type { EntryKind } from "@/types"
 
 /**
- * The whole product on one canvas. Each module is a large frame holding its flows, every
- * flow is drawn in full, the ways in (requests, tasks, schedules) sit on the left and lead
- * into the flows they start, and what a change also touches is drawn as a line to it.
+ * The whole product on one canvas, at a size that reads. Each module is a frame holding its
+ * flows. A flow the change touches is drawn whole, its changed steps as cards among small
+ * pills for the rest; a flow it leaves alone is one row, until its module is opened. Every
+ * frame keeps to one grid: a touched module runs the full width, the others share rows of
+ * equal cells under it.
  */
 
 export const SEP = "::"
-const P = 32
-const HEAD_H = 88
-const LABEL_H = 48
-const FLOW_GAP = 56
-const MODULE_GAP = 120
-const ACTOR_W = 196
-const ACTOR_GAP = 220
+const P = 24
+const HEAD_H = 56
+const LABEL_H = 44
+const FLOW_GAP = 36
+const MODULE_GAP = 32
 export const OFFMAP_W = 252
 const OFFMAP_H = 112
+const OFFMAP_GAP = 20
+/** The least a frame holds across: one row, or one change outside the flows. */
+const ROW_W = 260
+const ROW_H = 44
+const ROW_GAP = 8
 
 export function stepNodeId(flowId: string, stepId: string): string {
   return `${flowId}${SEP}${stepId}`
@@ -43,6 +43,8 @@ export interface ModuleData extends Record<string, unknown> {
   changes: number
   flows: number
   apart: boolean
+  /** Every step of its flows is drawn. */
+  open: boolean
 }
 export interface LabelData extends Record<string, unknown> {
   flowId: string
@@ -50,70 +52,74 @@ export interface LabelData extends Record<string, unknown> {
   code: boolean
   struck: boolean
   changes: number
+  /** What starts the flow: a request, a task, a schedule. */
+  entry?: EntryKind
 }
-export interface ActorData extends Record<string, unknown> {
-  kind: EntryKind
-  flows: number
+/** A flow as one row: untouched by the change, or gone after it. */
+export interface RowData extends Record<string, unknown> {
+  flowId: string
+  name: string
+  steps: number
+  code: boolean
+  struck: boolean
+  entry?: EntryKind
 }
 export interface OffMapData extends Record<string, unknown> {
   coupon: Coupon
 }
 export interface RelationData extends Record<string, unknown> {
   label?: string
+  /** The change the line belongs to; it shows only while that change is picked. */
+  no?: number
   change: boolean
   candidate: boolean
 }
 
 export type ModuleNode = Node<ModuleData, "module">
 export type LabelNode = Node<LabelData, "label">
-export type ActorNode = Node<ActorData, "actor">
 export type OffMapNode = Node<OffMapData, "offmap">
-export type AtlasNode =
-  StepNode | ModuleNode | LabelNode | ActorNode | OffMapNode
-/** A line from a way in to a trigger, kept to the gaps between modules. */
-export interface EntryData extends Record<string, unknown> {
-  /** The lane in the gutter beside the ways in. */
-  busX: number
-  /** The gap above the target's row it runs along, when it must pass other modules. */
-  gapY?: number
-  /** The lane just left of the target module. */
-  laneX: number
-}
+export type RowNode = Node<RowData, "row">
+export type AtlasNode = StepNode | ModuleNode | LabelNode | OffMapNode | RowNode
 export type RelationEdge = Edge<RelationData, "relation">
-export type EntryEdge = Edge<EntryData, "entry">
-export type AtlasEdge = FlowEdge | RelationEdge | EntryEdge
+export type AtlasEdge = FlowEdge | RelationEdge
 
-/** A flow placed on the atlas: its nodes, edges and where its steps begin. */
+/** A flow placed on the atlas: what is drawn of it and where its steps begin. */
 export interface PlacedFlow {
   view: FlowView
+  /** One row, or every step. */
+  mode: "row" | "full"
   nodes: StepNode[]
   edges: FlowEdge[]
   triggers: string[]
+  w: number
+  h: number
 }
 
 export interface Atlas {
   nodes: AtlasNode[]
   edges: AtlasEdge[]
   flows: Map<string, PlacedFlow>
+  /** The module frame each flow sits in. */
+  home: Map<string, string>
 }
 
-function boundsOf(nodes: StepNode[]) {
-  const xs = nodes.map((node) => node.position.x)
-  const ys = nodes.map((node) => node.position.y)
-  const right = nodes.map((node) => node.position.x + node.data.width)
-  const bottom = nodes.map((node) => node.position.y + heightOf(node.data))
-  return {
-    x: Math.min(...xs, 0),
-    y: Math.min(...ys, 0),
-    w: Math.max(...right, 160) - Math.min(...xs, 0),
-    h: Math.max(...bottom, 60) - Math.min(...ys, 0),
-  }
-}
+const FIXED = {
+  draggable: false,
+  connectable: false,
+  selectable: false,
+  focusable: false,
+} as const
+/** A node whose size the layout already knows, so it needs no measuring before it shows. */
+const sized = (width: number, height: number) => ({
+  width,
+  height,
+  measured: { width, height },
+})
 
-/** A flow's own graph, renamed so it can share a canvas with every other flow. */
-function placeFlow(model: Model, view: FlowView): PlacedFlow {
+/** A flow drawn whole, renamed so it can share a canvas with every other flow. */
+function drawFlow(model: Model, view: FlowView, max: number): PlacedFlow {
   const flowId = view.flow.flow_id
-  const graph = buildGraph(view, model.findingStatus, !model.hasReport)
+  const graph = buildGraph(view, model.findingStatus, !model.hasReport, max)
   const steps = view.flow.steps ?? []
   const triggerIds = steps
     .filter((step) => step.kind === "trigger")
@@ -122,268 +128,357 @@ function placeFlow(model: Model, view: FlowView): PlacedFlow {
   const triggers = (
     triggerIds.length ? triggerIds : firstRow ? [firstRow] : []
   ).map((id) => stepNodeId(flowId, id))
-  const nodes = graph.nodes.map((node) => ({
+  const nodes: StepNode[] = graph.nodes.map((node) => ({
     ...node,
     id: stepNodeId(flowId, node.id),
-    data: {
-      ...node.data,
-      // A trigger takes the line from the way in on its left.
-      hasIn: node.data.hasIn || triggers.includes(stepNodeId(flowId, node.id)),
-    },
   }))
-  const edges = graph.edges.map((edge) => ({
+  const edges: FlowEdge[] = graph.edges.map((edge) => ({
     ...edge,
     id: stepNodeId(flowId, edge.id),
     source: stepNodeId(flowId, edge.source),
     target: stepNodeId(flowId, edge.target),
   }))
-  return { view, nodes, edges, triggers }
+  return { view, mode: "full", nodes, edges, triggers, w: graph.w, h: graph.h }
 }
 
-export function buildAtlas(model: Model, t: Strings): Atlas {
-  const flows = new Map<string, PlacedFlow>()
-  for (const view of model.flows)
-    flows.set(view.flow.flow_id, placeFlow(model, view))
+function placeFlow(
+  model: Model,
+  view: FlowView,
+  open: boolean,
+  max: number
+): PlacedFlow {
+  const flowId = view.flow.flow_id
+  // A change counts where it stops, and wherever else the same change lands.
+  const touched =
+    model.stopsOn.has(flowId) ||
+    [...view.byStep.values()].some((coupons) => coupons.length > 0)
+  // A flow the agent has not described yet would only show code; with no change on it, it
+  // stays one row that names it.
+  const undescribed =
+    view.flow.stage === "skeleton" && !view.removed && !touched
+  if (!undescribed && (open || (touched && !view.removed)))
+    return drawFlow(model, view, max)
+  return {
+    view,
+    mode: "row",
+    nodes: [],
+    edges: [],
+    triggers: [`row${SEP}${flowId}`],
+    w: ROW_W,
+    h: ROW_H,
+  }
+}
 
-  interface Block {
-    id: string
-    title: string
-    apart: boolean
-    changes: number
-    views: FlowView[]
-    offMap: Coupon[]
-    w: number
-    h: number
-  }
-  const sizeOf = (views: FlowView[], offMap: Coupon[]) => {
-    let w = 0
-    let h = HEAD_H
-    for (const view of views) {
-      const box = boundsOf(flows.get(view.flow.flow_id)!.nodes)
-      w = Math.max(w, box.w)
-      h += LABEL_H + box.h + FLOW_GAP
-    }
-    if (offMap.length) {
-      w = Math.max(w, offMap.length * (OFFMAP_W + 34) - 34)
-      h += LABEL_H + OFFMAP_H + FLOW_GAP
-    }
-    return { w: w + 2 * P, h: h - FLOW_GAP + P }
-  }
+/**
+ * The atlas. `open` names the module frame whose flows are drawn step by step; `span` is
+ * how wide the map may run, so it fits the reader's screen at a size that reads.
+ */
+export function buildAtlas(
+  model: Model,
+  t: Strings,
+  open?: string,
+  span = 1400
+): Atlas {
+  const flows = new Map<string, PlacedFlow>()
+  const home = new Map<string, string>()
   const changesOn = (views: FlowView[]) =>
     views.reduce(
       (sum, view) => sum + (model.stopsOn.get(view.flow.flow_id)?.length ?? 0),
       0
     )
 
-  const blocks: Block[] = model.modules.map((module) => ({
-    id: moduleNodeId(module.id),
-    title: module.name ?? t.looseFlows,
-    apart: false,
-    changes: changesOn(module.flows),
-    views: module.flows,
-    offMap: [],
-    ...sizeOf(module.flows, []),
-  }))
-  // The modules this change touches come first, so the first look lands on them.
-  blocks.sort((a, b) => Number(b.changes > 0) - Number(a.changes > 0))
-  const removed = model.flows.filter((view) => view.removed)
-  const offMap = model.stops
-    .filter((stop) => stop.kind === "off_map" && stop.coupon)
-    .map((stop) => stop.coupon!)
-  if (removed.length || offMap.length)
-    blocks.push({
-      id: moduleNodeId("__apart"),
-      title: t.offMapCard,
-      apart: true,
-      changes: changesOn(removed) + offMap.length,
-      views: removed,
-      offMap,
-      ...sizeOf(removed, offMap),
-    })
-
-  // Rows of modules, wrapped to keep the whole atlas roughly the shape of a screen.
-  const area = blocks.reduce((sum, block) => sum + block.w * block.h, 0)
-  const rowWidth = Math.max(
-    ...blocks.map((block) => block.w),
-    Math.sqrt(area * 1.7)
-  )
-  const left = ACTOR_W + ACTOR_GAP
-  let x = left
-  let y = 0
-  let rowHeight = 0
-  const placed: {
-    block: Block
-    x: number
-    y: number
-    row: number
-    first: boolean
-  }[] = []
-  const rows: { top: number; bottom: number }[] = []
-  for (const block of blocks) {
-    if (x > left && x + block.w > left + rowWidth) {
-      x = left
-      y += rowHeight + MODULE_GAP
-      rowHeight = 0
+  /** A module before it has a place: what it needs across, and how to draw its inside. */
+  interface Block {
+    id: string
+    title: string
+    apart: boolean
+    changes: number
+    flows: number
+    ids: string[]
+    /** Some flow in it is drawn out, so it takes a row of its own. */
+    drawn: boolean
+    need: number
+    build: (inner: number) => {
+      nodes: AtlasNode[]
+      edges: AtlasEdge[]
+      h: number
     }
-    if (x === left) rows.push({ top: y, bottom: y })
-    placed.push({ block, x, y, row: rows.length - 1, first: x === left })
-    rows[rows.length - 1].bottom = Math.max(
-      rows[rows.length - 1].bottom,
-      y + block.h
-    )
-    x += block.w + MODULE_GAP
-    rowHeight = Math.max(rowHeight, block.h)
   }
-  const blockOf = new Map<string, (typeof placed)[number]>()
-  for (const item of placed)
-    for (const view of item.block.views) blockOf.set(view.flow.flow_id, item)
-
-  const nodes: AtlasNode[] = []
-  const edges: AtlasEdge[] = []
-  for (const { block, x: bx, y: by } of placed) {
-    nodes.push({
-      id: block.id,
-      type: "module",
-      position: { x: bx, y: by },
-      width: block.w,
-      height: block.h,
-      zIndex: -1,
+  const measure = (
+    id: string,
+    title: string,
+    apart: boolean,
+    views: FlowView[],
+    offMap: Coupon[]
+  ): Block => {
+    const placed = views.map((view) => {
+      const flow = placeFlow(model, view, id === open, span - 2 * P)
+      flows.set(view.flow.flow_id, flow)
+      home.set(view.flow.flow_id, id)
+      return flow
+    })
+    // What is drawn comes first, the rows after it.
+    const drawn = placed.filter((flow) => flow.mode !== "row")
+    const rows = placed.filter((flow) => flow.mode === "row")
+    const cards = Math.min(offMap.length, 3)
+    const need = Math.max(
+      ROW_W,
+      ...drawn.map((flow) => flow.w),
+      cards * (OFFMAP_W + OFFMAP_GAP) - OFFMAP_GAP
+    )
+    const rowOf = (
+      flow: PlacedFlow,
+      x: number,
+      y: number,
+      w: number
+    ): RowNode => ({
+      id: flow.triggers[0],
+      type: "row",
+      position: { x, y },
+      ...sized(w, ROW_H),
       draggable: false,
       connectable: false,
       selectable: false,
-      focusable: false,
       data: {
-        title: block.title,
-        changes: block.changes,
-        flows: block.views.length,
-        apart: block.apart,
+        flowId: flow.view.flow.flow_id,
+        name: flow.view.flow.name,
+        steps: flow.view.flow.steps?.length ?? 0,
+        code: flow.view.flow.stage === "skeleton",
+        struck: flow.view.removed,
+        entry: flow.view.flow.entries[0]?.kind,
       },
     })
-    let fy = by + HEAD_H
-    for (const view of block.views) {
-      const flow = flows.get(view.flow.flow_id)!
-      const box = boundsOf(flow.nodes)
-      nodes.push({
-        id: `label${SEP}${view.flow.flow_id}`,
-        type: "label",
-        position: { x: bx + P, y: fy },
-        width: Math.max(box.w, 320),
-        height: LABEL_H,
-        draggable: false,
-        connectable: false,
-        selectable: false,
-        focusable: false,
-        data: {
-          flowId: view.flow.flow_id,
-          name: view.flow.name,
-          code: view.flow.stage === "skeleton",
-          struck: view.removed,
-          changes: model.stopsOn.get(view.flow.flow_id)?.length ?? 0,
-        },
-      })
-      const dx = bx + P - box.x
-      const dy = fy + LABEL_H - box.y
-      for (const node of flow.nodes) {
-        node.position = { x: node.position.x + dx, y: node.position.y + dy }
-        nodes.push(node)
+    // What is outside the flows runs as one strip: its changes, then the flows that are
+    // gone, side by side.
+    const strip = (inner: number) => {
+      const nodes: AtlasNode[] = []
+      let x = 0
+      let y = HEAD_H
+      const put = (w: number) => {
+        if (x > 0 && x + w > inner) {
+          x = 0
+          y += OFFMAP_H + OFFMAP_GAP
+        }
+        const at = { x: P + x, y }
+        x += w + OFFMAP_GAP
+        return at
       }
-      edges.push(...flow.edges)
-      fy += LABEL_H + box.h + FLOW_GAP
-    }
-    if (block.offMap.length) {
-      nodes.push({
-        id: `label${SEP}__offmap`,
-        type: "label",
-        position: { x: bx + P, y: fy },
-        width: 320,
-        height: LABEL_H,
-        draggable: false,
-        connectable: false,
-        selectable: false,
-        focusable: false,
-        data: {
-          flowId: "",
-          name: t.offMapRow(block.offMap.length),
-          code: false,
-          struck: false,
-          changes: 0,
-        },
-      })
-      block.offMap.forEach((coupon, index) =>
+      for (const coupon of offMap) {
+        const at = put(OFFMAP_W)
         nodes.push({
           id: `offmap${SEP}${coupon.no}`,
           type: "offmap",
-          position: {
-            x: bx + P + index * (OFFMAP_W + 34),
-            y: fy + LABEL_H,
-          },
-          width: OFFMAP_W,
-          height: OFFMAP_H,
+          position: at,
+          ...sized(OFFMAP_W, OFFMAP_H),
           draggable: false,
           connectable: false,
           selectable: false,
           data: { coupon },
         })
-      )
+      }
+      for (const flow of rows) {
+        const at = put(ROW_W)
+        nodes.push(rowOf(flow, at.x, at.y + (OFFMAP_H - ROW_H) / 2, ROW_W))
+      }
+      return { nodes, edges: [] as AtlasEdge[], h: y + OFFMAP_H + P }
+    }
+    const build = (inner: number) => {
+      if (apart && !drawn.length && offMap.length) return strip(inner)
+      const nodes: AtlasNode[] = []
+      const edges: AtlasEdge[] = []
+      let y = HEAD_H
+      let gap = 0
+      for (const flow of drawn) {
+        y += gap
+        const view = flow.view
+        nodes.push({
+          id: `label${SEP}${view.flow.flow_id}`,
+          type: "label",
+          position: { x: P, y },
+          ...sized(inner, LABEL_H),
+          ...FIXED,
+          data: {
+            flowId: view.flow.flow_id,
+            name: view.flow.name,
+            code: view.flow.stage === "skeleton",
+            struck: view.removed,
+            changes: model.stopsOn.get(view.flow.flow_id)?.length ?? 0,
+            entry: view.flow.entries[0]?.kind,
+          },
+        })
+        for (const node of flow.nodes) {
+          node.position = {
+            x: node.position.x + P,
+            y: node.position.y + y + LABEL_H,
+          }
+          nodes.push(node)
+        }
+        edges.push(...flow.edges)
+        y += LABEL_H + flow.h
+        gap = FLOW_GAP
+      }
+      if (offMap.length) {
+        y += gap
+        // Changes outside the flows, as many to a line as the frame holds.
+        const perLine = Math.max(
+          1,
+          Math.floor((inner + OFFMAP_GAP) / (OFFMAP_W + OFFMAP_GAP))
+        )
+        offMap.forEach((coupon, index) =>
+          nodes.push({
+            id: `offmap${SEP}${coupon.no}`,
+            type: "offmap",
+            position: {
+              x: P + (index % perLine) * (OFFMAP_W + OFFMAP_GAP),
+              y: y + Math.floor(index / perLine) * (OFFMAP_H + OFFMAP_GAP),
+            },
+            ...sized(OFFMAP_W, OFFMAP_H),
+            draggable: false,
+            connectable: false,
+            selectable: false,
+            data: { coupon },
+          })
+        )
+        const lines = Math.ceil(offMap.length / perLine)
+        y += lines * (OFFMAP_H + OFFMAP_GAP) - OFFMAP_GAP
+        gap = FLOW_GAP
+      }
+      rows.forEach((flow, index) => {
+        y += index ? ROW_GAP : gap ? gap - 12 : 0
+        nodes.push(rowOf(flow, P, y, inner))
+        y += ROW_H
+      })
+      return { nodes, edges, h: y + P }
+    }
+    return {
+      id,
+      title,
+      apart,
+      changes: changesOn(views) + offMap.length,
+      flows: views.length,
+      ids: views.map((view) => view.flow.flow_id),
+      // Changes outside the flows are changes: they keep a row of their own too.
+      drawn: drawn.length > 0 || (apart && offMap.length > 0),
+      need,
+      build,
     }
   }
 
-  // The ways in: who or what starts each flow, on the left, each line into its trigger.
-  const byKind = new Map<EntryKind, string[]>()
-  for (const module of model.modules)
-    for (const view of module.flows) {
-      const kind = view.flow.entries[0]?.kind
-      if (!kind) continue
-      byKind.set(kind, [...(byKind.get(kind) ?? []), view.flow.flow_id])
-    }
-  let ay = 0
-  let lane = 0
-  for (const [kind, ids] of byKind) {
-    const id = `actor${SEP}${kind}`
+  const blocks: Block[] = model.modules.map((module) =>
+    measure(
+      moduleNodeId(module.id),
+      module.name ?? t.looseFlows,
+      false,
+      module.flows,
+      []
+    )
+  )
+  const removed = model.flows.filter((view) => view.removed)
+  const offMap = model.stops
+    .filter((stop) => stop.kind === "off_map" && stop.coupon)
+    .map((stop) => stop.coupon!)
+  if (removed.length || offMap.length)
+    blocks.push(
+      measure(moduleNodeId("__apart"), t.offMapCard, true, removed, offMap)
+    )
+  // What this change touches comes first, so the first look lands on it.
+  blocks.sort((a, b) => Number(b.changes > 0) - Number(a.changes > 0))
+  const wide = blocks.filter((block) => block.drawn)
+  const cells = blocks.filter((block) => !block.drawn)
+
+  // One width for the whole map: what the drawn flows need, and room for up to four
+  // cells side by side, but no wider than the screen shows at a size that reads.
+  const cell = ROW_W + 2 * P
+  const across = Math.min(cells.length, 4)
+  const room = across * cell + Math.max(across - 1, 0) * MODULE_GAP
+  const full = Math.max(
+    Math.min(Math.max(...wide.map((block) => block.need + 2 * P), room), span),
+    cell
+  )
+
+  const nodes: AtlasNode[] = []
+  const edges: AtlasEdge[] = []
+  const frame = (block: Block, x: number, y: number, w: number, h?: number) => {
+    const inside = block.build(w - 2 * P)
+    const height = h ?? inside.h
     nodes.push({
-      id,
-      type: "actor",
-      position: { x: 0, y: ay },
-      width: ACTOR_W,
-      height: 56,
-      draggable: false,
-      connectable: false,
-      selectable: false,
-      focusable: false,
-      data: { kind, flows: ids.length },
+      id: block.id,
+      type: "module",
+      position: { x, y },
+      ...sized(w, height),
+      zIndex: -1,
+      ...FIXED,
+      data: {
+        title: block.title,
+        changes: block.changes,
+        flows: block.flows,
+        apart: block.apart,
+        open: block.id === open,
+      },
     })
-    // Each way in has its own lanes, so lines from different ones run side by side.
-    const shift = lane * 10
-    for (const flowId of ids) {
-      const home = blockOf.get(flowId)
-      if (!home) continue
-      const gapY = home.first
-        ? undefined
-        : home.row === 0
-          ? rows[0].top - 56 - shift
-          : (rows[home.row - 1].bottom + rows[home.row].top) / 2 - shift
-      for (const trigger of flows.get(flowId)!.triggers)
-        edges.push({
-          id: `${id}>${trigger}`,
-          type: "entry",
-          source: id,
-          target: trigger,
-          sourceHandle: "out",
-          targetHandle: "in",
-          focusable: false,
-          data: {
-            busX: ACTOR_W + 48 + shift,
-            gapY,
-            laneX: home.x - 60 + shift,
-          },
-        })
+    for (const node of inside.nodes) {
+      node.position = { x: node.position.x + x, y: node.position.y + y }
+      nodes.push(node)
     }
-    ay += 96
-    lane += 1
+    edges.push(...inside.edges)
+    return height
   }
+  let y = 0
+  // A module with flows drawn out takes the full width; an opened one may run past it.
+  for (const block of wide)
+    y += frame(block, 0, y, Math.max(full, block.need + 2 * P)) + MODULE_GAP
+
+  // The rest share rows of equal cells, each row as tall as its tallest cell.
+  const fit = Math.max(
+    1,
+    Math.min(
+      cells.length,
+      Math.floor((full + MODULE_GAP) / (cell + MODULE_GAP))
+    )
+  )
+  // As many columns as fit, then no more than the rows need, so the rows come out even.
+  const columns = Math.ceil(cells.length / Math.ceil(cells.length / fit)) || 1
+  const cellW = (full - (columns - 1) * MODULE_GAP) / columns
+  const widthOf = (count: number) => count * cellW + (count - 1) * MODULE_GAP
+  let row: { block: Block; at: number; over: number }[] = []
+  let used = 0
+  const flush = () => {
+    if (!row.length) return
+    // Every row ends on the same line: a short row shares the width out evenly, or its
+    // last cell runs to the edge.
+    const even = row.every((item) => item.over === 1)
+    const share = (full - (row.length - 1) * MODULE_GAP) / row.length
+    if (!even) row[row.length - 1].over += columns - used
+    const place = row.map((item, index) => ({
+      block: item.block,
+      x: even ? index * (share + MODULE_GAP) : item.at * (cellW + MODULE_GAP),
+      w: even ? share : widthOf(item.over),
+    }))
+    const height = Math.max(
+      ...place.map((item) => item.block.build(item.w - 2 * P).h)
+    )
+    for (const item of place) frame(item.block, item.x, y, item.w, height)
+    y += height + MODULE_GAP
+    row = []
+    used = 0
+  }
+  for (const block of cells) {
+    let over = 1
+    while (over < columns && widthOf(over) < block.need + 2 * P) over += 1
+    if (used + over > columns) flush()
+    row.push({ block, at: used, over })
+    used += over
+  }
+  flush()
 
   // What else a change touches: the same change elsewhere, and flows that may reach it.
   const has = new Set(nodes.map((node) => node.id))
+  const named = (label: string, flowId: string) => {
+    const name = model.flowById.get(flowId)?.flow.name ?? ""
+    const chars = [...name]
+    const short = chars.length > 16 ? chars.slice(0, 15).join("") + "…" : name
+    return short ? `${label} · ${short}` : label
+  }
   for (const stop of model.stops) {
     if (stop.kind !== "step" || !stop.flowId || !stop.nodeId) continue
     const from = stepNodeId(stop.flowId, stop.nodeId)
@@ -396,8 +491,10 @@ export function buildAtlas(model: Model, t: Strings): Atlas {
             `also${SEP}${stop.no}${SEP}${to}`,
             from,
             to,
-            t.sameChange,
-            true
+            named(t.sameChange, item.flowId),
+            true,
+            false,
+            stop.no
           )
         )
     }
@@ -409,8 +506,10 @@ export function buildAtlas(model: Model, t: Strings): Atlas {
               `maybe${SEP}${stop.no}${SEP}${to}`,
               from,
               to,
-              t.mayAffect,
-              true
+              named(t.mayAffect, flowId),
+              true,
+              false,
+              stop.no
             )
           )
   }
@@ -436,7 +535,7 @@ export function buildAtlas(model: Model, t: Strings): Atlas {
         )
       )
   }
-  return { nodes, edges, flows }
+  return { nodes, edges, flows, home }
 }
 
 function relation(
@@ -445,7 +544,8 @@ function relation(
   target: string,
   label: string,
   change: boolean,
-  candidate = false
+  candidate = false,
+  no?: number
 ): RelationEdge {
   return {
     id,
@@ -455,7 +555,9 @@ function relation(
     sourceHandle: "rel-out",
     targetHandle: "rel-in",
     focusable: false,
-    data: { label, change, candidate },
+    // Over the cards: it shows only while its change is picked, and must not hide then.
+    zIndex: change ? 6 : undefined,
+    data: { label, change, candidate, no },
   }
 }
 
@@ -463,7 +565,9 @@ function relation(
  * The way through a flow worth watching: from its trigger, at each decision the branch that
  * passes the most changes, then the one off the error path, then the longer one.
  */
-export function mainPath(flow: PlacedFlow): {
+export function mainPath(
+  flow: Pick<PlacedFlow, "nodes" | "edges" | "triggers">
+): {
   steps: string[]
   edges: string[]
 } {

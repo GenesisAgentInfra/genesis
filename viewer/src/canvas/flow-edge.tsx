@@ -8,8 +8,9 @@ import {
 } from "@xyflow/react"
 
 import { cn } from "@/lib/utils"
-import { DRAW_FROM, DRAW_MS, useCanvas } from "./context"
+import { DRAW_FROM, DRAW_MS, outOfFocus, useCanvas } from "./context"
 import type { FlowEdge as FlowEdgeType } from "./graph"
+import { orthogonal } from "./path"
 
 /** How far a loop runs out past its ends, how round its corners are, how far from the cards. */
 const LOOP_OUT = 24
@@ -55,6 +56,7 @@ export function FlowEdge({
   targetPosition,
   data,
 }: EdgeProps<FlowEdgeType>) {
+  const canvas = useCanvas()
   const {
     focus,
     current,
@@ -70,7 +72,7 @@ export function FlowEdge({
     delay,
     trail,
     trailActive,
-  } = useCanvas()
+  } = canvas
   // On the atlas many flows share the canvas; a loop only steps around cards of its own flow.
   const own = id.includes("::") ? id.slice(0, id.indexOf("::") + 2) : ""
   const back = Boolean(data?.back)
@@ -101,21 +103,39 @@ export function FlowEdge({
       [back, own, sourceX, sourceY, targetX, targetY]
     )
   )
+  // The layout gives a line its corners; they hang from where it really leaves its step
+  // and end where it really arrives.
+  const corners = data?.route?.map((point) => ({
+    x: sourceX + point.x,
+    y: sourceY + point.y,
+  }))
+  if (corners && corners.length > 1) {
+    const last = corners.length - 1
+    if (Math.abs(corners[last - 1].y - corners[last].y) < 0.5)
+      corners[last - 1].y = targetY
+    corners[last] = { x: targetX, y: targetY }
+  }
   const [path, labelX, labelY] = back
     ? [
         loopPath(sourceX, sourceY, targetX, targetY, lane),
         (sourceX + targetX) / 2,
         lane,
       ]
-    : getBezierPath({
-        sourceX,
-        sourceY,
-        targetX,
-        targetY,
-        sourcePosition,
-        targetPosition,
-        curvature: 0.32,
-      })
+    : corners
+      ? [
+          orthogonal(corners),
+          sourceX + (data?.labelAt?.x ?? 0),
+          sourceY + (data?.labelAt?.y ?? 0),
+        ]
+      : getBezierPath({
+          sourceX,
+          sourceY,
+          targetX,
+          targetY,
+          sourcePosition,
+          targetPosition,
+          curvature: 0.32,
+        })
   const isRoute = routeEdges.has(id)
   const isOut = outEdges.has(id)
   const isLoop = loopEdges.has(id)
@@ -157,6 +177,7 @@ export function FlowEdge({
     : dark
       ? "var(--edge-strong)"
       : "var(--edge)"
+  const marker = `arrow${data?.exception ? "-exception" : ""}${dark ? "-strong" : ""}`
   return (
     <>
       <path
@@ -171,6 +192,8 @@ export function FlowEdge({
         d={path}
         fill="none"
         pathLength={draws ? 1 : undefined}
+        // A line that is drawing itself gets its arrowhead once it has arrived.
+        markerEnd={draws ? undefined : `url(#${marker})`}
         className={cn(
           "react-flow__edge-path transition-[opacity,stroke,stroke-width] duration-160",
           draws && "edge-draw",
@@ -178,14 +201,33 @@ export function FlowEdge({
         )}
         style={{
           stroke,
-          strokeWidth: dark ? 1.6 : 1.25,
+          strokeWidth: dark ? 2.25 : 1.75,
           strokeDasharray: draws ? undefined : dashed ? "4 4" : undefined,
           // Until the ripple draws them, the edges it will draw are not there yet.
-          opacity: isOut && pending ? 0 : quiet ? 0.45 : 1,
+          opacity:
+            isOut && pending
+              ? 0
+              : (quiet ? 0.45 : 1) *
+                (own && outOfFocus(canvas, own.slice(0, -2)) ? 0.35 : 1),
           ["--edge-delay" as string]: `${start}ms`,
           ["--edge-duration" as string]: `${DRAW_MS}ms`,
         }}
       />
+      {draws && (
+        // The arrowhead of a line that draws itself, coming up as the line arrives.
+        <path
+          key={`head-${playKey}`}
+          d={path}
+          fill="none"
+          stroke="transparent"
+          markerEnd={`url(#${marker})`}
+          className="edge-fade"
+          style={{
+            ["--edge-delay" as string]: `${start + DRAW_MS - 80}ms`,
+            ["--edge-duration" as string]: "120ms",
+          }}
+        />
+      )}
       {travels && (
         <circle key={`dot-${playKey}`} r={3.5} fill="var(--change)" opacity={0}>
           <animateMotion

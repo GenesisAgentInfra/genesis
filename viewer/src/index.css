@@ -6,10 +6,13 @@
 /* One light rendition: a quiet canvas read at a desk, the way agent builders look. */
 
 @theme inline {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui,
+    sans-serif;
   --font-heading: var(--font-sans);
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono:
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
   --color-canvas: var(--canvas);
   --color-ink: var(--ink);
@@ -60,9 +63,9 @@
   --ink-3: #74757b;
   --line: #e6e6e9;
   --field: #f4f4f5;
-  --edge: #cfd0d5;
+  --edge: #9496a0;
   --edge-strong: #3a3b40;
-  --edge-exception: #e8b7b1;
+  --edge-exception: #d98d84;
   --edge-exception-strong: #b5524a;
   --select: #2f6feb;
   --change: #e2860b;
@@ -94,9 +97,12 @@
   --radius: 0.75rem;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --shadow-node: 0 1px 2px rgb(17 17 19 / 0.04), 0 4px 14px rgb(17 17 19 / 0.05);
-  --shadow-node-hover: 0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08);
-  --shadow-float: 0 1px 2px rgb(17 17 19 / 0.05), 0 12px 32px rgb(17 17 19 / 0.1);
+  --shadow-node:
+    0 1px 2px rgb(17 17 19 / 0.04), 0 4px 14px rgb(17 17 19 / 0.05);
+  --shadow-node-hover:
+    0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08);
+  --shadow-float:
+    0 1px 2px rgb(17 17 19 / 0.05), 0 12px 32px rgb(17 17 19 / 0.1);
 }
 
 @layer base {
@@ -140,7 +146,7 @@
 .react-flow {
   --xy-background-color: var(--canvas);
   --xy-edge-stroke: var(--edge);
-  --xy-edge-stroke-width: 1.25;
+  --xy-edge-stroke-width: 1.5;
   --xy-handle-background-color: #ffffff;
   --xy-handle-border-color: #c9cace;
   --xy-attribution-background-color: transparent;
@@ -157,6 +163,10 @@
   width: 9px;
   height: 9px;
   border-width: 1.25px;
+}
+/* A line ends in an arrowhead, so the port it lands on is not drawn. */
+.react-flow__handle.target {
+  opacity: 0;
 }
 .react-flow__node:focus-visible {
   outline: none;
@@ -177,7 +187,8 @@
 }
 .edge-draw {
   stroke-dasharray: 1;
-  animation: edge-draw var(--edge-duration, 300ms) cubic-bezier(0.45, 0, 0.55, 1) both;
+  animation: edge-draw var(--edge-duration, 300ms)
+    cubic-bezier(0.45, 0, 0.55, 1) both;
   animation-delay: var(--edge-delay, 0ms);
 }
 
@@ -241,4 +252,58 @@
   *::after {
     transition-duration: 0ms !important;
   }
+}
+
+/* Zoomed far out, a change is a solid amber block with a status dot; other cards recede. */
+.far-mark,
+.far-dot {
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+.far-mark {
+  z-index: 5;
+  background: var(--change);
+}
+.far-dot {
+  z-index: 6;
+  top: calc(-0.5 * clamp(10px, calc(10px / var(--zoom, 1)), 44px));
+  right: calc(-0.5 * clamp(10px, calc(10px / var(--zoom, 1)), 44px));
+  width: clamp(10px, calc(10px / var(--zoom, 1)), 44px);
+  height: clamp(10px, calc(10px / var(--zoom, 1)), 44px);
+  border-radius: 9999px;
+  box-shadow: 0 0 0 calc(2px / var(--zoom, 1)) var(--card);
+}
+.is-far .far-mark,
+.is-far .far-dot {
+  opacity: 1;
+}
+.is-far [data-slot="step-card"]:not([data-changed]) {
+  opacity: 0.4;
+}
+
+/* A module opens or closes: cards slide to their new places, the lines come back after. */
+.react-flow__node {
+  animation: fade-in 220ms var(--ease-out) both;
+}
+.is-morphing .react-flow__node {
+  transition: transform 320ms var(--ease-out);
+}
+.react-flow__edges,
+.react-flow__edgelabel-renderer {
+  transition: opacity 200ms var(--ease-out);
+}
+.is-morphing .react-flow__edges,
+.is-morphing .react-flow__edgelabel-renderer {
+  opacity: 0;
+  transition-duration: 0ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node {
+    animation: none;
+  }
+}
+
+/* Names on lines stay readable where a line passes a card. */
+.react-flow__edgelabel-renderer {
+  z-index: 7;
 }

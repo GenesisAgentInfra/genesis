@@ -9,7 +9,9 @@ import {
   type NodeMouseHandler,
 } from "@xyflow/react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { Maximize, Minus, Play, Plus } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Crumbs } from "@/components/crumbs"
 import { DetailPanel, type PanelSubject } from "@/components/detail-panel"
 import { Headline } from "@/components/headline"
@@ -35,19 +37,21 @@ import {
   buildAtlas,
   flowOfNode,
   mainPath,
+  moduleNodeId,
+  stepNodeId,
   type AtlasNode,
   type LabelData,
   type ModuleData,
   type OffMapData,
+  type RowData,
 } from "@/atlas/build"
 import {
-  ActorView,
   AtlasContext,
-  EntryView,
   LabelView,
   ModuleView,
   OffMapView,
   RelationView,
+  RowView,
 } from "@/atlas/nodes"
 import { cn } from "@/lib/utils"
 import { STRINGS } from "@/i18n"
@@ -58,11 +62,24 @@ const NODE_TYPES = {
   step: StepNode,
   module: ModuleView,
   label: LabelView,
-  actor: ActorView,
   offmap: OffMapView,
+  row: RowView,
 }
-const EDGE_TYPES = { flow: FlowEdge, relation: RelationView, entry: EntryView }
+const EDGE_TYPES = {
+  flow: FlowEdge,
+  relation: RelationView,
+}
+/** Arrowheads for the lines, one per line colour. */
+const ARROWS = [
+  ["arrow", "var(--edge)"],
+  ["arrow-strong", "var(--edge-strong)"],
+  ["arrow-exception", "var(--edge-exception)"],
+  ["arrow-exception-strong", "var(--edge-exception-strong)"],
+] as const
 const PANEL_W = 384
+/** The first look is never smaller than this: a map nobody can read is no overview. */
+const READ_ZOOM = 0.8
+const APART = moduleNodeId("__apart")
 const NONE = new Set<string>()
 /** The walk through a flow: the camera's zoom, a pause per step, a longer one at a change. */
 const WALK_ZOOM = 0.85
@@ -151,7 +168,17 @@ function Viewer({ model }: { model: Model }) {
   const initialized = useNodesInitialized()
   const width = useStore((state) => state.width)
   const height = useStore((state) => state.height)
-  const atlas = React.useMemo(() => buildAtlas(model, t), [model, t])
+  // The module whose flows are drawn step by step; every other flow stays folded.
+  const [focused, setFocused] = React.useState<string>()
+  // A row of modules is as wide as the screen shows at a size that still reads.
+  const span = Math.max(
+    Math.floor(((width || window.innerWidth) - 84) / READ_ZOOM / 20) * 20,
+    880
+  )
+  const atlas = React.useMemo(
+    () => buildAtlas(model, t, focused, span),
+    [model, t, focused, span]
+  )
   const nodeById = React.useMemo(
     () => new Map(atlas.nodes.map((node) => [node.id, node])),
     [atlas]
@@ -168,18 +195,34 @@ function Viewer({ model }: { model: Model }) {
     delay: CUT_ARM,
   })
   const [trail, setTrail] = React.useState<Trail>()
-  const [focused, setFocused] = React.useState<string>()
+  // The walk on show: its flow, its steps in order, how far it has got, whether it is over.
+  const [walking, setWalking] = React.useState<{
+    flowId: string
+    steps: string[]
+    at: number
+    done: boolean
+  }>()
   const [ready, setReady] = React.useState(false)
   const headRef = React.useRef<HTMLDivElement>(null)
   const wrapper = React.useRef<HTMLDivElement>(null)
   const opener = React.useRef<HTMLElement | null>(null)
   const timers = React.useRef<number[]>([])
   const walks = React.useRef(0)
+  const morph = React.useRef(0)
+  // What to do once the map has been redrawn for another module: walk a flow, show a change.
+  const pending = React.useRef<{ walk?: string; stop?: number } | undefined>(
+    undefined
+  )
+  // The flow to frame when its module opens.
+  const aim = React.useRef<string | undefined>(undefined)
 
   // Names on the map keep their size on screen as the reader zooms out.
   React.useEffect(() => {
-    const set = (zoom: number) =>
+    // Far out, changes turn into solid blocks and the rest recedes (see index.css).
+    const set = (zoom: number) => {
       wrapper.current?.style.setProperty("--zoom", String(zoom))
+      wrapper.current?.classList.toggle("is-far", zoom < 0.5)
+    }
     set(store.getState().transform[2])
     return store.subscribe((state) => set(state.transform[2]))
   }, [store])
@@ -254,6 +297,21 @@ function Viewer({ model }: { model: Model }) {
   const focusedTitle = focused
     ? (nodeById.get(focused)?.data as ModuleData | undefined)?.title
     : undefined
+  const focusedFlows = React.useMemo(() => {
+    if (!focused) return undefined
+    const data = nodeById.get(focused)?.data as ModuleData | undefined
+    if (data?.apart)
+      return new Set([
+        "__offmap",
+        ...model.flows
+          .filter((view) => view.removed)
+          .map((view) => view.flow.flow_id),
+      ])
+    const module = model.modules.find(
+      (item) => `module${SEP}${item.id}` === focused
+    )
+    return new Set(module?.flows.map((view) => view.flow.flow_id) ?? [])
+  }, [focused, nodeById, model])
 
   React.useEffect(() => {
     document.title = focusedTitle ? `${focusedTitle} · Genesis` : "Genesis"
@@ -264,9 +322,10 @@ function Viewer({ model }: { model: Model }) {
     (withPanel: boolean) => {
       const head = headRef.current?.getBoundingClientRect()
       const top = Math.max(head ? head.bottom + 16 : 0, 24)
-      const left = narrow ? 12 : 32
-      const right = narrow ? 12 : withPanel ? PANEL_W + 40 : 32
-      const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 32
+      const left = narrow ? 12 : 24
+      // The zoom controls stand at the right edge, or just left of the panel.
+      const right = narrow ? 12 : (withPanel ? PANEL_W + 24 : 12) + 48
+      const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 28
       return {
         x: left,
         y: top,
@@ -276,20 +335,6 @@ function Viewer({ model }: { model: Model }) {
     },
     [narrow, width, height]
   )
-  const padding = React.useCallback(
-    (withPanel: boolean) => {
-      const box = area(withPanel)
-      const px = (value: number): `${number}px` =>
-        `${Math.max(Math.round(value), 0)}px`
-      return {
-        top: px(box.y),
-        left: px(box.x),
-        right: px(width - box.x - box.w),
-        bottom: px(height - box.y - box.h),
-      }
-    },
-    [area, width, height]
-  )
   const glide = reducedMotion ? 0 : GLIDE_MS
   const motionOf = (duration: number) => ({
     duration,
@@ -297,26 +342,86 @@ function Viewer({ model }: { model: Model }) {
     interpolate: "linear" as const,
   })
 
-  const fitAll = React.useCallback(
-    (duration: number, withPanel = false) =>
-      void flow.fitView({
-        padding: padding(withPanel),
-        maxZoom: 1,
-        minZoom: 0.05,
-        duration,
-        ease: easeOut,
-        interpolate: "linear",
-      }),
-    [flow, padding]
+  /** Where a node sits on the map, from the layout itself: no waiting to be measured. */
+  const boxOf = React.useCallback(
+    (id: string) => {
+      const node = nodeById.get(id)
+      if (!node) return undefined
+      const step = node.type === "step" ? (node as StepNodeType) : undefined
+      return {
+        x: node.position.x,
+        y: node.position.y,
+        width: step ? step.data.width : (node.width ?? 0),
+        height: step ? heightOf(step.data) : (node.height ?? 0),
+      }
+    },
+    [nodeById]
   )
-  const fitTo = (ids: string[], duration: number, withPanel = showPanel) =>
-    void flow.fitView({
-      nodes: ids.map((id) => ({ id })),
-      padding: padding(withPanel),
-      maxZoom: 1,
-      minZoom: 0.05,
-      ...motionOf(duration),
-    })
+  const boundsOf = React.useCallback(
+    (ids: Iterable<string>) => {
+      let x0 = Infinity
+      let y0 = Infinity
+      let x1 = -Infinity
+      let y1 = -Infinity
+      for (const id of ids) {
+        const box = boxOf(id)
+        if (!box) continue
+        x0 = Math.min(x0, box.x)
+        y0 = Math.min(y0, box.y)
+        x1 = Math.max(x1, box.x + box.width)
+        y1 = Math.max(y1, box.y + box.height)
+      }
+      return x1 < x0
+        ? undefined
+        : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+    },
+    [boxOf]
+  )
+  /**
+   * Bring a part of the map into the free area, never smaller than `min`. When that is
+   * wider or taller than the area, start from its top left, where the flows begin.
+   */
+  const frame = React.useCallback(
+    (
+      bounds: { x: number; y: number; width: number; height: number },
+      withPanel: boolean,
+      duration: number,
+      min: number,
+      max = 1
+    ) => {
+      const box = area(withPanel)
+      const zoom = Math.min(
+        max,
+        Math.max(min, Math.min(box.w / bounds.width, box.h / bounds.height))
+      )
+      const across = bounds.width * zoom <= box.w
+      const down = bounds.height * zoom <= box.h
+      void flow.setViewport(
+        {
+          x: across
+            ? box.x + (box.w - bounds.width * zoom) / 2 - bounds.x * zoom
+            : box.x - bounds.x * zoom,
+          y: down
+            ? box.y + (box.h - bounds.height * zoom) / 2 - bounds.y * zoom
+            : box.y - bounds.y * zoom,
+          zoom,
+        },
+        { duration, ease: easeOut, interpolate: "linear" }
+      )
+    },
+    [area, flow]
+  )
+  const fitAll = React.useCallback(
+    (duration: number, withPanel = false) => {
+      const bounds = boundsOf(nodeById.keys())
+      if (bounds) frame(bounds, withPanel, duration, READ_ZOOM)
+    },
+    [boundsOf, nodeById, frame]
+  )
+  const fitTo = (ids: string[], duration: number, withPanel = showPanel) => {
+    const bounds = boundsOf(ids)
+    if (bounds) frame(bounds, withPanel, duration, 0.5)
+  }
   /** Put a node in the middle of the free area, at least this close. */
   const centerOn = (
     id: string,
@@ -324,32 +429,28 @@ function Viewer({ model }: { model: Model }) {
     duration: number,
     withPanel: boolean
   ) => {
-    const node = flow.getInternalNode(id)
+    const node = boxOf(id)
     if (!node) return
     const box = area(withPanel)
-    const cx =
-      node.internals.positionAbsolute.x + (node.measured.width ?? 0) / 2
-    const cy =
-      node.internals.positionAbsolute.y + (node.measured.height ?? 0) / 2
     void flow.setCenter(
-      cx + (width / 2 - (box.x + box.w / 2)) / zoom,
-      cy + (height / 2 - (box.y + box.h / 2)) / zoom,
+      node.x + node.width / 2 + (width / 2 - (box.x + box.w / 2)) / zoom,
+      node.y + node.height / 2 + (height / 2 - (box.y + box.h / 2)) / zoom,
       { zoom, ...motionOf(duration) }
     )
   }
   const inView = (id: string, withPanel: boolean) => {
-    const node = flow.getInternalNode(id)
+    const node = boxOf(id)
     if (!node) return true
     const { x: vx, y: vy, zoom } = flow.getViewport()
     const box = area(withPanel)
-    const left = node.internals.positionAbsolute.x * zoom + vx
-    const top = node.internals.positionAbsolute.y * zoom + vy
+    const left = node.x * zoom + vx
+    const top = node.y * zoom + vy
     return (
       zoom >= 0.55 &&
       left >= box.x &&
       top >= box.y &&
-      left + (node.measured.width ?? 0) * zoom <= box.x + box.w &&
-      top + (node.measured.height ?? 0) * zoom <= box.y + box.h
+      left + node.width * zoom <= box.x + box.w &&
+      top + node.height * zoom <= box.y + box.h
     )
   }
 
@@ -362,19 +463,32 @@ function Viewer({ model }: { model: Model }) {
     setReady(true)
   }, [initialized, width, height, fitAll])
 
+  // Another module opened or closed: the map is redrawn, its cards sliding to their places.
+  const drawn = React.useRef(atlas)
+  React.useLayoutEffect(() => {
+    if (drawn.current === atlas) return
+    drawn.current = atlas
+    const element = wrapper.current
+    if (element && !reducedMotion) {
+      element.classList.add("is-morphing")
+      window.clearTimeout(morph.current)
+      morph.current = window.setTimeout(
+        () => element.classList.remove("is-morphing"),
+        360
+      )
+    }
+    flow.setNodes(atlas.nodes)
+    flow.setEdges(atlas.edges)
+  }, [atlas, flow, reducedMotion])
+
   // A new window size keeps what was framed in frame.
   const size = React.useRef({ width, height })
   React.useEffect(() => {
     const before = size.current
     size.current = { width, height }
     if (!ready || (before.width === width && before.height === height)) return
-    if (focused)
-      void flow.fitView({
-        nodes: [{ id: focused }],
-        padding: padding(false),
-        maxZoom: 1,
-        minZoom: 0.05,
-      })
+    const bounds = focused ? boundsOf([focused]) : undefined
+    if (bounds) frame(bounds, false, 0, 0.5)
     else fitAll(0)
     // Only the size matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -393,6 +507,7 @@ function Viewer({ model }: { model: Model }) {
     for (const handle of timers.current) window.clearTimeout(handle)
     timers.current = []
     setTrail(undefined)
+    setWalking(undefined)
   }, [])
 
   const openPanel = (next: Selected) => {
@@ -409,9 +524,9 @@ function Viewer({ model }: { model: Model }) {
   }
 
   /** Pick a change on the map: it rings, and the steps it leads to answer. */
-  const pick = (node: StepNodeType) => {
+  const pick = (node: StepNodeType, no?: number) => {
     const shown =
-      node.data.coupons.find((coupon) => coupon.no === current?.no) ??
+      node.data.coupons.find((coupon) => coupon.no === (no ?? current?.no)) ??
       node.data.coupons[0]
     const run = play.run + 1
     setCurrent({ node: node.id, no: shown.no })
@@ -419,7 +534,41 @@ function Viewer({ model }: { model: Model }) {
       setPlay({ run, armed: true, settled: false, delay: 0 })
       return
     }
-    centerOn(node.id, Math.max(flow.getViewport().zoom, 0.8), glide, true)
+    // Frame the change with the steps it leads to and the results it may reach while they
+    // stay readable; else the change and its next steps; else the change alone.
+    const flowId = flowOfNode(node.id) ?? ""
+    const placed = atlas.flows.get(flowId)
+    const local = node.id.slice(flowId.length + SEP.length)
+    const reach =
+      placed && !local.startsWith("removed-")
+        ? reachOf(placed.view, local)
+        : { next: [], far: [] }
+    const prefix = (id: string) => `${flowId}${SEP}${id}`
+    const box = area(true)
+    const fits = (ids: string[]) => {
+      const bounds = boundsOf(ids)
+      return (
+        bounds &&
+        Math.min(
+          box.w / Math.max(bounds.width, 1),
+          box.h / Math.max(bounds.height, 1)
+        ) >= 0.6 &&
+        bounds
+      )
+    }
+    const bounds =
+      fits([node.id, ...reach.next.map(prefix), ...reach.far.map(prefix)]) ||
+      fits([node.id, ...reach.next.map(prefix)])
+    // Stepping between changes moves the map, it does not zoom in on each one.
+    if (bounds)
+      frame(
+        bounds,
+        true,
+        glide,
+        0.6,
+        Math.max(flow.getViewport().zoom, READ_ZOOM)
+      )
+    else centerOn(node.id, Math.max(flow.getViewport().zoom, 0.8), glide, true)
     setPlay({
       run,
       armed: true,
@@ -428,24 +577,75 @@ function Viewer({ model }: { model: Model }) {
     })
   }
 
-  // The camera follows the focus once the breadcrumbs above the headline have settled.
+  /** The flow a node belongs to ("__offmap" for a change outside the flows). */
+  const flowIdOf = (node: AtlasNode): string | undefined =>
+    node.type === "step"
+      ? flowOfNode(node.id)
+      : node.type === "offmap"
+        ? "__offmap"
+        : node.type === "label" || node.type === "row"
+          ? (node.data as LabelData | RowData).flowId || undefined
+          : undefined
+  const homeOf = (node: AtlasNode): string | undefined => {
+    const flowId = flowIdOf(node)
+    return flowId === "__offmap" ? APART : atlas.home.get(flowId ?? "")
+  }
+
+  // The camera follows the focus: into the opened module, or back out to the whole map.
   const framedFocus = React.useRef<string | undefined>(undefined)
   React.useEffect(() => {
     if (!ready || framedFocus.current === focused) return
     framedFocus.current = focused
-    if (focused)
-      void flow.fitView({
-        nodes: [{ id: focused }],
-        padding: padding(showPanel),
-        maxZoom: 1,
-        minZoom: 0.05,
-        ...motionOf(glide),
-      })
-    else fitAll(glide)
+    const wanted = aim.current
+    aim.current = undefined
+    if (!focused) {
+      fitAll(glide, showPanel)
+      return
+    }
+    const inside = atlas.nodes.filter((node) =>
+      focusedFlows?.has(flowIdOf(node) ?? "")
+    )
+    // The flow that was asked for; else the changed cards with the names of their flows;
+    // else everything in the module.
+    const asked = wanted
+      ? inside.filter((node) => flowIdOf(node) === wanted)
+      : []
+    const changed = inside.filter(
+      (node) =>
+        node.type === "offmap" ||
+        (node.type === "step" && (node as StepNodeType).data.coupons.length > 0)
+    )
+    const flows = new Set(changed.map(flowIdOf))
+    const picked = asked.length
+      ? asked
+      : changed.length
+        ? [
+            ...changed,
+            ...inside.filter(
+              (node) => node.type === "label" && flows.has(flowIdOf(node))
+            ),
+          ]
+        : inside
+    const bounds = boundsOf(
+      picked.length ? picked.map((node) => node.id) : [focused]
+    )
+    if (!bounds) return
+    // At the top of the module its name comes along, clear of the breadcrumbs.
+    const frameBox = boxOf(focused)
+    if (frameBox && bounds.y - frameBox.y < 140) {
+      bounds.height += bounds.y - frameBox.y
+      bounds.y = frameBox.y
+      bounds.width += bounds.x - frameBox.x
+      bounds.x = frameBox.x
+    }
+    frame(bounds, showPanel, glide, READ_ZOOM)
     // Runs when the focus changes; the rest is read fresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused, ready])
-  const focusModule = (id: string) => setFocused(id)
+  const focusModule = (id: string, flowId?: string) => {
+    aim.current = flowId
+    setFocused(id)
+  }
   const toOverview = () => {
     stopWalk()
     setFocused(undefined)
@@ -453,15 +653,80 @@ function Viewer({ model }: { model: Model }) {
     setSelected(undefined)
   }
 
+  /** A change picked in the list: the map flies to it and its details open. */
+  const pickStop = (no: number) => {
+    const stop = model.stops[no - 1]
+    if (!stop) return
+    stopWalk()
+    // A change outside the open module: back to the whole map first, then to the change.
+    const at =
+      stop.kind === "off_map" ? APART : atlas.home.get(stop.flowId ?? "")
+    if (focused && at !== focused) {
+      pending.current = { stop: no }
+      setFocused(undefined)
+      return
+    }
+    if (stop.kind === "off_map") {
+      setCurrent(undefined)
+      openPanel({ type: "offMap", no })
+      const id = `offmap${SEP}${no}`
+      if (!inView(id, true))
+        centerOn(id, Math.max(flow.getViewport().zoom, READ_ZOOM), glide, true)
+      return
+    }
+    if (stop.kind === "removed_flow" && stop.flowId) {
+      setCurrent(undefined)
+      openPanel({ type: "removedFlow", flowId: stop.flowId })
+      const placed = atlas.flows.get(stop.flowId)
+      if (placed?.nodes.length)
+        fitTo(
+          placed.nodes.map((item) => item.id),
+          glide,
+          true
+        )
+      else if (placed && !inView(placed.triggers[0], true))
+        centerOn(
+          placed.triggers[0],
+          Math.max(flow.getViewport().zoom, READ_ZOOM),
+          glide,
+          true
+        )
+      return
+    }
+    if (!stop.flowId || !stop.nodeId) return
+    const node = nodeById.get(stepNodeId(stop.flowId, stop.nodeId))
+    if (!node || node.type !== "step") return
+    openPanel({ type: "step", node: node.id })
+    pick(node as StepNodeType, no)
+  }
+  const pickedNo =
+    current?.no ??
+    (selected?.type === "offMap"
+      ? selected.no
+      : selected?.type === "removedFlow"
+        ? model.stops.find(
+            (item) =>
+              item.kind === "removed_flow" && item.flowId === selected.flowId
+          )?.no
+        : undefined)
+
   /** Walk through a flow the way it usually runs, the camera riding along. */
   const walk = (flowId: string) => {
     const placed = atlas.flows.get(flowId)
     if (!placed) return
     stopWalk()
-    setSelected(undefined)
     setCurrent(undefined)
+    // A walk passes every step, so the flow's module opens first.
+    const module = atlas.home.get(flowId)
+    if (placed.mode !== "full" && module && module !== focused) {
+      pending.current = { walk: flowId }
+      focusModule(module, flowId)
+      return
+    }
+    if (placed.mode !== "full") return
     const path = mainPath(placed)
     if (!path.steps.length) return
+    const withPanel = Boolean(selected)
     const isChanged = (id: string) =>
       Boolean(
         (nodeById.get(id) as StepNodeType | undefined)?.data.coupons.length
@@ -479,6 +744,12 @@ function Viewer({ model }: { model: Model }) {
       steps.set(path.steps[index + 1], at)
     })
     walks.current += 1
+    setWalking({
+      flowId,
+      steps: path.steps,
+      at: animate ? 0 : path.steps.length - 1,
+      done: !animate,
+    })
     setTrail({
       run: walks.current,
       edges,
@@ -487,33 +758,65 @@ function Viewer({ model }: { model: Model }) {
       animate,
     })
     if (!animate) {
-      fitTo(path.steps, 0, false)
+      fitTo(path.steps, 0, withPanel)
       return
     }
-    centerOn(path.steps[0], WALK_ZOOM, WALK_LEAD - 40, false)
-    for (const id of path.steps.slice(1)) {
+    centerOn(path.steps[0], WALK_ZOOM, WALK_LEAD - 40, withPanel)
+    path.steps.forEach((id, index) => {
       const arrive = steps.get(id)!
+      if (index > 0)
+        timers.current.push(
+          window.setTimeout(
+            () => centerOn(id, WALK_ZOOM, 420, withPanel),
+            Math.max(arrive - 320, 0)
+          )
+        )
       timers.current.push(
         window.setTimeout(
-          () => centerOn(id, WALK_ZOOM, 420, false),
-          Math.max(arrive - 320, 0)
+          () =>
+            setWalking((value) =>
+              value
+                ? {
+                    ...value,
+                    at: index,
+                    done: index === path.steps.length - 1,
+                  }
+                : value
+            ),
+          arrive
         )
       )
-    }
+    })
   }
 
   const onNodeClick: NodeMouseHandler<AtlasNode> = (_, node) => {
     stopWalk()
     if (node.type === "module") {
-      focusModule(node.id)
+      if (node.id !== focused) focusModule(node.id)
       return
     }
-    if (node.type === "label") {
-      const data = node.data as LabelData
+    const at = homeOf(node)
+    const changeOn =
+      node.type === "offmap"
+        ? (node.data as OffMapData).coupon.no
+        : node.type === "step"
+          ? (node as StepNodeType).data.coupons[0]?.no
+          : undefined
+    // Something in a module other than the open one: a change is shown from the whole map,
+    // anything else opens its own module.
+    if (focused && at && at !== focused) {
+      if (changeOn) pickStop(changeOn)
+      else focusModule(at, flowIdOf(node))
+      return
+    }
+    if (node.type === "label" || node.type === "row") {
+      const data = node.data as LabelData | RowData
       if (data.struck) openPanel({ type: "removedFlow", flowId: data.flowId })
-      else if (data.flowId) {
+      else if (!data.flowId || !at) return
+      else if (at !== focused) focusModule(at, data.flowId)
+      else {
         const placed = atlas.flows.get(data.flowId)
-        if (placed)
+        if (placed?.nodes.length)
           fitTo(
             placed.nodes.map((item) => item.id),
             glide
@@ -538,6 +841,7 @@ function Viewer({ model }: { model: Model }) {
     escape: () => {},
     other: () => {},
     enter: (id: string) => void id,
+    step: (by: number) => void by,
   })
   React.useEffect(() => {
     keys.current = {
@@ -555,6 +859,12 @@ function Viewer({ model }: { model: Model }) {
       enter: (id: string) => {
         const node = nodeById.get(id)
         if (node) onNodeClick({} as React.MouseEvent, node)
+      },
+      step: (by: number) => {
+        const total = model.stops.length
+        if (!total) return
+        const from = pickedNo ?? (by > 0 ? 0 : 1)
+        pickStop(((from - 1 + by + total) % total) + 1)
       },
     }
   })
@@ -581,6 +891,11 @@ function Viewer({ model }: { model: Model }) {
           event.preventDefault()
           keys.current.enter(id)
         }
+        return
+      }
+      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        event.preventDefault()
+        keys.current.step(event.key === "ArrowRight" ? 1 : -1)
         return
       }
       keys.current.other()
@@ -610,6 +925,12 @@ function Viewer({ model }: { model: Model }) {
     dotEdges: lit.dotEdges,
     dimAll: false,
     selected: selected?.type === "step" ? selected.node : undefined,
+    apart:
+      selected?.type === "offMap"
+        ? `offmap${SEP}${selected.no}`
+        : selected?.type === "removedFlow"
+          ? `row${SEP}${selected.flowId}`
+          : undefined,
     knownRisks: !model.hasReport,
     run: play.run,
     armed: play.armed,
@@ -618,6 +939,8 @@ function Viewer({ model }: { model: Model }) {
     delay: play.delay,
     trail,
     trailActive: Boolean(trail),
+    focusedModule: focused,
+    focusedFlows,
   }
   const walkRef = React.useRef(walk)
   React.useEffect(() => {
@@ -627,6 +950,17 @@ function Viewer({ model }: { model: Model }) {
     () => ({ onRun: (flowId: string) => walkRef.current(flowId) }),
     []
   )
+  const pickStopRef = React.useRef(pickStop)
+  React.useEffect(() => {
+    pickStopRef.current = pickStop
+  })
+  // The map has been redrawn: do what was waiting for it.
+  React.useEffect(() => {
+    const todo = pending.current
+    pending.current = undefined
+    if (todo?.walk) walkRef.current(todo.walk)
+    else if (todo?.stop) pickStopRef.current(todo.stop)
+  }, [atlas])
 
   return (
     <CanvasContext.Provider value={canvas}>
@@ -646,6 +980,25 @@ function Viewer({ model }: { model: Model }) {
             }
           }}
         >
+          <svg aria-hidden className="pointer-events-none absolute size-0">
+            <defs>
+              {ARROWS.map(([id, color]) => (
+                <marker
+                  key={id}
+                  id={id}
+                  viewBox="0 0 10 10"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="9.5"
+                  refY="5"
+                  orient="auto"
+                  markerUnits="userSpaceOnUse"
+                >
+                  <path d="M1 1.2 L9.5 5 L1 8.8 Z" style={{ fill: color }} />
+                </marker>
+              ))}
+            </defs>
+          </svg>
           <div ref={wrapper} className="absolute inset-0">
             {atlas.nodes.length ? (
               <ReactFlow
@@ -681,21 +1034,13 @@ function Viewer({ model }: { model: Model }) {
             ref={headRef}
             className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col items-start gap-2"
           >
-            {(!model.hasReport || focusedTitle) && (
-              <Crumbs
-                model={model}
-                t={t}
-                module={focusedTitle}
-                onOverview={toOverview}
-              />
-            )}
             {model.hasReport && (
               <div
                 className={
                   narrow
                     ? "w-[calc(100vw-24px)]"
                     : showPanel
-                      ? "w-[min(600px,calc(100vw-448px))] min-w-[340px]"
+                      ? "w-[min(600px,calc(100vw-432px))] min-w-[340px]"
                       : "w-[min(600px,calc(100vw-24px))]"
                 }
               >
@@ -704,24 +1049,83 @@ function Viewer({ model }: { model: Model }) {
                   t={t}
                   narrow={narrow}
                   compact={narrow && showPanel}
+                  picked={pickedNo}
+                  onPick={focus ? pickStop : undefined}
                 />
               </div>
             )}
-          </div>
-
-          <AnimatePresence>
-            {/* The strip behind the panel keeps cards from showing through the gap around it. */}
-            {subject && !narrow && (
-              <motion.div
-                key="strip"
-                aria-hidden
-                initial={reducedMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={panelMotion(reducedMotion)}
-                className="pointer-events-none absolute inset-y-0 right-0 z-[15] w-[408px] bg-canvas"
+            {(!model.hasReport || focusedTitle) && (
+              <Crumbs
+                model={model}
+                t={t}
+                module={focusedTitle}
+                onOverview={toOverview}
               />
             )}
+          </div>
+
+          {/* The walk says what it walks, where it is, and how to stop it. */}
+          {walking && (
+            <div
+              className={cn(
+                "pointer-events-none absolute bottom-8 left-3 z-10 flex justify-center",
+                showPanel && !narrow ? "right-[420px]" : "right-16"
+              )}
+            >
+              <WalkBar
+                t={t}
+                flow={model.flowById.get(walking.flowId)?.flow.name ?? ""}
+                step={
+                  nodeById.get(walking.steps[walking.at]) as
+                    StepNodeType | undefined
+                }
+                done={walking.done}
+                onStop={stopWalk}
+              />
+            </div>
+          )}
+
+          {/* Zoom, for readers without a trackpad, and the way back to the whole map. */}
+          {!(narrow && showPanel) && atlas.nodes.length > 0 && (
+            <div
+              className={cn(
+                "absolute bottom-8 z-10 flex flex-col overflow-hidden rounded-full bg-card shadow-[var(--shadow-float)] ring-1 ring-line",
+                showPanel && !narrow ? "right-[408px]" : "right-3"
+              )}
+            >
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t.zoomIn}
+                className="rounded-none text-ink-2"
+                onClick={() => void flow.zoomIn(motionOf(glide ? 200 : 0))}
+              >
+                <Plus />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t.zoomOut}
+                className="rounded-none text-ink-2"
+                onClick={() => void flow.zoomOut(motionOf(glide ? 200 : 0))}
+              >
+                <Minus />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t.fitView}
+                className="rounded-none border-t border-line text-ink-2"
+                onClick={() =>
+                  focused ? toOverview() : fitAll(glide, showPanel)
+                }
+              >
+                <Maximize />
+              </Button>
+            </div>
+          )}
+
+          <AnimatePresence>
             {subject && (
               <motion.aside
                 key="panel"
@@ -756,6 +1160,14 @@ function Viewer({ model }: { model: Model }) {
                   t={t}
                   subject={subject}
                   focus={current?.no}
+                  onWalk={
+                    subject?.type === "step" &&
+                    subject.view &&
+                    !subject.view.removed &&
+                    !subject.ghost
+                      ? () => walk(subject.view!.flow.flow_id)
+                      : undefined
+                  }
                   onClose={closePanel}
                 />
               </motion.aside>
@@ -764,5 +1176,61 @@ function Viewer({ model }: { model: Model }) {
         </div>
       </AtlasContext.Provider>
     </CanvasContext.Provider>
+  )
+}
+
+/** A pill under the map while a flow is walked: the flow, the step reached, and a way out. */
+function WalkBar({
+  t,
+  flow,
+  step,
+  done,
+  onStop,
+}: {
+  t: (typeof STRINGS)["zh"]
+  flow: string
+  step?: StepNodeType
+  done: boolean
+  onStop: () => void
+}) {
+  const change = step?.data.coupons[0]?.change
+  const said = change?.explanation?.summary
+  return (
+    <div className="pointer-events-auto flex max-w-full min-w-0 items-center gap-2.5 rounded-full bg-card py-1.5 pr-1.5 pl-3 text-[13px] leading-5 shadow-[var(--shadow-float)] ring-1 ring-line">
+      <Play
+        aria-hidden
+        className={cn("size-3.5 shrink-0", done ? "text-ink-3" : "text-ink")}
+      />
+      <span className="shrink-0 text-ink-2">
+        {done ? t.walkDone : t.walking}
+      </span>
+      <span className="max-w-[180px] min-w-0 truncate font-medium text-ink">
+        {flow}
+      </span>
+      {step && (
+        <>
+          <span aria-hidden className="shrink-0 text-ink-3">
+            ·
+          </span>
+          <span
+            aria-live="polite"
+            className={cn(
+              "min-w-0 truncate",
+              said ? "text-change-ink" : "text-ink-2"
+            )}
+          >
+            {said ?? step.data.step.name}
+          </span>
+        </>
+      )}
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={onStop}
+        className="shrink-0 rounded-full px-2.5 text-[12.5px] text-ink-2"
+      >
+        {done ? t.endWalk : t.stopWalk}
+      </Button>
+    </div>
   )
 }

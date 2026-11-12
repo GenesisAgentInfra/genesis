@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-12T10:00:00+00:00",
+  "generatedAt": "2026-11-12T12:00:00+00:00",
   "title": "Design System: Genesis Viewer",
   "extensions": {
     "colorMeta": {
@@ -665,12 +665,12 @@
   ],
   "narrative": {
     "northStar": "The Quiet Builder Canvas",
-    "overview": "The viewer is an agent-builder canvas: white cards on a light grey field, joined by thin curves, read left to right. The look follows OpenAI Agent Builder's canvas, which the user pinned. Nothing on the field is decorative. A card shows what kind of step it is, its name, its branches as rows, and the change it carries when it has one. All chrome floats over the canvas: a headline block top left and a panel on the right. None of it is docked into columns.\n\nThe whole product is one map. Each module is a large frame holding its flows, each flow drawn in full under its name; on the left, the ways in (requests, background tasks, schedules) send lines along the gutters into the flows they start. Every change on the map is written in amber on its card, and dashed amber lines run from a change to the same change on another flow (\"同一处改动\") and to flows it may reach (\"可能影响\"). The headline above says where the change lands and what needs attention. Clicking a module brings it into focus; \"走一遍\" on a flow walks it from its trigger to its end; clicking a change rings it and opens its details. Nothing switches pages and nothing is stepped through one by one.\n\nThree signal colours do all the talking. Amber marks change and what it reaches, red marks risk and loss, and blue marks selection. Everything else is ink on white or grey. The density suits reading at a desk: 18px headline, 14px cards, 12 to 12.5px secondary text, and generous space between ranks.\n\nThis world replaces the earlier ticket-wallet world. Stamps, perforations, condensed display type and navy carrier colour belong to that world and are gone. The pan-and-zoom canvas it refused is now the primary surface.",
+    "overview": "The viewer is an agent-builder canvas: white cards on a light grey field, joined by thin curves, read left to right. The look follows OpenAI Agent Builder's canvas, which the user pinned. Nothing on the field is decorative. A card shows what kind of step it is, its name, its branches as rows, and the change it carries when it has one. All chrome floats over the canvas: a headline block top left and a panel on the right. None of it is docked into columns.\n\nThe whole product is one map, and the first look at it reads: it is never framed below 0.8. Each module is a frame holding its flows. A flow this change touches is drawn whole, left to right: a step it leaves alone is a small pill, a step it touches is a card that says what changed in plain words with its test status, and the three things a change can do to a step read apart at a glance (added: green, a plus at the corner; removed: red and dashed, a minus; altered: amber, a pencil). Branches are named on their lines, every line turns at right angles, and a flow too long for the width wraps onto a second band. A flow the change leaves alone is one row with its name and step count. Each flow names what starts it (a request, a background task, a schedule) beside its name, so no line has to cross the map to say so. Every frame keeps to one grid: a touched module runs the full width, changes outside the flows share a strip under it, and the untouched modules share rows of equal cells, all on the same left and right edge. The headline block says where the change lands and what needs attention, and steps through the changes one at a time (\"1 / 6\", or ← →); the picked card rings, the rest quiet, its details open on the right, and dashed amber lines reach the same change on other flows (\"同一处改动\") and flows it may reach (\"可能影响\"). Clicking a module or a row opens that module in place: its untouched flows are drawn too, the cards slide to their new places, and the rest dims; breadcrumbs lead back. \"走一遍\" opens the flow's module and walks it from its trigger to its end under a status bar that names the flow, the step reached and a way to stop. Nothing switches pages, and there is no list beside the map: the changes are written on it.\n\nThree signal colours do all the talking. Amber marks change and what it reaches, red marks risk and loss, and blue marks selection. Everything else is ink on white or grey. The density suits reading at a desk: 18px headline, 14px cards, 12 to 12.5px secondary text, and generous space between ranks.\n\nThis world replaces the earlier ticket-wallet world. Stamps, perforations, condensed display type and navy carrier colour belong to that world and are gone. The pan-and-zoom canvas it refused is now the primary surface.",
     "keyCharacteristics": [
       "Light grey canvas (#f4f4f5) with white cards, 18px corners, a hairline border and a soft two-layer shadow.",
       "Pastel kind tiles (trigger green, action violet, decision orange, external yellow, result grey) are the only colour at rest.",
       "Amber is change and what it reaches; red is risk and removal; blue is selection.",
-      "Floating chrome only: headline block top left, right panel (bottom sheet on phones). Nothing sits in the corners for its own sake.",
+      "Floating chrome only: the headline block top left, the details panel on the right, zoom controls at the bottom right. The map itself carries the changes; nothing lists them beside it.",
       "One light rendition and system sans throughout. Mono is used only for code, paths, revisions and flows still named after their code.",
       "Motion explains the change and nothing else: one ripple of at most 0.6s, a camera glide between changes of one flow, no entrance."
     ],
@@ -712,8 +712,8 @@
       "**Do** let only what changes move: the sentence fades, the flow prefix stays."
     ],
     "donts": [
-      "**Don't** split the product into pages or step through changes one by one; it is one map, and focus is a camera move.",
-      "**Don't** dock side columns of change records beside the canvas. The panel shows one step at a time.",
+      "**Don't** split the product into pages; it is one map, a module opens in place, and stepping through the changes only moves the camera.",
+      "**Don't** dock columns beside the canvas or list the changes beside the map: they are written on it, and details live in the one panel, one subject at a time.",
       "**Don't** add a navigator, a second counter or a change list; the headline walks the changes.",
       "**Don't** add an entrance animation or a canvas fade-in.",
       "**Don't** use stamps, perforations, condensed display faces, uppercase labels or letterspacing.",
