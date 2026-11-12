@@ -103,6 +103,7 @@ def python_source_roots(paths) -> tuple[str, ...]:
     with an `__init__.py` makes `pkg/src` a root. Without this, code in a `src` layout
     or a monorepo cannot be linked to the tests and callers that import it.
     """
+    paths = [path for path in paths if path.endswith((".py", ".pyi"))]
     packages = {
         path.rpartition("/")[0]
         for path in paths
@@ -110,7 +111,10 @@ def python_source_roots(paths) -> tuple[str, ...]:
     }
     parents = {package.rpartition("/")[0] for package in packages}
     roots = sorted(parent for parent in parents if parent and parent not in packages)
-    return tuple(dict.fromkeys((".", "src", *roots)))[:MAX_SOURCE_ROOTS]
+    # `src` is a root only as a plain folder of modules. When it is a package itself,
+    # code imports `src.module`, and treating it as a root would hide every such import.
+    plain_src = "src" not in packages and any(path.startswith("src/") for path in paths)
+    return tuple(dict.fromkeys((".", *(["src"] if plain_src else []), *roots)))[:MAX_SOURCE_ROOTS]
 
 
 def call_boundary(target: Resolution) -> CallBoundary:

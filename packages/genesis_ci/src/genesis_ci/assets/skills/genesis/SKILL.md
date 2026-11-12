@@ -220,8 +220,9 @@ Rules the CLI enforces:
   those lines. A wrong quote means you are not looking at the frozen content: read it
   again through the CLI.
 - **Anchors.** A step is `resolved` only if it rests on analyzer facts. Either list
-  fingerprints in `anchors`, or cite a range of at most 12 lines: the facts inside it
-  become the anchors. Calls to built-ins and code that runs at import time, such as a
+  fingerprints in `anchors`, or cite a range of at most 12 lines: the facts that start
+  inside it become the anchors, so a call written over many lines is cited by its
+  first lines. Calls to built-ins and code that runs at import time, such as a
   decorator line, are not picked up from a range; a built-in call can still be listed
   by its fingerprint. Use the entry's `anchor` for a trigger step.
 - **Lines without facts.** Facts are conditions, loops, calls, returns and raises. A

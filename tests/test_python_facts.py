@@ -328,7 +328,36 @@ def test_source_roots_follow_the_package_layout():
         "tests/test_core.py",
         "docs/conf.py",
     ]
-    assert python_source_roots(paths) == (".", "src", "packages/api", "packages/core/src")
+    assert python_source_roots(paths) == (".", "packages/api", "packages/core/src")
+    # A plain `src` folder of modules is a root; a `src` package is imported by name.
+    assert python_source_roots(["src/tool.py", "app.py"]) == (".", "src")
+    assert python_source_roots(["src/__init__.py", "src/tool.py", "README.md"]) == (".",)
+
+
+def test_modules_of_a_package_named_src_resolve_by_their_full_name(source_repo):
+    from genesis_ci.business_map.python_facts import python_source_roots
+    from genesis_contracts.python import PythonOptions
+
+    files = {
+        "src/__init__.py": "",
+        "src/services/__init__.py": "",
+        "src/services/billing.py": "class BillingService:\n    def __init__(self, db):\n"
+        "        self.db = db\n\n    def charge(self, amount):\n        return amount\n",
+        "api.py": "from src.services.billing import BillingService\n\n\n"
+        "def pay(db, amount):\n    service = BillingService(db)\n    return service.charge(amount)\n",
+    }
+    for path, text in files.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    snapshot = capture_snapshot(source_repo, SnapshotSpec(head="HEAD"))
+    roots = python_source_roots(item.path for item in snapshot.capture.manifest.files)
+    result = python_facts(extract_python(snapshot, PythonOptions(source_roots=roots)))
+    created = one(result, "call", "BillingService(db)")
+    assert created.boundary == "internal"
+    assert created.target.targets == ("src/services/billing.py#BillingService",)
+    # The method is found through the object the local name holds.
+    charged = one(result, "call", "service.charge(amount)")
+    assert charged.target.targets == ("src/services/billing.py#BillingService.charge",)
 
 
 def test_files_analyzed_in_worker_processes_give_the_same_facts(source_repo, monkeypatch):
