@@ -7,10 +7,11 @@ import type { EntryKind } from "@/types"
 
 /**
  * The whole product on one canvas, at a size that reads. Each module is a frame holding its
- * flows. A flow the change touches is drawn whole, its changed steps as cards among small
- * pills for the rest; a flow it leaves alone is one row, until its module is opened. Every
- * frame keeps to one grid: a touched module runs the full width, the others share rows of
- * equal cells under it.
+ * flows. A flow the change touches is drawn cut down to the change: the steps it touches as
+ * cards, the step each is reached from as a pill, and a dotted line for whatever lies
+ * between. A flow it leaves alone is one row, which says so when changed code is on its
+ * way. Opening a module draws every step of its flows. Every frame keeps to one grid: a
+ * touched module runs the full width, the others share rows of equal cells under it.
  *
  * A row reads as what the product does: the business processes of a module come first, each
  * under the name and the one sentence the plan gave it, and its lookups and upkeep fold
@@ -59,6 +60,9 @@ export interface LabelData extends Record<string, unknown> {
   code: boolean
   struck: boolean
   changes: number
+  /** How many steps the flow has, and how many of them are drawn when it is cut down. */
+  steps: number
+  shown?: number
   /** What starts the flow: a request, a task, a schedule. */
   entry?: EntryKind
 }
@@ -75,6 +79,8 @@ export interface RowData extends Record<string, unknown> {
   pending: boolean
   struck: boolean
   entry?: EntryKind
+  /** Changes on another flow whose code this one can reach. */
+  passing?: number
 }
 /** The lookups and upkeep of a module, folded into one line until it is opened. */
 export interface MoreData extends Record<string, unknown> {
@@ -105,8 +111,8 @@ export type AtlasEdge = FlowEdge | RelationEdge
 /** A flow placed on the atlas: what is drawn of it and where its steps begin. */
 export interface PlacedFlow {
   view: FlowView
-  /** One row, or every step. */
-  mode: "row" | "full"
+  /** One row, the steps a change touches with the way into them, or every step. */
+  mode: "row" | "focus" | "full"
   nodes: StepNode[]
   edges: FlowEdge[]
   triggers: string[]
@@ -135,10 +141,22 @@ const sized = (width: number, height: number) => ({
   measured: { width, height },
 })
 
-/** A flow drawn whole, renamed so it can share a canvas with every other flow. */
-function drawFlow(model: Model, view: FlowView, max: number): PlacedFlow {
+/** A flow drawn step by step, renamed so it can share a canvas with every other flow. */
+function drawFlow(
+  model: Model,
+  view: FlowView,
+  max: number,
+  /** Words the line that stands for steps left out; given, the flow is cut down. */
+  between?: (steps: number) => string
+): PlacedFlow {
   const flowId = view.flow.flow_id
-  const graph = buildGraph(view, model.findingStatus, !model.hasReport, max)
+  const graph = buildGraph(
+    view,
+    model.findingStatus,
+    !model.hasReport,
+    max,
+    between
+  )
   const steps = view.flow.steps ?? []
   const triggerIds = steps
     .filter((step) => step.kind === "trigger")
@@ -157,11 +175,20 @@ function drawFlow(model: Model, view: FlowView, max: number): PlacedFlow {
     source: stepNodeId(flowId, edge.source),
     target: stepNodeId(flowId, edge.target),
   }))
-  return { view, mode: "full", nodes, edges, triggers, w: graph.w, h: graph.h }
+  return {
+    view,
+    mode: graph.cut ? "focus" : "full",
+    nodes,
+    edges,
+    triggers,
+    w: graph.w,
+    h: graph.h,
+  }
 }
 
 function placeFlow(
   model: Model,
+  t: Strings,
   view: FlowView,
   open: boolean,
   max: number
@@ -175,8 +202,9 @@ function placeFlow(
   // stays one row that names it.
   const undescribed =
     view.flow.stage === "skeleton" && !view.removed && !touched
+  // Until its module is opened, a flow shows of itself what the change is about.
   if (!undescribed && (open || (touched && !view.removed)))
-    return drawFlow(model, view, max)
+    return drawFlow(model, view, max, open ? undefined : t.stepsBetween)
   return {
     view,
     mode: "row",
@@ -211,6 +239,11 @@ export function buildAtlas(
 ): Atlas {
   const flows = new Map<string, PlacedFlow>()
   const home = new Map<string, string>()
+  // Changes that sit on another flow and are within reach of this one.
+  const passing = new Map<string, number>()
+  for (const stop of model.stops)
+    for (const flowId of stop.maybe)
+      passing.set(flowId, (passing.get(flowId) ?? 0) + 1)
   const changesOn = (views: FlowView[]) =>
     views.reduce(
       (sum, view) => sum + (model.stopsOn.get(view.flow.flow_id)?.length ?? 0),
@@ -243,7 +276,7 @@ export function buildAtlas(
   ): Block => {
     const placed = views
       .map((view) => {
-        const flow = placeFlow(model, view, id === open, span - 2 * P)
+        const flow = placeFlow(model, t, view, id === open, span - 2 * P)
         flows.set(view.flow.flow_id, flow)
         home.set(view.flow.flow_id, id)
         return flow
@@ -289,6 +322,7 @@ export function buildAtlas(
         pending: planned(flow.view),
         struck: flow.view.removed,
         entry: flow.view.flow.entries[0]?.kind,
+        passing: passing.get(flow.view.flow.flow_id),
       },
     })
     // What is outside the flows runs as one strip: its changes, then the flows that are
@@ -346,6 +380,11 @@ export function buildAtlas(
             code: codeNamed(view),
             struck: view.removed,
             changes: model.stopsOn.get(view.flow.flow_id)?.length ?? 0,
+            steps: view.flow.steps?.length ?? 0,
+            shown:
+              flow.mode === "focus"
+                ? flow.nodes.filter((node) => !node.data.ghost).length
+                : undefined,
             entry: view.flow.entries[0]?.kind,
           },
         })
@@ -528,7 +567,7 @@ export function buildAtlas(
   }
   flush()
 
-  // What else a change touches: the same change elsewhere, and flows that may reach it.
+  // Where else a change sits. A flow that only reaches the changed code says so on its row.
   const has = new Set(nodes.map((node) => node.id))
   const named = (label: string, flowId: string) => {
     const name = model.flowById.get(flowId)?.flow.name ?? ""
@@ -555,20 +594,6 @@ export function buildAtlas(
           )
         )
     }
-    for (const flowId of stop.maybe)
-      for (const to of flows.get(flowId)?.triggers ?? [])
-        if (has.has(to))
-          edges.push(
-            relation(
-              `maybe${SEP}${stop.no}${SEP}${to}`,
-              from,
-              to,
-              named(t.mayAffect, flowId),
-              true,
-              false,
-              stop.no
-            )
-          )
   }
   for (const link of model.links) {
     const source = flows.get(link.source.flow_id)

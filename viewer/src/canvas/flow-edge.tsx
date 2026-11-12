@@ -152,7 +152,9 @@ export function FlowEdge({
           !isRoute &&
           !isOut &&
           !isLoop)))
-  const dashed = Boolean(data?.uncertain || (back && !dark))
+  // A line that stands for steps left out is dotted, like an ellipsis.
+  const skipped = Boolean(data?.skipped)
+  const dashed = Boolean(data?.uncertain || skipped || (back && !dark))
   // A dashed line cannot draw itself; it fades in over the same stretch instead.
   const rippling = walked
     ? trail!.animate
@@ -202,7 +204,14 @@ export function FlowEdge({
         style={{
           stroke,
           strokeWidth: dark ? 2.25 : 1.75,
-          strokeDasharray: draws ? undefined : dashed ? "4 4" : undefined,
+          strokeDasharray: draws
+            ? undefined
+            : skipped
+              ? "1.5 5"
+              : dashed
+                ? "4 4"
+                : undefined,
+          strokeLinecap: skipped ? "round" : undefined,
           // Until the ripple draws them, the edges it will draw are not there yet.
           opacity:
             isOut && pending
@@ -257,7 +266,11 @@ export function FlowEdge({
           <div
             className={cn(
               "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[11.5px] leading-4 shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160",
-              data.exception ? "text-risk" : "text-ink-2"
+              data.exception
+                ? "text-risk"
+                : skipped
+                  ? "text-ink-3"
+                  : "text-ink-2"
             )}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,

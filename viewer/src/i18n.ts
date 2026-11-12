@@ -30,12 +30,15 @@ const zh = {
   flowGone: "这条流程在改动后不存在了。",
   mayAffect: "可能影响",
   andMore: (n: number) => `等 ${n} 个`,
-  untestedCount: (n: number) => `${n} 处没测试`,
+  untestedCount: (n: number) => `${n} 处没测到`,
   newRiskCount: (n: number) => `${n} 个新风险`,
   testsChanged: (n: number) => `改了 ${n} 个测试`,
   nodeHint: "按 Enter 或空格查看详情，按 ← → 切换改动。",
   overview: "总览",
   stepsCount: (n: number) => `${n} 步`,
+  stepsBetween: (n: number) => `中间 ${n} 步`,
+  shownSteps: (shown: number, total: number) => `${total} 步中的 ${shown} 步`,
+  changesPass: (n: number) => `${n} 处改动会经过这里`,
   openModule: "展开全部步骤",
   stepThrough: "逐个看",
   prevChange: "上一处改动",
@@ -71,7 +74,8 @@ const zh = {
     names: string[],
     modules: number,
     flows: number,
-    apart: number
+    apart: number,
+    passing: number
   ) => {
     let head: string
     if (!flows) head = "这次改动都在流程之外"
@@ -89,13 +93,17 @@ const zh = {
             : "模块"
       head = `这次改动落在${listed}${many}的 ${flows} 条流程上`
     }
-    return apart && flows
-      ? `${head}，另有 ${apart} 处在流程之外。`
-      : `${head}。`
+    const more = [
+      apart && flows ? `另有 ${apart} 处在流程之外` : "",
+      passing
+        ? `${apart && flows ? "还" : "另"}有 ${passing} 条流程会经过这些改动`
+        : "",
+    ].filter(Boolean)
+    return `${[head, ...more].join("，")}。`
   },
   status: {
     tested: "有测试",
-    untested: "没测试",
+    untested: "没测到",
     unsure: "不确定",
   } satisfies Record<TestStatus, string>,
   filesOnly: "改过的文件都没能分析。",
@@ -200,6 +208,10 @@ const en: Strings = {
   nodeHint: "Press Enter or Space for details; ← and → move between changes.",
   overview: "Overview",
   stepsCount: (n) => `${n} step${n === 1 ? "" : "s"}`,
+  stepsBetween: (n) => `${n} step${n === 1 ? "" : "s"} between`,
+  shownSteps: (shown, total) => `${shown} of ${total} steps`,
+  changesPass: (n) =>
+    `${n} change${n === 1 ? " passes" : "s pass"} through here`,
   openModule: "Show every step",
   stepThrough: "One by one",
   prevChange: "Previous change",
@@ -231,7 +243,7 @@ const en: Strings = {
   moduleChanges: (n) => `${n} change${n === 1 ? "" : "s"}`,
   mapSize: (modules, flows) =>
     `${modules} module${modules === 1 ? "" : "s"} · ${flows} flow${flows === 1 ? "" : "s"}`,
-  overviewSentence: (names, modules, flows, apart) => {
+  overviewSentence: (names, modules, flows, apart, passing) => {
     const plural = flows === 1 ? "" : "s"
     let head: string
     if (!flows) head = "All of this change sits outside the flows"
@@ -243,9 +255,15 @@ const en: Strings = {
           : names.join(" and ")
       head = `This change lands on ${flows} flow${plural} in ${listed}`
     }
-    return apart && flows
-      ? `${head}; ${apart} more ${apart === 1 ? "sits" : "sit"} outside the flows.`
-      : `${head}.`
+    const more = [
+      apart && flows
+        ? `${apart} more ${apart === 1 ? "sits" : "sit"} outside the flows`
+        : "",
+      passing
+        ? `${passing} other flow${passing === 1 ? " reaches" : "s reach"} the changed code`
+        : "",
+    ].filter(Boolean)
+    return `${[head, ...more].join("; ")}.`
   },
   status: { tested: "Tested", untested: "Untested", unsure: "Unsure" },
   filesOnly: "None of the changed files could be analyzed.",

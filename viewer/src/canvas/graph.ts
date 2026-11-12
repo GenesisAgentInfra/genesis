@@ -2,14 +2,18 @@ import dagre from "@dagrejs/dagre"
 import type { Edge, Node } from "@xyflow/react"
 
 import { edgeLabel } from "@/layout"
+import { cutFlow } from "./focus"
 import { removedNodeId, type Coupon, type FlowView } from "@/model"
 import type { FindingChange, MapStep } from "@/types"
 
 /**
- * A flow drawn whole, left to right: a step the change leaves alone is a small pill, a step
- * it touches is a card that says what changed. Steps of one rank share a column, a branch
- * is named on its line, and every line runs at right angles in the gaps between columns.
+ * A flow drawn left to right: a step the change leaves alone is a small pill, a step it
+ * touches is a card that says what changed. Steps of one rank share a column, a branch is
+ * named on its line, and every line runs at right angles in the gaps between columns.
  * A flow too long for the width it is given wraps onto a second band, like a line of text.
+ *
+ * Drawn for a change, a flow shows only the steps the change touches and the way into each
+ * of them; a dotted line stands for the steps left out in between (see `cutFlow`).
  */
 
 export const CARD_W = 216
@@ -53,6 +57,8 @@ export interface FlowEdgeData extends Record<string, unknown> {
   exception: boolean
   uncertain: boolean
   back: boolean
+  /** The line stands for this many steps that are not drawn. */
+  skipped?: number
   /** The corners of the line, as offsets from where it leaves its source. */
   route?: Point[]
   /** Where its label sits, as an offset from the same point. */
@@ -85,8 +91,20 @@ export function buildGraph(
   /** Risks that were already there show on cards (only with no report to walk). */
   knownRisks: boolean,
   /** How wide the flow may run before it wraps onto another band. */
-  max = Infinity
-): { nodes: StepNode[]; edges: FlowEdge[]; w: number; h: number } {
+  max = Infinity,
+  /**
+   * Given, the flow is cut down to the steps the change touches and the way into each;
+   * it words the line that stands for the steps left out.
+   */
+  between?: (steps: number) => string
+): {
+  nodes: StepNode[]
+  edges: FlowEdge[]
+  w: number
+  h: number
+  /** Whether steps were left out. */
+  cut: boolean
+} {
   const steps = view.flow.steps ?? []
   const ids = new Set(steps.map((step) => step.step_id))
   const edges = (view.flow.edges ?? []).filter(
@@ -96,7 +114,7 @@ export function buildGraph(
   const forward = new Set(view.layout.forward)
 
   const findings = new Set(view.findings.map((finding) => finding.finding_id))
-  const nodes: StepNode[] = steps.map((step) => {
+  let nodes: StepNode[] = steps.map((step) => {
     const coupons = view.byStep.get(step.step_id) ?? []
     const loops = edges
       .filter(
@@ -153,7 +171,7 @@ export function buildGraph(
     }
   })
 
-  const flowEdges: FlowEdge[] = edges
+  let flowEdges: FlowEdge[] = edges
     .filter((edge) => edge.target !== edge.source)
     .map((edge) => ({
       id: keyOf.get(edge) ?? `${edge.source}>${edge.target}`,
@@ -170,6 +188,51 @@ export function buildGraph(
         back: !forward.has(edge),
       },
     }))
+
+  const cut = between
+    ? cutFlow(
+        steps,
+        view.layout,
+        new Set(
+          nodes
+            .filter(
+              ({ data }) =>
+                data.coupons.length > 0 || data.isNew || data.risk === "new"
+            )
+            .map((node) => node.id)
+        )
+      )
+    : undefined
+  if (cut && cut.keep.size < nodes.length) {
+    nodes = nodes.filter((node) => cut.keep.has(node.id))
+    flowEdges = flowEdges.filter(
+      (edge) => cut.keep.has(edge.source) && cut.keep.has(edge.target)
+    )
+    for (const skip of cut.skips) {
+      const count = between!(skip.steps)
+      flowEdges.push({
+        id: `skip>${skip.source}>${skip.target}`,
+        type: "flow",
+        source: skip.source,
+        target: skip.target,
+        sourceHandle: "out",
+        targetHandle: "in",
+        focusable: false,
+        data: {
+          label: skip.label ? `${skip.label} · ${count}` : count,
+          exception: skip.exception,
+          uncertain: false,
+          back: false,
+          skipped: skip.steps,
+        },
+      })
+    }
+    // A step keeps a handle only where a line still meets it.
+    for (const node of nodes) {
+      node.data.hasIn = flowEdges.some((edge) => edge.target === node.id)
+      node.data.hasOut = flowEdges.some((edge) => edge.source === node.id)
+    }
+  }
 
   const gone = view.removedSteps.filter((coupon) => coupon.place.removed_step)
   const run = gone.length * (CARD_W + 20) - 20
@@ -236,7 +299,13 @@ export function buildGraph(
     h = Math.max(h, at.y + data.slot)
     w = Math.max(w, at.x + CARD_W)
   })
-  return { nodes, edges: flowEdges, w: Math.max(w, 120), h }
+  return {
+    nodes,
+    edges: flowEdges,
+    w: Math.max(w, 120),
+    h,
+    cut: nodes.length - gone.length < steps.length,
+  }
 }
 
 /**

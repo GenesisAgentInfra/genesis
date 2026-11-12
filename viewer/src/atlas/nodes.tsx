@@ -103,7 +103,10 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
   )
 }
 
-/** The name of a flow over its steps, with the way to watch it run. */
+/**
+ * The name of a flow over its steps. Cut down to a change it says how much of the flow is
+ * on show; with no change to read, it offers a walk through the flow.
+ */
 export function LabelView({ data }: NodeProps<LabelNode>) {
   const canvas = useCanvas()
   const { t } = canvas
@@ -140,7 +143,12 @@ export function LabelView({ data }: NodeProps<LabelNode>) {
           {t.entryKind[data.entry]}
         </span>
       )}
-      {data.flowId && !data.struck && (
+      {data.shown !== undefined && (
+        <span className="shrink-0 pb-px text-[12px] leading-4 text-ink-3">
+          {t.shownSteps(data.shown, data.steps)}
+        </span>
+      )}
+      {data.flowId && !data.struck && !canvas.focus && (
         <button
           type="button"
           onClick={(event) => {
@@ -309,18 +317,25 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
           </span>
         )}
       </span>
-      <span className="shrink-0 text-[11.5px] leading-4 text-ink-3">
+      <span
+        className={cn(
+          "shrink-0 text-[11.5px] leading-4",
+          data.passing && !data.struck ? "text-change-ink" : "text-ink-3"
+        )}
+      >
         {data.struck
           ? t.removed
-          : data.pending
-            ? // The tile already shows what starts it; the room goes to its name.
-              t.notDescribed
-            : [
-                data.entry && t.entryKind[data.entry],
-                data.code ? t.skeletonTag : t.stepsCount(data.steps),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+          : data.passing
+            ? t.changesPass(data.passing)
+            : data.pending
+              ? // The tile already shows what starts it; the room goes to its name.
+                t.notDescribed
+              : [
+                  data.entry && t.entryKind[data.entry],
+                  data.code ? t.skeletonTag : t.stepsCount(data.steps),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
       </span>
     </div>
   )

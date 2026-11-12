@@ -381,7 +381,10 @@ Reformatting, comments and code that only moved are not changes.
 
 Then plan as in section 2 and describe flows as in section 3. Only the flows the changes
 land on are needed: `status` lists them under `change.affected_flows`, and `next_task`
-offers their tasks first. When they are done, `next_task` is `task_change`:
+offers their tasks first. A flow that only reaches changed code, with every one of those
+changes already placed on another flow, needs a name in the plan and nothing more: the
+page shows it as one line with the number of changes on its way. Do not describe it
+unless the user asks. When the affected flows are done, `next_task` is `task_change`:
 
 ```
 genesis map context --repo /absolute/app --session SESSION_ID --task task_change

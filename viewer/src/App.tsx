@@ -44,6 +44,7 @@ import {
   type ModuleData,
   type OffMapData,
   type MoreData,
+  type PlacedFlow,
   type RowData,
 } from "@/atlas/build"
 import {
@@ -132,6 +133,36 @@ function useIsNarrow() {
     return () => query.removeEventListener("change", update)
   }, [])
   return narrow
+}
+
+/** The way into a step along the lines that are drawn of its flow, from where it starts. */
+function drawnRoute(
+  placed: PlacedFlow,
+  target: string
+): { edges: Set<string>; steps: Set<string> } {
+  const previous = new Map<string, FlowEdgeType>()
+  const seen = new Set(placed.triggers)
+  const queue = [...placed.triggers]
+  while (queue.length) {
+    const id = queue.shift()!
+    if (id === target) break
+    for (const edge of placed.edges) {
+      if (edge.data?.back || edge.source !== id || seen.has(edge.target))
+        continue
+      seen.add(edge.target)
+      previous.set(edge.target, edge)
+      queue.push(edge.target)
+    }
+  }
+  const edges = new Set<string>()
+  const steps = new Set<string>()
+  if (!seen.has(target)) return { edges, steps }
+  steps.add(target)
+  for (let at = target; previous.has(at); at = previous.get(at)!.source) {
+    edges.add(previous.get(at)!.id)
+    steps.add(previous.get(at)!.source)
+  }
+  return { edges, steps }
 }
 
 /** Edges leaving the change that are not much longer than the shortest one carry the dot. */
@@ -243,7 +274,12 @@ function Viewer({ model }: { model: Model }) {
     if (local.startsWith("removed-")) return { ...DARK, current: current.node }
     const prefix = (id: string) => `${flowId}${SEP}${id}`
     const reach = reachOf(placed.view, local)
-    const route = routeTo(placed.view.layout, local)
+    // A flow cut down to the change is lit along the lines that are drawn of it.
+    const route =
+      placed.mode === "focus"
+        ? drawnRoute(placed, current.node)
+        : routeTo(placed.view.layout, local)
+    const lead = placed.mode === "focus" ? (id: string) => id : prefix
     const out: FlowEdgeType[] = []
     const loopEdges = new Set<string>()
     for (const edge of placed.edges) {
@@ -252,14 +288,14 @@ function Viewer({ model }: { model: Model }) {
           loopEdges.add(edge.id)
       } else if (edge.source === current.node) out.push(edge)
     }
-    const routeSteps = new Set([...route.steps].map(prefix))
+    const routeSteps = new Set([...route.steps].map(lead))
     routeSteps.delete(current.node)
     return {
       current: current.node,
       next: new Set(reach.next.map(prefix)),
       far: new Set(reach.far.map(prefix)),
       routeSteps,
-      routeEdges: new Set([...route.edges].map(prefix)),
+      routeEdges: new Set([...route.edges].map(lead)),
       outEdges: new Set(out.map((edge) => edge.id)),
       loopEdges,
       dotEdges: out.length ? dotted(out, placed.nodes) : NONE,
@@ -1170,6 +1206,8 @@ function Viewer({ model }: { model: Model }) {
                   subject={subject}
                   focus={current?.no}
                   onWalk={
+                    // With a change to read, the page steps through the changes instead.
+                    !focus &&
                     subject?.type === "step" &&
                     subject.view &&
                     !subject.view.removed &&
