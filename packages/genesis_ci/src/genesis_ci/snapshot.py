@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import re
+from functools import lru_cache
 from typing import Protocol
 
 from genesis_contracts import EvidenceRef
@@ -75,23 +77,39 @@ class FrozenSnapshotReader:
         return cls(evidence, tuple(excerpts))
 
 
+_PHYSICAL_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n|$)")
+_LINE_ENDING = re.compile(r"(?:\r\n|\r|\n)$")
+
+
+def physical_lines(text: str) -> tuple[str, ...]:
+    """The lines of a source text, each with its line ending.
+
+    str.splitlines also splits Unicode separators and form feeds. Those are source
+    characters, not newlines in Python's physical line numbering.
+    """
+    return tuple(match.group() for match in _PHYSICAL_LINE.finditer(text) if match.group())
+
+
+@lru_cache(maxsize=64)
+def _recent_lines(text: str) -> tuple[str, ...]:
+    return physical_lines(text)
+
+
 def slice_source(text, span):
     """1-based inclusive lines, zero-based Unicode columns, exclusive end column.
 
     Missing columns mean the entire first/last line, without final line ending.
     Internal line endings are preserved, including CRLF.
     """
-    import re
+    return slice_lines(_recent_lines(text), span)
 
-    # str.splitlines also splits Unicode separators and form feeds. Those are
-    # source characters, not newlines in Python's physical line numbering.
-    lines = [
-        match.group() for match in re.finditer(r"[^\r\n]*(?:\r\n|\r|\n|$)", text) if match.group()
-    ]
+
+def slice_lines(lines, span):
+    """`slice_source` for a text that is already split, so many ranges cost one split."""
     if span.start_line > len(lines) or span.end_line > len(lines):
         raise ValueError("evidence range exceeds file lines")
     chosen = lines[span.start_line - 1 : span.end_line]
-    contents = [re.sub(r"(?:\r\n|\r|\n)$", "", line) for line in chosen]
+    contents = [_LINE_ENDING.sub("", line) for line in chosen]
     start = span.start_column if span.start_column is not None else 0
     end = span.end_column if span.end_column is not None else len(contents[-1])
     if start > len(contents[0]) or end > len(contents[-1]):

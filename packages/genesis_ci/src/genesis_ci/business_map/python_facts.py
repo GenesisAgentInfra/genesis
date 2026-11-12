@@ -141,11 +141,17 @@ class _Frame:
 class _Collector(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
-    def __init__(self, file: ParsedFile, registry, calls, ordinals: Counter):
-        self.file, self.registry, self.calls, self.ordinals = file, registry, calls, ordinals
+    def __init__(self, file: ParsedFile, registry, calls: dict):
+        # `calls` maps the source span of a call to its index among the file's parsed calls.
+        self.file, self.registry, self.calls = file, registry, calls
+        # Repeated facts of one symbol are told apart by an ordinal. A symbol never
+        # spans files, so counting per file is counting per symbol.
+        self.ordinals: Counter = Counter()
         self.names: list[str] = []
         self.frames = [_Frame()]
         self.facts: list[CodeFact] = []
+        # For a call fact, by its position in `facts`: the parsed call it stands for.
+        self.parsed_call: dict[int, int] = {}
         self.refs = {}
         # Where a decorated definition really starts: at its first decorator.
         self.decorated: dict[str, tuple[int, int]] = {}
@@ -312,16 +318,19 @@ class _Collector(cst.CSTVisitor):
 
     def visit_Call(self, node) -> None:
         span = self.span(node)
-        parsed = self.calls.get(_span_key(span))
-        target = parsed.target if parsed else _UNRESOLVED
+        index = self.calls.get(_span_key(span))
+        parsed = self.file.calls[index] if index is not None else None
+        if index is not None:
+            self.parsed_call[len(self.facts)] = index
+        # Targets are resolved once every file is known; `python_facts` fills them in.
         self.emit(
             FactKind.call,
             span,
             self.text(node),
             symbol=parsed.symbol_id if parsed else None,
-            target=target,
+            target=_UNRESOLVED,
             awaited=bool(parsed and parsed.awaited),
-            boundary=call_boundary(target),
+            boundary=CallBoundary.unknown,
         )
 
     def visit_Return(self, node) -> None:
@@ -385,26 +394,51 @@ def _tests(extraction: Extraction, symbols, facts: list[CodeFact]) -> list[CodeT
     return found
 
 
+def collect_file(file: ParsedFile, wrapper: MetadataWrapper, registry) -> dict:
+    """The facts of one parsed file, gathered while its syntax tree exists.
+
+    Meant as the `collect` hook of `extract_python`, so that the tree is visited where it
+    was parsed and never has to leave that process. Call targets are still unresolved.
+    """
+    spans = {}
+    for index, call in enumerate(file.calls):
+        located = [registry.get(ref) for ref in call.evidence_ids]
+        located = [ref for ref in located if ref is not None]
+        if located:
+            spans[_span_key(located[0].range)] = index
+    collector = _Collector(file, registry, spans)
+    wrapper.visit(collector)
+    return {
+        "facts": collector.facts,
+        "parsed_call": collector.parsed_call,
+        "refs": collector.refs,
+        "decorated": collector.decorated,
+    }
+
+
 def python_facts(extraction: Extraction) -> FactSet:
     """Convert every parsed Python file of an extraction into language-neutral facts."""
     analysis = extraction.analysis
     catalog = {ref.evidence_id: ref for ref in analysis.evidence}
     refs = {}
-    ordinals: Counter = Counter()
     facts: list[CodeFact] = []
     decorated: dict[tuple, tuple[int, int]] = {}
     for key in sorted(extraction.files, key=lambda item: (item[0].value, item[1])):
         file = extraction.files[key]
-        calls = {}
-        for call in file.calls:
-            located = [catalog[ref] for ref in call.evidence_ids if ref in catalog]
-            if located:
-                calls[_span_key(located[0].range)] = call
-        collector = _Collector(file, extraction.registry, calls, ordinals)
-        MetadataWrapper(file.module, unsafe_skip_copy=True).visit(collector)
-        facts.extend(collector.facts)
-        refs.update(collector.refs)
-        decorated.update(((file.side, key), value) for key, value in collector.decorated.items())
+        gathered = extraction.collected.get(key)
+        if gathered is None:
+            wrapper = MetadataWrapper(file.module, unsafe_skip_copy=True)
+            gathered = collect_file(file, wrapper, extraction.registry)
+        for index, fact in enumerate(gathered["facts"]):
+            call = gathered["parsed_call"].get(index)
+            if call is not None:
+                target = file.calls[call].target
+                fact = fact.model_copy(update={"target": target, "boundary": call_boundary(target)})
+            facts.append(fact)
+        refs.update(gathered["refs"])
+        decorated.update(
+            ((file.side, name), value) for name, value in gathered["decorated"].items()
+        )
     symbols = {}
     for symbol in analysis.symbols:
         # A redefinition replaces the earlier one at run time; facts of both stay distinct.

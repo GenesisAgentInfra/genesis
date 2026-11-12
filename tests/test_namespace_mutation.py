@@ -109,7 +109,9 @@ def run():
         'vars()["helper"] = other',
         'vars(sys.modules[__name__])["helper"] = other',
         'sys.modules[__name__].__dict__["helper"] = other',
-        'sys.modules["shadow"] = other',
+        # Replacing this module, or one that is not named, can rebind anything here.
+        "sys.modules[__name__] = other",
+        "sys.modules[registry[0]] = other",
         '__builtins__["helper"] = other',
         'del globals()["helper"]',
         "del helper",
@@ -187,3 +189,115 @@ def run():
     assert flags(result)[0] is bool(notes)
     resolved = call(result, "helper()").target.status == "resolved"
     assert resolved is not bool(notes)
+
+
+SERVICE = {
+    "helpers.py": "def save(report):\n    return report\n",
+    "other.py": "def load():\n    return 1\n",
+}
+
+
+def test_stubbing_a_named_module_makes_only_its_imports_uncertain(source_repo):
+    result = analyze(
+        source_repo,
+        {
+            **SERVICE,
+            "app.py": "import sys\nfrom helpers import save\nfrom other import load\n\n"
+            'sys.modules["other"] = object()\n'
+            'sys.modules.setdefault("missing_dependency", object())\n\n\n'
+            "def run(report):\n    load()\n    return save(report)\n",
+        },
+    )
+    assert flags(result) == (False, True)
+    assert call(result, "save(report)").target.status == "resolved"
+    # The stubbed module may no longer be the captured one.
+    stubbed = call(result, "load()").target
+    assert stubbed.status == "candidate" and stubbed.targets == ("other.py#load",)
+
+
+def test_replacing_the_current_or_an_unknown_module_still_blocks_resolution(source_repo):
+    for line in ("sys.modules[__name__] = object()", "sys.modules[name] = object()"):
+        result = analyze(
+            source_repo,
+            {
+                **SERVICE,
+                "app.py": f"import sys\nfrom helpers import save\n\nname = 'x'\n{line}\n\n\n"
+                "def run(report):\n    return save(report)\n",
+            },
+        )
+        assert flags(result)[0] is True, line
+        assert NAMESPACE_REASON in call(result, "save(report)").target.reason
+
+
+def test_setattr_on_an_object_does_not_block_resolution(source_repo):
+    result = analyze(
+        source_repo,
+        {
+            **SERVICE,
+            "app.py": "import other\nfrom helpers import save\n\n\n"
+            "def run(report, row):\n"
+            '    setattr(row, "status", "done")\n'
+            '    setattr(other, "load", lambda: 2)\n'
+            "    other.load()\n"
+            "    return save(report)\n",
+        },
+    )
+    assert flags(result) == (False, True)
+    assert call(result, "save(report)").target.status == "resolved"
+    # An attribute of the imported module was replaced, so calls into it are uncertain.
+    assert call(result, "other.load()").target.status == "candidate"
+
+
+def test_setattr_on_the_current_module_blocks_resolution(source_repo):
+    result = analyze(
+        source_repo,
+        {
+            **SERVICE,
+            "app.py": "import sys\nfrom helpers import save\n\n"
+            'setattr(sys.modules[__name__], "save", None)\n\n\n'
+            "def run(report):\n    return save(report)\n",
+        },
+    )
+    assert flags(result)[0] is True
+
+
+def test_deleting_a_local_is_not_a_namespace_change(source_repo):
+    body = "def run(report):\n    scratch = [report]\n    del scratch\n    return save(report)\n"
+    local = analyze(source_repo, {**SERVICE, "app.py": "from helpers import save\n\n\n" + body})
+    assert flags(local)[0] is False
+    assert call(local, "save(report)").target.status == "resolved"
+    module = analyze(
+        source_repo, {**SERVICE, "app.py": "from helpers import save\n\nx = 1\ndel x\n\n\n" + body}
+    )
+    assert flags(module)[0] is True
+
+
+def test_reading_the_namespace_is_not_a_mutation(source_repo):
+    reads = (
+        'name = "x" in globals()\n',
+        'value = globals().get("x")\n',
+        'text = "{report}".format(**locals())\n',
+        'value = globals()["x"]\n',
+    )
+    for line in reads:
+        result = analyze(
+            source_repo,
+            {
+                **SERVICE,
+                "app.py": "from helpers import save\n\nx = 1\n\n\n"
+                f"def run(report):\n    {line}    return save(report)\n",
+            },
+        )
+        assert flags(result)[0] is False, line
+        assert call(result, "save(report)").target.status == "resolved", line
+    writes = ("globals().update(x=2)\n", 'globals()["x"] = 2\n', "inject(globals())\n")
+    for line in writes:
+        result = analyze(
+            source_repo,
+            {
+                **SERVICE,
+                "app.py": "from helpers import save\n\nx = 1\n\n\ndef inject(names):\n    pass\n\n\n"
+                f"def run(report):\n    {line}    return save(report)\n",
+            },
+        )
+        assert flags(result)[0] is True, line

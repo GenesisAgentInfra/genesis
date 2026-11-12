@@ -131,6 +131,9 @@ def detect_python_entries(
     found: dict[tuple[EvidenceSide, str], CodeEntry] = {}
 
     def add(symbol, kind, detection, framework, attributes, evidence):
+        # A route or a main guard written in test code serves the tests, not a user.
+        if _is_test_path(symbol.path):
+            return
         key = (symbol.side, symbol.symbol_id)
         current = found.get(key)
         if current is not None and (

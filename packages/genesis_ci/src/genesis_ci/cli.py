@@ -59,7 +59,11 @@ def map_prepare(
     include_untracked: bool = typer.Option(False, "--include-untracked"),
     exclude: list[str] | None = typer.Option(None, "--exclude"),
 ) -> None:
-    """Freeze a snapshot, extract facts and write the static skeleton. Calls no model."""
+    """Freeze a snapshot, extract facts and write the static skeleton. Calls no model.
+
+    A repository with many source files is analyzed in several worker processes. Set
+    GENESIS_WORKERS to choose how many; 1 keeps everything in one process.
+    """
     from .business_map.session import prepare
     from .git_snapshot import SnapshotError
 
