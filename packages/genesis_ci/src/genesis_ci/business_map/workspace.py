@@ -489,6 +489,15 @@ class Workspace:
                 )
         usable = set(known) | {item["entry_id"] for item in proposed}
         for index, flow in enumerate(plan.flows):
+            if origin == "agent" and not flow.name:
+                problems.append(
+                    _problem(
+                        f"flows[{index}].name",
+                        "name_required",
+                        "Give the flow the name a person would use for it, not a route "
+                        "or a function name.",
+                    )
+                )
             for entry in flow.entry_ids:
                 if entry not in usable:
                     problems.append(
@@ -1277,9 +1286,12 @@ class Workspace:
         shown = shown_facts(self.facts)
         flows, findings, cited, states = [], [], set(), []
         flow_of_key = {}
+        planned = {item["key"]: item for item in plan.get("flows", [])}
+        outlined = self.plan["origin"] == "agent"
         for task in self.plan["tasks"]:
             accepted = self._stored(task["task_id"], "accepted.json")
             states.append(self.task_state(task))
+            outline = planned.get(task["flow_key"], {})
             if accepted is not None:
                 flow = accepted["flow"]
                 findings += accepted["findings"]
@@ -1287,6 +1299,15 @@ class Workspace:
             else:
                 flow, evidence = skeleton_flow([entries[item] for item in task["entry_ids"]], shown)
                 cited.update(evidence)
+                if outlined and outline.get("name"):
+                    # Until it is described, the flow carries what the plan said about it.
+                    flow = {
+                        **flow,
+                        "name": outline["name"],
+                        **({"summary": outline["summary"]} if outline.get("summary") else {}),
+                        "name_from_plan": True,
+                    }
+            flow = {**flow, "tier": outline.get("tier", "primary")}
             if accepted is not None and flow["accounting"]["truncated"]:
                 flow = {
                     **flow,
@@ -1317,7 +1338,7 @@ class Workspace:
                         "flow_ids": members,
                     }
                 )
-        planned = sum(len(task["entry_ids"]) for task in self.plan["tasks"])
+        planned_entries = sum(len(task["entry_ids"]) for task in self.plan["tasks"])
         skipped_entries = [
             {
                 "entry_id": item["entry_id"],
@@ -1329,12 +1350,13 @@ class Workspace:
         ]
         skipped = len(skipped_entries)
         coverage = {
-            "scope": f"{len(flows)} planned flows covering {planned} of {len(entries)} entries.",
+            "scope": f"{len(flows)} planned flows covering {planned_entries} of "
+            f"{len(entries)} entries.",
             "entries_total": len(entries),
-            "entries_planned": planned,
+            "entries_planned": planned_entries,
             "entries_skipped": skipped,
             "skipped_entries": skipped_entries,
-            "entries_unhandled": len(entries) - planned - skipped,
+            "entries_unhandled": len(entries) - planned_entries - skipped,
             "tasks_total": len(states),
             "tasks_validated": states.count("validated"),
             "tasks_pending": states.count("pending") + states.count("claimed"),
@@ -1437,6 +1459,7 @@ class Workspace:
                     "flow_id": task["flow_id"],
                     "name": (accepted or {}).get("flow", {}).get("name")
                     or flows[task["flow_key"]].get("name"),
+                    "tier": flows[task["flow_key"]].get("tier", "primary"),
                     "entry_ids": task["entry_ids"],
                     "accountable": len(task["accountable"]),
                     "accounting": (accepted or {}).get("flow", {}).get("accounting"),
@@ -1451,12 +1474,19 @@ class Workspace:
             return next((item["task_id"] for item in among if wanted(item)), None)
 
         def open_work(among):
-            # Untouched work first, then refused work, then accepted flows that left facts out.
-            return (
-                first(lambda item: item["state"] == "pending", among)
-                or first(lambda item: item["state"] == "failed", among)
-                or first(lambda item: (item["accounting"] or {}).get("unaccounted"), among)
-            )
+            # The business processes before the lookups and upkeep around them. Within
+            # each: untouched work, then refused work, then accepted flows that left
+            # facts out.
+            for tier in ("primary", "supporting"):
+                tiered = [item for item in among if item["tier"] == tier]
+                found = (
+                    first(lambda item: item["state"] == "pending", tiered)
+                    or first(lambda item: item["state"] == "failed", tiered)
+                    or first(lambda item: (item["accounting"] or {}).get("unaccounted"), tiered)
+                )
+                if found:
+                    return found
+            return None
 
         # A change session needs the flows the changes land on, then the changes themselves.
         touched = [item for item in tasks if item["flow_id"] in affected]

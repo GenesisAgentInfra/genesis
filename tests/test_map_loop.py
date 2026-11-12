@@ -283,7 +283,7 @@ def test_agent_plan_groups_skips_and_can_propose_entries(workspace):
     }
     plan = MapPlan.model_validate(
         {
-            "flows": [{"key": "cleanup", "entry_ids": ["entry_placeholder"]}],
+            "flows": [{"key": "cleanup", "name": "夜间清理", "entry_ids": ["entry_placeholder"]}],
             "proposed_entries": [proposal],
         }
     )
@@ -939,3 +939,87 @@ def test_called_functions_and_outside_systems_are_accounted_for_once(source_repo
         expanded["accounting"]["accountable"] == 14 and expanded["accounting"]["unaccounted"] == 8
     )
     assert {item["symbol_id"] for item in expanded["unaccounted"]} == {"shop/rules.py#check_order"}
+
+
+def outlined(workspace, **approve):
+    """A plan that names both flows; `approve` overrides what it says about the second."""
+    plan = {
+        "domains": [{"key": "expense", "name": "报销"}],
+        "flows": [
+            {
+                "key": "approve",
+                "name": "经理审批",
+                "summary": "经理批准一张处于待审批状态的报销单。",
+                "tier": "supporting",
+                "domain": "expense",
+                "entry_ids": [entry(workspace, "#approve_report").entry_id],
+                **approve,
+            },
+            {
+                "key": "submit",
+                "name": "提交报销",
+                "domain": "expense",
+                "entry_ids": [entry(workspace, "#submit_report").entry_id],
+            },
+        ],
+    }
+    return workspace.save_plan(MapPlan.model_validate(plan))
+
+
+def test_a_planned_flow_carries_its_name_summary_and_tier_until_it_is_described(workspace):
+    status = outlined(workspace)
+    tasks = {task["flow_key"]: task for task in status["tasks"]}
+    assert (tasks["approve"]["name"], tasks["approve"]["tier"]) == ("经理审批", "supporting")
+    assert tasks["submit"]["tier"] == "primary"
+    flows = {flow.name: flow for flow in workspace.stored_map().flows}
+    approve = flows["经理审批"]
+    # Named by the plan, with the static structure underneath.
+    assert approve.stage == "skeleton" and approve.name_from_plan
+    assert approve.summary == "经理批准一张处于待审批状态的报销单。"
+    assert approve.tier == "supporting" and approve.support == "static_fact"
+    assert flows["提交报销"].name_from_plan and flows["提交报销"].summary is None
+    # Once described, the accepted name and summary stand and the tier stays.
+    workspace.submit(
+        tasks["approve"]["task_id"], approve_flow(workspace, tasks["approve"]["task_id"])
+    )
+    accepted = next(
+        flow for flow in workspace.stored_map().flows if flow.flow_id == approve.flow_id
+    )
+    assert accepted.stage == "synthesized" and not accepted.name_from_plan
+    assert accepted.tier == "supporting"
+
+
+def test_the_business_processes_are_offered_before_the_supporting_flows(workspace):
+    status = outlined(workspace)
+    tasks = {task["flow_key"]: task["task_id"] for task in status["tasks"]}
+    # The supporting flow is listed first in the plan and still waits its turn.
+    assert status["next_task"] == tasks["submit"]
+    workspace.submit(tasks["submit"], submit_flow(workspace, tasks["submit"]))
+    assert workspace.status()["next_task"] == tasks["approve"]
+
+
+def test_an_agent_plan_must_name_its_flows_and_the_default_plan_keeps_source_labels(workspace):
+    unnamed = {
+        "flows": [{"key": "submit", "entry_ids": [entry(workspace, "#submit_report").entry_id]}]
+    }
+    with pytest.raises(LoopError) as refused:
+        workspace.save_plan(MapPlan.model_validate(unnamed))
+    assert [item["code"] for item in refused.value.errors] == ["name_required"]
+    workspace.save_plan(None)
+    flows = workspace.stored_map().flows
+    assert not any(flow.name_from_plan for flow in flows)
+    assert any(flow.name == "POST /reports · submit_report" for flow in flows)
+
+
+def test_the_summary_lists_the_outline_with_supporting_flows_last(workspace):
+    from genesis_ci.business_map.render import render_html, render_summary
+
+    outlined(workspace)
+    summary = render_summary(workspace.stored_map())
+    first = summary.index("- 提交报销 (not described yet)")
+    second = summary.index(
+        "- 经理审批: 经理批准一张处于待审批状态的报销单。 (not described yet, supporting)"
+    )
+    assert first < second
+    page = render_html(workspace.stored_map())
+    assert "not described yet" in page and "supporting" in page

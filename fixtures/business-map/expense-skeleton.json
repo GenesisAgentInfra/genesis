@@ -20,6 +20,8 @@
       "name": "POST /reports · submit_report",
       "stage": "skeleton",
       "support": "static_fact",
+      "tier": "primary",
+      "name_from_plan": false,
       "entries": [
         {
           "entry_id": "entry_submit_report",
@@ -269,6 +271,8 @@
       "name": "POST /reports/{report_id}/approve · approve_report",
       "stage": "skeleton",
       "support": "static_fact",
+      "tier": "primary",
+      "name_from_plan": false,
       "entries": [
         {
           "entry_id": "entry_approve_report",

@@ -20,6 +20,7 @@ from .business_map import (
     Anchor,
     EdgeRelation,
     EntryKind,
+    FlowTier,
     Identifier,
     Name,
     OmissionReason,
@@ -75,8 +76,17 @@ class PlanDomain(ContractModel):
 
 
 class PlanFlow(ContractModel):
+    """One business process and the entry points that start it.
+
+    `name` is what a person would call it, and `summary` one sentence on what a user
+    gets done with it; both are shown before the flow is described. The CLI requires a
+    name in a plan an agent submits.
+    """
+
     key: Identifier
     name: Name | None = None
+    summary: Text | None = None
+    tier: FlowTier = FlowTier.primary
     domain: Identifier | None = None
     entry_ids: tuple[Identifier, ...] = Field(min_length=1)
 

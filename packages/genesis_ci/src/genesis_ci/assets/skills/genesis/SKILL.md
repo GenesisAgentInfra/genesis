@@ -82,17 +82,41 @@ genesis map status --repo /absolute/app --session SESSION_ID
 `entries` lists the entry points the analyzers recognised. `root_candidates` lists
 public functions nothing was seen to call; most are not real entries.
 
-Write a plan. One flow is one business process a person would name. That is usually
-one entry; put several entries in one flow only when they are alternative ways to start
-the same process. Two stages of a lifecycle that different entries handle are two
-flows. Group flows into business domains, and skip entries that are not business
-behaviour, each with a reason.
+Write a plan. The plan is the outline a reader sees first: before any flow is
+described, the page shows the domains, each flow's name and summary, and nothing of
+the code. So write it as what the product does, not as a list of its endpoints.
+
+- **A flow is one business process a person would name.** Two stages of a lifecycle
+  that different entries handle are two flows.
+- **`tier`** says which flows the reader came for. `primary` is a process that decides
+  something or has an effect: placing an order, running an analysis, approving a
+  report. `supporting` is lookup and upkeep: listing, reading one item, status,
+  plain edits and deletes.
+- **Put the lookups and upkeep of one thing into one supporting flow** with all their
+  entries: `{"key": "rules", "name": "View and maintain alert rules", "tier":
+  "supporting", "entry_ids": [...]}` for the list, get, update and delete endpoints.
+  An endpoint per flow gives an API listing, not a map. A primary flow usually has one
+  entry; give it several only when they are alternative ways to start the same
+  process.
+- **`name`** is required and is the name a person would use, never a route or a
+  function name. **`summary`** is one sentence on what a user gets done with it, taken
+  from the route, the function name and its docstring; leave it out rather than
+  guess. Both are shown as "not described yet" until the flow is accepted.
+- Group flows into business domains, and skip entries that are not business
+  behaviour, each with a reason.
 
 ```json
 {
   "domains": [{"key": "expense", "name": "Expense reports"}],
   "flows": [
-    {"key": "submit", "name": "Submit a report", "domain": "expense", "entry_ids": ["entry_61d9ffd67cc8ac21"]}
+    {
+      "key": "submit",
+      "name": "Submit a report",
+      "summary": "An employee files an expense report; large ones go to a reviewer.",
+      "tier": "primary",
+      "domain": "expense",
+      "entry_ids": ["entry_61d9ffd67cc8ac21"]
+    }
   ],
   "skipped": [
     {"entry_id": "entry_2500248be5dca529", "reason": "infrastructure", "note": "health check"}
@@ -127,7 +151,8 @@ propose starting with the area the user cares about.
 Take `next_task` from `status` and repeat until it is null. A task is `pending`,
 `claimed`, `validated` or `failed`. `failed` only means its last submission was refused
 and nothing is accepted yet; fix it and submit again. `next_task` offers pending tasks
-first, then failed ones, then validated flows that still leave facts unaccounted.
+first, then failed ones, then validated flows that still leave facts unaccounted, and
+goes through the primary flows before the supporting ones.
 
 ```
 genesis map context --repo /absolute/app --session SESSION_ID --task TASK_ID --claim
