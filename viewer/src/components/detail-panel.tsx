@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronRight, X } from "lucide-react"
+import { ChevronRight, Play, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -33,11 +33,20 @@ interface PanelProps {
   subject: PanelSubject
   /** The stop on show, scrolled to when the step holds several changes. */
   focus?: number
+  /** Walk the flow this step belongs to, from its trigger to its end. */
+  onWalk?: () => void
   onClose: () => void
 }
 
 /** What a step or a change is, what it means for users, and what the tests say about it. */
-export function DetailPanel({ model, t, subject, focus, onClose }: PanelProps) {
+export function DetailPanel({
+  model,
+  t,
+  subject,
+  focus,
+  onWalk,
+  onClose,
+}: PanelProps) {
   const coupons = subject.coupons
   const step = subject.type === "step" ? subject.step : undefined
   // A risk the change itself carries is shown with that change, not a second time here.
@@ -105,6 +114,17 @@ export function DetailPanel({ model, t, subject, focus, onClose }: PanelProps) {
             {subtitle}
           </p>
         </div>
+        {onWalk && (
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={onWalk}
+            className="shrink-0 rounded-full px-2.5 text-[12px] text-ink-2"
+          >
+            <Play data-icon="inline-start" />
+            {t.runFlow}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"

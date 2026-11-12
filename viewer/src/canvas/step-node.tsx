@@ -5,8 +5,11 @@ import {
   CircleHelp,
   CircleX,
   Flag,
+  Minus,
+  Pencil,
   Play,
   Plug,
+  Plus,
   Repeat2,
   Split,
   Workflow,
@@ -16,7 +19,7 @@ import { BaseNode } from "@/components/base-node"
 import { cn } from "@/lib/utils"
 import { statusOf, type TestStatus } from "@/model"
 import type { StepKind } from "@/types"
-import { RING_MS, TAG_FROM, TAG_MS, useCanvas } from "./context"
+import { RING_MS, TAG_FROM, TAG_MS, outOfFocus, useCanvas } from "./context"
 import type { StepNode as StepNodeType } from "./graph"
 
 const TILE: Record<StepKind, { icon: typeof Play; className: string }> = {
@@ -26,6 +29,34 @@ const TILE: Record<StepKind, { icon: typeof Play; className: string }> = {
   external: { icon: Plug, className: "bg-[#fff4d1] text-[#9a6200]" },
   result: { icon: Flag, className: "bg-[#efeff1] text-[#4f5057]" },
 }
+
+/** What a change did to a step, each with its own colour, border and corner mark. */
+const TONE = {
+  added: {
+    icon: Plus,
+    border: "border-ok/55",
+    strong: "border-ok",
+    box: "bg-ok-bg",
+    ink: "text-ok",
+    ring: "rgb(23 128 61 / 0.14)",
+  },
+  removed: {
+    icon: Minus,
+    border: "border-dashed border-risk/55",
+    strong: "border-dashed border-risk",
+    box: "bg-risk-bg",
+    ink: "text-risk",
+    ring: "rgb(217 45 32 / 0.12)",
+  },
+  modified: {
+    icon: Pencil,
+    border: "border-change/55",
+    strong: "border-change",
+    box: "bg-change-bg",
+    ink: "text-change-ink",
+    ring: "rgb(226 134 11 / 0.14)",
+  },
+} as const
 
 /** One icon and one colour per test status, wherever it shows. */
 export const STATUS_ICON: Record<
@@ -112,7 +143,6 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
   } = canvas
   const {
     step,
-    rows,
     coupons,
     isNew,
     risk,
@@ -124,6 +154,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     width,
     hasIn,
     hasOut,
+    slot,
   } = data
 
   const isCurrent = current === id
@@ -156,28 +187,34 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
   // A card holding several changes shows the current one, else the most urgent of them.
   const shown = coupons.find((coupon) => coupon.no === stopNo) ?? coupons[0]
   const change = shown?.change
-  // Every change on the map is written in amber; the one on show also takes the solid border.
-  const loud = shown !== undefined
   const summary = change?.explanation?.summary
   const status = change && !removedFlow ? statusOf(change.tests) : undefined
   // A removed step is named after its change; the line of code the CLI names it by comes last.
   const title = ghost ? (summary ?? step.name) : step.name
   const titleIsCode = skeleton || (ghost && !summary)
 
+  // What the change did to this step: put it there, took it away, or altered it. Each has
+  // its own colour, border and corner mark, so the three read apart without a word.
+  const tone =
+    coupons.length > 0 && !removedFlow
+      ? TONE[ghost ? "removed" : isNew ? "added" : "modified"]
+      : undefined
   const card = cn(
     "border-line bg-card hover:ring-0",
     "transition-[box-shadow,border-color,background-color] [transition-delay:var(--lit-delay)] duration-160",
     quiet
       ? "bg-card/75 shadow-none"
       : "shadow-[var(--shadow-node)] hover:shadow-[var(--shadow-node-hover)]",
+    tone && "border-[1.5px]",
+    tone && !isCurrent && tone.border,
     isCurrent &&
-      !removedFlow &&
-      "border-change shadow-[0_0_0_3px_rgb(226_134_11_/_0.12),var(--shadow-node-hover)]",
-    coupons.length > 0 && !removedFlow && !isCurrent && "border-change/45",
+      tone &&
+      cn(
+        tone.strong,
+        "shadow-[0_0_0_3px_var(--tone-ring),var(--shadow-node-hover)]"
+      ),
     reached && "border-change/45",
-    visited &&
-      !isCurrent &&
-      (coupons.length ? "border-change" : "border-[#3a3b40]/35"),
+    visited && !isCurrent && (tone ? tone.strong : "border-[#3a3b40]/35"),
     isSelected &&
       "border-select shadow-[0_0_0_3px_rgb(47_111_235_/_0.14),var(--shadow-node-hover)]",
     ghost && "border-dashed"
@@ -186,7 +223,48 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     "transition-opacity [transition-delay:var(--lit-delay)] duration-160",
     quiet && "opacity-60"
   )
-  const style = { width, "--lit-delay": `${litDelay}ms` } as React.CSSProperties
+  // Outside the module in focus the card steps back.
+  const away = outOfFocus(canvas, id.slice(0, Math.max(id.indexOf("::"), 0)))
+  const style = {
+    width,
+    // Every card sits in the middle of its place in the column, whatever its own height,
+    // so lines meet it where the layout drew them.
+    height: slot,
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "center",
+    "--tone-ring": tone?.ring,
+    opacity: away ? 0.35 : undefined,
+    transition: "opacity 160ms",
+    "--lit-delay": `${litDelay}ms`,
+  } as React.CSSProperties
+  const changed = coupons.length > 0 && !removedFlow
+  // Zoomed far out a change becomes a solid amber block with its test status, so the first
+  // look shows where things changed without reading a word.
+  const marks = changed && (
+    <>
+      <span
+        aria-hidden
+        className={cn(
+          "far-mark pointer-events-none absolute -inset-px",
+          compact ? "rounded-[14px]" : "rounded-[18px]"
+        )}
+      />
+      {status && (
+        <span
+          aria-hidden
+          className={cn(
+            "far-dot pointer-events-none absolute",
+            status === "tested"
+              ? "bg-ok"
+              : status === "untested"
+                ? "bg-risk"
+                : "bg-ink-3"
+          )}
+        />
+      )}
+    </>
+  )
 
   const ringed = (isCurrent && armed && animate) || (visited && trail!.animate)
   const ring = ringed && (
@@ -261,6 +339,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
       <div style={style}>
         <BaseNode
           data-slot="step-card"
+          data-changed={changed ? "" : undefined}
           tabIndex={-1}
           className={cn(
             card,
@@ -269,6 +348,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
         >
           {ring}
           {tag}
+          {marks}
           {relations}
           {hasIn && (
             <Handle
@@ -313,11 +393,24 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     <div style={style}>
       <BaseNode
         data-slot="step-card"
+        data-changed={changed ? "" : undefined}
         tabIndex={-1}
         className={cn(card, "rounded-[18px] p-3")}
       >
         {ring}
         {tag}
+        {marks}
+        {tone && (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute -top-2 -right-2 z-[7] flex size-[18px] items-center justify-center rounded-full border-[1.5px] border-current bg-card",
+              tone.ink
+            )}
+          >
+            <tone.icon className="size-2.5" strokeWidth={2.75} />
+          </span>
+        )}
         {relations}
         {hasIn && (
           <Handle
@@ -360,45 +453,18 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
             </div>
           </div>
 
-          {rows.length > 0 && (
-            <div className="mt-2.5 flex flex-col gap-1.5">
-              {rows.map((row) => (
-                <div
-                  key={row.id}
-                  className={cn(
-                    "relative rounded-[10px] bg-field px-2.5 py-[7px] text-[12.5px] leading-[18px]",
-                    row.exception ? "text-risk" : "text-ink-2",
-                    row.uncertain &&
-                      "outline-1 -outline-offset-1 outline-ink-3/40 outline-dashed"
-                  )}
-                >
-                  <span className="line-clamp-1 [overflow-wrap:anywhere]">
-                    {row.label}
-                  </span>
-                  <Handle
-                    type="source"
-                    position={Position.Right}
-                    id={row.id}
-                    isConnectable={false}
-                    style={{ right: -17 }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
           {change && (
             <div
               className={cn(
                 "mt-2.5 rounded-[12px] px-2.5 py-2 transition-colors duration-160",
-                loud ? "bg-change-bg" : "bg-field"
+                tone ? tone.box : "bg-field"
               )}
             >
               {!(ghost && summary) && (
                 <p
                   className={cn(
-                    "mb-1 line-clamp-2 text-[12.5px] leading-[18px]",
-                    loud ? "text-change-ink" : "text-ink-2"
+                    "mb-1 line-clamp-3 text-[12.5px] leading-[18px]",
+                    tone ? tone.ink : "text-ink-2"
                   )}
                 >
                   {summary ?? t.changeKind[change.kind]}

@@ -35,6 +35,17 @@ const zh = {
   testsChanged: (n: number) => `改了 ${n} 个测试`,
   nodeHint: "按 Enter 或空格查看详情，按 ← → 切换改动。",
   overview: "总览",
+  stepsCount: (n: number) => `${n} 步`,
+  openModule: "展开全部步骤",
+  stepThrough: "逐个看",
+  prevChange: "上一处改动",
+  nextChange: "下一处改动",
+  walking: "走一遍",
+  walkDone: "走完了",
+  stopWalk: "停止",
+  endWalk: "结束",
+  zoomIn: "放大",
+  zoomOut: "缩小",
   sameChange: "同一处改动",
   runFlow: "走一遍",
   skeletonTag: "代码结构",
@@ -49,8 +60,7 @@ const zh = {
     root: "入口候选",
   } satisfies Record<EntryKind, string>,
   looseFlows: "其他流程",
-  offMapCard: "不在当前地图上",
-  offMapRow: (n: number) => `${n} 处改动不在任何流程上`,
+  offMapCard: "流程之外",
   moduleFlows: (n: number) => `${n} 条流程`,
   moduleChanges: (n: number) => `${n} 处改动`,
   mapSize: (modules: number, flows: number) =>
@@ -62,7 +72,7 @@ const zh = {
     apart: number
   ) => {
     let head: string
-    if (!flows) head = "这次改动都不在当前地图上"
+    if (!flows) head = "这次改动都在流程之外"
     else if (!names.length) head = `这次改动落在 ${flows} 条流程上`
     else {
       const listed = names
@@ -78,7 +88,7 @@ const zh = {
       head = `这次改动落在${listed}${many}的 ${flows} 条流程上`
     }
     return apart && flows
-      ? `${head}，另有 ${apart} 处不在当前地图上。`
+      ? `${head}，另有 ${apart} 处在流程之外。`
       : `${head}。`
   },
   status: {
@@ -187,6 +197,17 @@ const en: Strings = {
   testsChanged: (n) => `${n} test${n === 1 ? "" : "s"} changed`,
   nodeHint: "Press Enter or Space for details; ← and → move between changes.",
   overview: "Overview",
+  stepsCount: (n) => `${n} step${n === 1 ? "" : "s"}`,
+  openModule: "Show every step",
+  stepThrough: "One by one",
+  prevChange: "Previous change",
+  nextChange: "Next change",
+  walking: "Walking through",
+  walkDone: "Walked through",
+  stopWalk: "Stop",
+  endWalk: "Done",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
   sameChange: "Same change",
   runFlow: "Walk through",
   skeletonTag: "Code structure",
@@ -201,8 +222,7 @@ const en: Strings = {
     root: "Candidate entry",
   },
   looseFlows: "Other flows",
-  offMapCard: "Not on the current map",
-  offMapRow: (n) => `${n} change${n === 1 ? " sits" : "s sit"} on no flow`,
+  offMapCard: "Outside the flows",
   moduleFlows: (n) => `${n} flow${n === 1 ? "" : "s"}`,
   moduleChanges: (n) => `${n} change${n === 1 ? "" : "s"}`,
   mapSize: (modules, flows) =>
@@ -210,7 +230,7 @@ const en: Strings = {
   overviewSentence: (names, modules, flows, apart) => {
     const plural = flows === 1 ? "" : "s"
     let head: string
-    if (!flows) head = "None of this change sits on the current map"
+    if (!flows) head = "All of this change sits outside the flows"
     else if (!names.length) head = `This change lands on ${flows} flow${plural}`
     else {
       const listed =
@@ -220,7 +240,7 @@ const en: Strings = {
       head = `This change lands on ${flows} flow${plural} in ${listed}`
     }
     return apart && flows
-      ? `${head}; ${apart} more ${apart === 1 ? "is" : "are"} off the current map.`
+      ? `${head}; ${apart} more ${apart === 1 ? "sits" : "sit"} outside the flows.`
       : `${head}.`
   },
   status: { tested: "Tested", untested: "Untested", unsure: "Unsure" },

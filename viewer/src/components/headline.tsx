@@ -1,5 +1,7 @@
 import * as React from "react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import {
   Tooltip,
   TooltipContent,
@@ -65,12 +67,17 @@ export function Headline({
   t,
   narrow,
   compact,
+  picked,
+  onPick,
 }: {
   model: Model
   t: Strings
   narrow: boolean
   /** On a phone with the panel open only the sentence stays. */
   compact: boolean
+  /** The change on show, and the way to move to another one. */
+  picked?: number
+  onPick?: (no: number) => void
 }) {
   const report = model.payload.report
   const counts = model.counts
@@ -125,11 +132,17 @@ export function Headline({
       ? t.filesOnly
       : t.summaryNoChange
 
+  const total = model.stops.length
+  const step = (by: number) => {
+    const from = picked ?? (by > 0 ? 0 : 1)
+    onPick?.(((from - 1 + by + total) % total) + 1)
+  }
+
   return (
     <div
       className={cn(
         "pointer-events-auto rounded-[18px] bg-card shadow-[var(--shadow-float)] ring-1 ring-line",
-        narrow ? "px-3.5 py-2.5" : "px-4 pt-3 pb-2.5"
+        narrow ? "px-3.5 py-2.5" : "px-4 pt-3 pb-2"
       )}
     >
       <p
@@ -141,13 +154,41 @@ export function Headline({
         {sentence}
       </p>
       {segments.length > 0 && !compact && (
-        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-1.5 border-t border-line pt-2 text-[12.5px] leading-5 text-ink-3">
-          {segments.map((segment, index) => (
-            <React.Fragment key={index}>
-              {index > 0 && <span aria-hidden>·</span>}
-              {segment}
-            </React.Fragment>
-          ))}
+        <div className="mt-1.5 flex min-w-0 items-center gap-3 border-t border-line pt-1.5 text-[12.5px] leading-5 text-ink-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5">
+            {segments.map((segment, index) => (
+              <React.Fragment key={index}>
+                {index > 0 && <span aria-hidden>·</span>}
+                {segment}
+              </React.Fragment>
+            ))}
+          </div>
+          {onPick && total > 0 && (
+            <div className="flex shrink-0 items-center gap-0.5 text-ink-2">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t.prevChange}
+                onClick={() => step(-1)}
+              >
+                <ChevronLeft />
+              </Button>
+              <span
+                aria-live="polite"
+                className="min-w-[44px] text-center tabular-nums"
+              >
+                {picked ? `${picked} / ${total}` : t.stepThrough}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t.nextChange}
+                onClick={() => step(1)}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

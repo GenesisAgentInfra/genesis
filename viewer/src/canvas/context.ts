@@ -29,6 +29,8 @@ export interface CanvasState {
   dimAll: boolean
   /** An unchanged step whose panel is open. */
   selected?: string
+  /** A change outside the flows, or a flow that is gone, whose panel is open. */
+  apart?: string
   /** Pre-existing risks show on cards only when there is no report to walk. */
   knownRisks: boolean
   /** Bumped for every new ripple. */
@@ -44,6 +46,15 @@ export interface CanvasState {
   /** A walk through one flow: when each of its edges draws and each step is reached. */
   trail?: Trail
   trailActive: boolean
+  /** A module in focus: everything outside it steps back. */
+  focusedModule?: string
+  /** The flows inside the focused module ("__offmap" for changes outside the flows). */
+  focusedFlows?: Set<string>
+}
+
+/** Whether a node or edge of this flow sits outside the module in focus. */
+export function outOfFocus(canvas: CanvasState, flowId: string): boolean {
+  return Boolean(canvas.focusedFlows && !canvas.focusedFlows.has(flowId))
 }
 
 export interface Trail {
