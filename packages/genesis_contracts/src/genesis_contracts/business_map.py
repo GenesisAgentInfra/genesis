@@ -126,6 +126,21 @@ class MapEntry(ContractModel):
     evidence_ids: tuple[str, ...] = Field(min_length=1)
 
 
+class UnexpandedCall(ContractModel):
+    """A function a step stands for as a whole: it is called here, its inside is not described.
+
+    The counts say how much the step leaves out, and `reaches` which outside systems the
+    function can get to. Both are static facts, so a reader can see what a step hides.
+    """
+
+    symbol_id: SymbolId
+    conditions: Count = 0
+    loops: Count = 0
+    results: Count = 0
+    reaches: tuple[str, ...] = ()
+    reason: Text | None = None
+
+
 class MapStep(ContractModel):
     step_id: Identifier
     name: Name
@@ -136,10 +151,12 @@ class MapStep(ContractModel):
     anchors: tuple[Anchor, ...] = ()
     evidence_ids: tuple[str, ...] = ()
     finding_ids: tuple[Identifier, ...] = ()
+    unexpanded: tuple[UnexpandedCall, ...] = ()
 
     @model_validator(mode="after")
     def evidence_matches_claim(self) -> MapStep:
         _unique(self.anchors, "step anchors")
+        _unique((item.symbol_id for item in self.unexpanded), "unexpanded functions of a step")
         if self.resolution != ResolutionStatus.resolved and not self.reason:
             raise ValueError("a candidate or unknown step requires a reason")
         if self.resolution != ResolutionStatus.unknown and not self.evidence_ids:
@@ -192,7 +209,11 @@ class MapEdge(ContractModel):
 
 
 class OmittedFact(ContractModel):
-    """An accountable fact the agent left out of the map, with its stated reason."""
+    """Something accountable the agent left out of the map, with its stated reason.
+
+    The anchor is a fact of its own, or a call that stands for the function it calls or
+    for the outside system it talks to.
+    """
 
     anchor: Anchor
     reason: OmissionReason
@@ -200,11 +221,13 @@ class OmittedFact(ContractModel):
 
 
 class FlowAccounting(ContractModel):
-    """Whether every accountable fact of a flow is used, omitted with a reason, or neither.
+    """Whether everything a flow has to account for is used, omitted with a reason, or neither.
 
-    Accountable facts are the branch conditions, external boundary calls, results and
-    loops containing external calls reachable from the flow's entries, within the
-    configured depth and count. `truncated` means that bound was hit.
+    Counted in units, not in facts of a fixed call depth. The conditions, loops and
+    results of the entry functions each count. So does every function called on the
+    chain, once: it is expanded (its own conditions, loops and results then count too),
+    stands as one step, or is omitted. Each outside system the chain talks to counts
+    once. `truncated` means there were more units than the bound allows.
     """
 
     accountable: Count

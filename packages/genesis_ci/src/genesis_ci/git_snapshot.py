@@ -212,6 +212,13 @@ def _path(raw: bytes) -> str:
     return path
 
 
+# File types a symbolic link can point at without hiding analyzable source.
+_DOCUMENT_SUFFIXES = frozenset(
+    "md mdx rst txt adoc pdf png jpg jpeg gif svg ico webp csv tsv json yaml yml toml "
+    "cfg ini lock html css".split()
+)
+
+
 def _kind(path: str, spec: SnapshotSpec) -> tuple[EvidenceKind | None, str | None]:
     parts = path.split("/")
     name = parts[-1]
@@ -394,7 +401,11 @@ def _collect(
         entry = entries.get(path)
         if kind is None:
             if entry and entry.mode in {"120000", "160000"} and exclusion == "outside_scope":
-                omit(path, "symlink" if entry.mode == "120000" else "submodule", True)
+                # A link named like a document, such as `GUIDE.md`, cannot stand for
+                # source. Any other link may be a directory of code.
+                suffix = path.rsplit("/", 1)[-1].rpartition(".")[2].lower()
+                document = entry.mode == "120000" and suffix in _DOCUMENT_SUFFIXES
+                omit(path, "symlink" if entry.mode == "120000" else "submodule", not document)
             else:
                 omit(path, exclusion, path in explicit)
             continue

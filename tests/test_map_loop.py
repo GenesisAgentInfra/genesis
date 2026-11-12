@@ -222,7 +222,10 @@ def approve_flow(workspace, task_id):
                 "key": "check",
                 "name": "检查是否待审批",
                 "kind": "decision",
-                "evidence": [src(API, 24, 'report["status"]')],
+                "evidence": [
+                    src(API, 23, "load_report(report_id)"),
+                    src(API, 24, 'report["status"]'),
+                ],
             },
             {
                 "key": "reject",
@@ -234,7 +237,10 @@ def approve_flow(workspace, task_id):
                 "key": "done",
                 "name": "返回已批准结果",
                 "kind": "result",
-                "evidence": [src(API, 27, '"id": report_id')],
+                "evidence": [
+                    src(API, 26, 'save_status(report_id, "approved")'),
+                    src(API, 27, '"id": report_id'),
+                ],
             },
         ],
         "edges": [
@@ -300,16 +306,23 @@ def test_context_lists_what_the_flow_has_to_account_for(workspace):
     assert context["source"][0]["text"].startswith(
         '@router.post("/reports")\nasync def submit_report'
     )
-    kinds = [(item["kind"], item["symbol_id"].split("#")[1]) for item in context["accountable"]]
-    assert kinds == [
-        ("condition", "submit_report"),
-        ("return", "submit_report"),
-        ("return", "submit_report"),
-        ("loop", "review_with_model"),
-        ("call", "review_with_model"),
-        ("condition", "review_with_model"),
+    units = [
+        (item["unit"], item["kind"], item["text"].split("(")[0]) for item in context["accountable"]
+    ]
+    # The entry's own conditions and results, then each function it calls, once.
+    assert units == [
+        ("fact", "condition", "amount >= THRESHOLD"),
+        ("fact", "return", 'return {"status": "pending_approval", "review": verdict}'),
+        ("fact", "return", 'return {"status": "approved"}'),
+        ("function", "call", "review_with_model"),
+        ("function", "call", "save_status"),
     ]
     assert context["accountable"][0]["branches"] == ["true", "false"]
+    review, save = context["accountable"][3:]
+    assert review["function"] == ["expense/review.py#review_with_model"]
+    # How much one step would hide, and what the function reaches outside the code.
+    assert review["inside"] == {"conditions": 1, "loops": 1, "results": 1, "reaches": ["openai"]}
+    assert save["calls"] == 2 and save["inside"]["reaches"] == []
     assert context["callees"] == [
         "expense/review.py#review_with_model",
         "expense/store.py#save_status",
@@ -324,8 +337,8 @@ def test_accepted_flows_assemble_into_a_complete_map(workspace):
     first = workspace.submit(tasks["提交报销"], submit_flow(workspace, tasks["提交报销"]))
     assert (first["status"], first["analysis_status"]) == ("accepted", "partial")
     assert first["accounting"] == {
-        "accountable": 6,
-        "covered": 6,
+        "accountable": 8,
+        "covered": 8,
         "omitted": 0,
         "unaccounted": 0,
         "truncated": False,
@@ -439,12 +452,21 @@ def test_facts_left_out_are_listed_until_used_or_omitted_with_a_reason(workspace
     tasks = planned(workspace)
     task = tasks["提交报销"]
     data = submit_flow(workspace, task)
+    # One step for the whole review: nothing inside it has to be accounted for.
     data["steps"][2]["evidence"] = [src(API, 14, "review_with_model(report)")]
     data["observations"] = []
+    folded = workspace.submit(task, data)
+    assert folded["status"] == "accepted" and folded["accounting"]["accountable"] == 5
+    assert folded["accounting"]["unaccounted"] == 0
+    # A step anchored inside the review expands it: the rest of it is now accountable.
+    data["steps"][2]["evidence"].append(src(REVIEW, 7, "while True"))
     partial = workspace.submit(task, data)
-    assert partial["status"] == "accepted" and partial["accounting"]["unaccounted"] == 3
+    assert partial["status"] == "accepted" and partial["accounting"]["unaccounted"] == 2
     left = [item["fingerprint"] for item in partial["unaccounted"]]
-    assert [item["kind"] for item in partial["unaccounted"]] == ["loop", "call", "condition"]
+    assert [(item["unit"], item["kind"]) for item in partial["unaccounted"]] == [
+        ("await", "call"),
+        ("fact", "condition"),
+    ]
     workspace.submit(tasks["经理审批"], approve_flow(workspace, tasks["经理审批"]))
     assert workspace.status()["analysis_status"] == "partial"
     data["omitted"] = [
@@ -452,9 +474,9 @@ def test_facts_left_out_are_listed_until_used_or_omitted_with_a_reason(workspace
     ]
     complete = workspace.submit(task, data)
     assert complete["accounting"] == {
-        "accountable": 6,
-        "covered": 3,
-        "omitted": 3,
+        "accountable": 8,
+        "covered": 6,
+        "omitted": 2,
         "unaccounted": 0,
         "truncated": False,
     }
@@ -585,11 +607,15 @@ def test_status_orders_the_work_and_counts_refusals(workspace):
     workspace.submit(second, approve_flow(workspace, second))
     assert workspace.status()["next_task"] == first
     partial = submit_flow(workspace, first)
-    partial["steps"][2]["evidence"] = [src(API, 14, "review_with_model(report)")]
+    # Expands the review function with a single anchor and leaves the rest of it open.
+    partial["steps"][2]["evidence"] = [
+        src(API, 14, "review_with_model(report)"),
+        src(REVIEW, 7, "while True"),
+    ]
     partial["observations"] = []
     workspace.submit(first, partial)
     status = workspace.status()
-    # Accepted, but facts are still unaccounted: the task stays the next thing to do.
+    # Accepted, but something is still unaccounted: the task stays the next thing to do.
     assert status["tasks"][0]["state"] == "validated" and status["next_task"] == first
     assert workspace.submit(first, bad)["accepted_version_kept"] is True
     workspace.submit(first, submit_flow(workspace, first))
@@ -678,3 +704,238 @@ def test_a_step_on_lines_without_any_fact_is_told_so(workspace):
     result = workspace.submit(tasks["提交报销"], data)
     assert codes(result) == [("steps[7]", "step_not_anchored")]
     assert "a plain assignment has none" in result["errors"][0]["message"]
+
+
+SERVICE_APP = {
+    "shop/__init__.py": "",
+    "shop/api.py": """from fastapi import APIRouter
+from pydantic import Field
+
+from .store import save
+
+router = APIRouter()
+
+
+class Reply:
+    note = Field("", description="shown to the user")
+
+    def __init__(self, data):
+        if not data:
+            raise ValueError("nothing to reply with")
+        self.data = data
+
+
+@router.post("/orders")
+def create_order(order):
+    saved = save(
+        order,
+        mode="create",
+    )
+    return Reply(saved)
+""",
+    "shop/store.py": "def save(order, mode):\n    return {**order, 'mode': mode}\n",
+}
+
+
+def test_creating_an_object_accounts_for_its_initializer_not_its_class_body(source_repo):
+    for path, text in SERVICE_APP.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    task = workspace.save_plan(None)["tasks"][0]["task_id"]
+    context = workspace.context(task)
+    listed = [(item["unit"], item["text"].split("(")[0]) for item in context["accountable"]]
+    assert listed == [("fact", "return Reply"), ("function", "save"), ("function", "Reply")]
+    # Building a reply runs its initializer. The field declaration in the class body ran
+    # when the module was imported and is nowhere on the list.
+    reply = context["accountable"][2]
+    assert reply["function"] == ["shop/api.py#Reply.__init__"]
+    assert reply["inside"] == {"conditions": 1, "loops": 0, "results": 1, "reaches": []}
+    assert "shop/api.py#Reply.__init__" in context["callees"]
+
+
+def test_a_call_written_over_several_lines_is_cited_by_its_first_line(source_repo):
+    for path, text in SERVICE_APP.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    task = workspace.save_plan(None)["tasks"][0]["task_id"]
+    context = workspace.context(task)
+    flow = {
+        "name": "下单",
+        "steps": [
+            {
+                "key": "in",
+                "name": "收到订单",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src("shop/api.py", 18, '@router.post("/orders")', 19)],
+            },
+            {
+                "key": "save",
+                "name": "保存订单",
+                "kind": "action",
+                "evidence": [src("shop/api.py", 20, "saved = save(")],
+            },
+            {
+                "key": "out",
+                "name": "返回结果",
+                "kind": "result",
+                "evidence": [
+                    src("shop/api.py", 24, "return Reply(saved)"),
+                    src("shop/api.py", 13, "not data", 14),
+                ],
+            },
+        ],
+        "edges": [
+            {"source": "in", "target": "save", "relation": "sequence"},
+            {"source": "save", "target": "out", "relation": "sequence"},
+        ],
+    }
+    result = workspace.submit(task, flow)
+    assert result["status"] == "accepted", result
+    assert result["accounting"]["unaccounted"] == 0
+
+
+BIG_APP = {
+    "shop/__init__.py": "",
+    "shop/api.py": """import stripe
+from datetime import datetime
+from fastapi import APIRouter
+
+from .rules import check_order, log_order
+
+router = APIRouter()
+
+
+@router.post("/orders")
+def create_order(order):
+    log_order(order)
+    check_order(order)
+    stripe.Charge.create(amount=order["total"])
+    stripe.Receipt.create(order=order["id"])
+    log_order(order)
+    return {"at": datetime.now().isoformat()}
+""",
+    "shop/rules.py": "def check_order(order):\n"
+    + "".join(
+        f"    if order.get('f{index}') is None:\n        raise ValueError('f{index} is required')\n"
+        for index in range(5)
+    )
+    + "    return order\n\n\ndef log_order(order):\n    return None\n",
+}
+
+
+def test_called_functions_and_outside_systems_are_accounted_for_once(source_repo):
+    from genesis_ci.business_map.render import render_html
+
+    for path, text in BIG_APP.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    task = workspace.save_plan(None)["tasks"][0]["task_id"]
+    context = workspace.context(task)
+    listed = [
+        (item["unit"], item.get("system") or item["text"].split("(")[0])
+        for item in context["accountable"]
+    ]
+    # Two calls to one function, two to one payment provider: one unit each. Reading the
+    # clock is no outside system.
+    assert listed == [
+        ("fact", 'return {"at": datetime.now'),
+        ("function", "log_order"),
+        ("function", "check_order"),
+        ("system", "stripe"),
+    ]
+    by_name = {name: item for (_, name), item in zip(listed, context["accountable"], strict=True)}
+    assert by_name["log_order"]["calls"] == 2 and by_name["stripe"]["calls"] == 2
+    assert by_name["check_order"]["inside"] == {
+        "conditions": 5,
+        "loops": 0,
+        "results": 6,
+        "reaches": [],
+    }
+    assert workspace.query_symbol("shop/rules.py#check_order")["inside"]["conditions"] == 5
+
+    flow = {
+        "name": "下单",
+        "steps": [
+            {
+                "key": "in",
+                "name": "收到订单",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src("shop/api.py", 10, '@router.post("/orders")', 11)],
+            },
+            {
+                "key": "check",
+                "name": "校验订单",
+                "kind": "action",
+                "evidence": [src("shop/api.py", 13, "check_order(order)")],
+            },
+            {
+                "key": "pay",
+                "name": "向支付渠道收款",
+                "kind": "external",
+                "evidence": [src("shop/api.py", 14, "stripe.Charge.create(")],
+            },
+            {
+                "key": "out",
+                "name": "返回下单时间",
+                "kind": "result",
+                "evidence": [src("shop/api.py", 17, "return")],
+            },
+        ],
+        "edges": [
+            {"source": "in", "target": "check", "relation": "sequence"},
+            {"source": "check", "target": "pay", "relation": "sequence"},
+            {"source": "pay", "target": "out", "relation": "sequence"},
+        ],
+        "omitted": [{"anchor": by_name["log_order"]["fingerprint"], "reason": "logging"}],
+    }
+    # One step for a function with eleven conditions and results inside needs a reason.
+    refused = workspace.submit(task, flow)
+    assert codes(refused) == [("steps[1].unexpanded_reason", "unexpanded_reason_required")]
+    assert "5 conditions, 0 loops and 6 results" in refused["errors"][0]["message"]
+    flow["steps"][1]["unexpanded_reason"] = "逐项必填校验，对业务链路来说是一步。"
+    result = workspace.submit(task, flow)
+    assert result["status"] == "accepted", result
+    assert result["accounting"] == {
+        "accountable": 4,
+        "covered": 3,
+        "omitted": 1,
+        "unaccounted": 0,
+        "truncated": False,
+    }
+    stored = BusinessMap.model_validate_json((workspace.root / "business-map.json").read_text())
+    check = next(step for step in stored.flows[0].steps if step.name == "校验订单")
+    assert [
+        (item.symbol_id, item.conditions, item.results, item.reason) for item in check.unexpanded
+    ] == [("shop/rules.py#check_order", 5, 6, "逐项必填校验，对业务链路来说是一步。")]
+    page = render_html(stored)
+    assert "not expanded" in page and "5 conditions" in page and "逐项必填校验" in page
+
+    def refused_omission(anchor):
+        changed = copy.deepcopy(flow)
+        changed["omitted"].append({"anchor": anchor, "reason": "logging"})
+        return codes(workspace.submit(task, changed))
+
+    calls = workspace.query_symbol("shop/api.py#create_order")["facts"]
+    again = next(
+        item["fingerprint"]
+        for item in calls
+        if item["text"].startswith("log_order")
+        and item["fingerprint"] != by_name["log_order"]["fingerprint"]
+    )
+    assert refused_omission(again) == [("omitted[1].anchor", "already_omitted")]
+    inside = workspace.query_symbol("shop/rules.py#check_order")["facts"][0]["fingerprint"]
+    # The inside of a function that one step stands for is not accountable.
+    assert refused_omission(inside) == [("omitted[1].anchor", "not_accountable")]
+    # Anchoring a step inside it expands it: its conditions and results now count.
+    flow["steps"][1]["evidence"].append(src("shop/rules.py", 2, "order.get('f0') is None", 3))
+    expanded = workspace.submit(task, flow)
+    assert expanded["status"] == "accepted"
+    assert (
+        expanded["accounting"]["accountable"] == 14 and expanded["accounting"]["unaccounted"] == 8
+    )
+    assert {item["symbol_id"] for item in expanded["unaccounted"]} == {"shop/rules.py#check_order"}

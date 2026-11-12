@@ -172,3 +172,21 @@ def test_tests_are_never_root_candidates_and_entries_cite_evidence(source_repo):
     cited = {ref.evidence_id for ref in facts.evidence}
     assert found and all(set(entry.evidence_ids) <= cited for entry in found.values())
     assert len({entry.entry_id for entry in found.values()}) == len(found)
+
+
+def test_entries_written_in_test_code_are_not_business_entries(source_repo):
+    route = (
+        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n"
+        '@router.get("/ping")\ndef ping():\n    return {"ok": True}\n\n\n'
+        'if __name__ == "__main__":\n    ping()\n'
+    )
+    found, _ = entries(
+        source_repo,
+        {"app/api.py": route, "tests/test_client.py": route, "app/test_helpers.py": route},
+    )
+    adapter = sorted(
+        (symbol, item.kind.value) for symbol, item in found.items() if item.detection == "adapter"
+    )
+    assert [symbol.partition("#")[0] for symbol, _ in adapter] == ["app/api.py"] * len(adapter)
+    assert ("app/api.py#ping", "http_route") in adapter
+    assert not any(symbol.startswith(("tests/", "app/test_")) for symbol in found)

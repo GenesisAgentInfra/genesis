@@ -50,7 +50,8 @@
           "evidence_ids": [
             "ev_a812ec283078ffb7bbc0a97c"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_choose_path",
@@ -64,7 +65,8 @@
           "evidence_ids": [
             "ev_cecaff33bce043dfec4776e4"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_model_review",
@@ -83,7 +85,8 @@
           "finding_ids": [
             "find_loop_no_count_bound",
             "find_review_failure_unhandled"
-          ]
+          ],
+          "unexpanded": []
         },
         {
           "step_id": "step_mark_pending",
@@ -97,7 +100,8 @@
           "evidence_ids": [
             "ev_0baa0b69f641833af563e3f1"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_return_pending",
@@ -111,7 +115,8 @@
           "evidence_ids": [
             "ev_237d9bbc7a2ab5dc5b58ef11"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_auto_approve",
@@ -125,7 +130,8 @@
           "evidence_ids": [
             "ev_44b279843b5a4755be9e0a9f"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_return_approved",
@@ -139,7 +145,8 @@
           "evidence_ids": [
             "ev_fb5ec9e0ee8e24a85d2c5aa6"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         }
       ],
       "edges": [
@@ -284,7 +291,8 @@
           "evidence_ids": [
             "ev_7cec55c66ab76feea751e195"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_load_report",
@@ -298,7 +306,8 @@
           "evidence_ids": [
             "ev_f0fbe2d4db33358bcb92b989"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_check_pending",
@@ -312,7 +321,8 @@
           "evidence_ids": [
             "ev_94b56c754c971b8e399258d7"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_reject",
@@ -326,7 +336,8 @@
           "evidence_ids": [
             "ev_9020feed882321d4c234f772"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_mark_approved",
@@ -340,7 +351,8 @@
           "evidence_ids": [
             "ev_245934cd191b3b99e2f603b0"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_approve_done",
@@ -354,7 +366,8 @@
           "evidence_ids": [
             "ev_11e34c30927eff3c1a47a80d"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         }
       ],
       "edges": [

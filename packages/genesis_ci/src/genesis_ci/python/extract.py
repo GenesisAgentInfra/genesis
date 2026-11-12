@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import math
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import libcst as cst
@@ -43,7 +45,7 @@ from libcst.metadata import (
 )
 
 from genesis_ci.git_snapshot import CapturedSnapshot
-from genesis_ci.source_snapshot import EvidenceRegistry
+from genesis_ci.source_snapshot import EvidenceRegistry, SingleFileSource
 
 from .control import ControlExtractor
 
@@ -62,7 +64,8 @@ def unknown(reason: str) -> Resolution:
 class ParsedFile:
     side: EvidenceSide
     path: str
-    module: cst.Module
+    # Dropped once a `collect` hook has run or the file came back from a worker process.
+    module: cst.Module | None
     raw_text: str
     symbols: list[PythonSymbol] = field(default_factory=list)
     bindings: list[BindingFact] = field(default_factory=list)
@@ -80,6 +83,43 @@ class ParsedFile:
     uncertain_imports: set[str] = field(default_factory=set)
     dynamic_namespace: bool = False
     mutable_values: bool = False
+    # Declared types, by the qualified name of the parameter, variable or attribute.
+    annotations: dict[str, ValueExpr] = field(default_factory=dict)
+    # Return annotations by function, and call defaults of parameters (`= Depends(...)`).
+    returns: dict[str, ValueExpr] = field(default_factory=dict)
+    defaults: dict[str, ValueExpr] = field(default_factory=dict)
+    # The values of `a or b` and `a if c else b`, by the binding they are assigned to.
+    alternatives: dict[str, tuple[ValueExpr, ...]] = field(default_factory=dict)
+    # Every module-level import, including the conditional ones `exports` leaves out.
+    imported: dict[str, tuple[NameOrigin, ...]] = field(default_factory=dict)
+    # The base classes a class names, in the order it lists them.
+    bases: dict[str, tuple[ValueExpr, ...]] = field(default_factory=dict)
+
+
+def _timeless(expr: ValueExpr) -> ValueExpr:
+    """An annotation names a type wherever it is defined, so its position does not matter."""
+    return expr.model_copy(
+        update={
+            "position": None,
+            "children": tuple(_timeless(child) for child in expr.children),
+            "arguments": tuple(
+                item.model_copy(update={"value": _timeless(item.value)}) for item in expr.arguments
+            ),
+        }
+    )
+
+
+# Ways of using `globals()` or `locals()` that only look at the names.
+_NAMESPACE_READS = {"get", "keys", "values", "items", "copy", "__contains__"}
+_NAMESPACE_WRITES = {
+    "update",
+    "setdefault",
+    "pop",
+    "popitem",
+    "clear",
+    "__setitem__",
+    "__delitem__",
+}
 
 
 class _Budget(cst.CSTVisitor):
@@ -293,6 +333,14 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                 params += (p.star_arg.name.value,)
             if p.star_kwarg:
                 params += (p.star_kwarg.name.value,)
+        if isinstance(node, cst.FunctionDef):
+            self._declarations(node)
+        else:
+            self.file.bases[".".join(item[1] for item in self.stack)] = tuple(
+                self.expr(item.value, with_evidence=False)
+                for item in node.bases
+                if item.keyword is None and not item.star
+            )
         self.file.symbols.append(
             PythonSymbol(
                 symbol_id=self.owner,
@@ -328,6 +376,45 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
             )
         )
 
+    def _type(self, node) -> ValueExpr:
+        return _timeless(self.expr(node, with_evidence=False))
+
+    def _declarations(self, node) -> None:
+        """Record what a function declares about its parameters and its result."""
+        name = ".".join(item[1] for item in self.stack)
+        params = node.params
+        for item in (*params.posonly_params, *params.params, *params.kwonly_params):
+            key = name + "." + item.name.value
+            if item.annotation is not None:
+                self.file.annotations[key] = self._type(item.annotation.annotation)
+            if isinstance(item.default, cst.Call):
+                self.file.defaults[key] = self.expr(item.default, with_evidence=False)
+        if node.returns is not None:
+            self.file.returns[name] = self._type(node.returns.annotation)
+
+    def _declared_name(self, target) -> str | None:
+        """The qualified name an annotated assignment declares: a variable or `self.attr`."""
+        names = [item[1] for item in self.stack]
+        if isinstance(target, cst.Name):
+            return ".".join([*names, target.value])
+        if (
+            isinstance(target, cst.Attribute)
+            and isinstance(target.value, cst.Name)
+            and target.value.value == "self"
+            and len(self.stack) >= 2
+            and isinstance(self.stack[-1][0], cst.FunctionDef)
+            and isinstance(self.stack[-2][0], cst.ClassDef)
+        ):
+            return ".".join([*names[:-1], target.attr.value])
+        return None
+
+    def _alternatives(self, value) -> list:
+        if isinstance(value, cst.BooleanOperation) and isinstance(value.operator, cst.Or):
+            return [*self._alternatives(value.left), *self._alternatives(value.right)]
+        if isinstance(value, cst.IfExp):
+            return [*self._alternatives(value.body), *self._alternatives(value.orelse)]
+        return [value]
+
     def visit_FunctionDef(self, node):
         self._enter_symbol(node, "function")
 
@@ -354,13 +441,68 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
             )
         return isinstance(node, cst.Name) and node.value == "__builtins__"
 
+    def _is_sys_modules(self, node) -> bool:
+        return (
+            isinstance(node, cst.Attribute)
+            and node.attr.value == "modules"
+            and isinstance(node.value, cst.Name)
+            and node.value.value == "sys"
+        )
+
+    def _replaced_module(self, target) -> str | None:
+        """The module a `sys.modules["name"]` item names, when it is a plain literal."""
+        if not self._is_sys_modules(target.value) or len(target.slice) != 1:
+            return None
+        index = target.slice[0].slice
+        key = index.value if isinstance(index, cst.Index) else None
+        if isinstance(key, cst.SimpleString) and not key.prefix:
+            value = key.evaluated_value
+            return value if isinstance(value, str) and value else None
+        return None
+
     def _item_write(self, target) -> None:
         # Writing or deleting an item changes the indexed object, not the names of
         # this module. Only a write through a namespace mapping can rebind names.
-        if self._namespace_mapping(target.value):
-            self.file.dynamic_namespace = True
-        else:
+        if not self._namespace_mapping(target.value):
             self.file.mutable_values = True
+            return
+        replaced = self._replaced_module(target)
+        if replaced is None:
+            self.file.dynamic_namespace = True
+            return
+        # Stubbing one named module, as tests do for optional dependencies, makes
+        # imports of that module uncertain. It rebinds nothing else in this file.
+        self.file.uncertain_imports.add(replaced)
+        self.file.mutable_values = True
+
+    def _namespace_read(self, parent, node) -> bool:
+        """Whether `globals()` or `locals()` is only read where it stands."""
+        if isinstance(parent, cst.Attribute) and parent.value is node:
+            return parent.attr.value in _NAMESPACE_READS
+        if isinstance(parent, cst.Subscript) and parent.value is node:
+            # A stored item is an assignment target and is handled as an item write.
+            return True
+        if isinstance(parent, cst.Arg):
+            return parent.star == "**"
+        return isinstance(parent, cst.ComparisonTarget)
+
+    def _attribute_write(self, target) -> None:
+        """`setattr(target, ...)`: it changes that object, and this module only if it is one."""
+        this_module = (
+            isinstance(target, cst.Subscript)
+            and self._is_sys_modules(target.value)
+            and self._replaced_module(target) is None
+        )
+        if this_module or self._namespace_mapping(target):
+            self.file.dynamic_namespace = True
+            return
+        if isinstance(target, cst.Subscript) and self._is_sys_modules(target.value):
+            # An attribute of one named module is replaced: only that module is uncertain.
+            self.file.uncertain_imports.add(self._replaced_module(target))
+        for origin in self.origins(target):
+            if origin.source == "import":
+                self.file.uncertain_imports.add(origin.name)
+        self.file.mutable_values = True
 
     def _binding(self, node, target, value, *, unpacked=False):
         # A tuple assignment only makes its assigned values unknown. It does not
@@ -379,9 +521,15 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
         elif not isinstance(target, (cst.Name, cst.Attribute)):
             self.file.dynamic_namespace = True
 
+        binding_id = self.identifier("bind", target)
+        options = [] if unpacked else self._alternatives(value)
+        if len(options) > 1:
+            self.file.alternatives[binding_id] = tuple(
+                self.expr(item, with_evidence=False) for item in options
+            )
         self.file.bindings.append(
             BindingFact(
-                binding_id=self.identifier("bind", target),
+                binding_id=binding_id,
                 side=self.file.side,
                 path=self.file.path,
                 symbol_id=self.owner,
@@ -403,6 +551,9 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
             self._binding(node, target.target, node.value)
 
     def visit_AnnAssign(self, node):
+        name = self._declared_name(node.target)
+        if name is not None:
+            self.file.annotations.setdefault(name, self._type(node.annotation.annotation))
         if node.value:
             self._binding(node, node.target, node.value)
 
@@ -526,14 +677,24 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
 
     def visit_Call(self, node):
         parent = self.get_metadata(ParentNodeProvider, node, None)
-        if isinstance(node.func, cst.Name) and node.func.value in {
-            "exec",
-            "eval",
-            "setattr",
-            "globals",
-            "locals",
-        }:
-            self.file.dynamic_namespace = True
+        if isinstance(node.func, cst.Name):
+            name = node.func.value
+            if name in {"exec", "eval"}:
+                self.file.dynamic_namespace = True
+            elif name in {"globals", "locals"} and not self._namespace_read(parent, node):
+                self.file.dynamic_namespace = True
+            elif name == "setattr" and node.args:
+                self._attribute_write(node.args[0].value)
+        if isinstance(node.func, cst.Attribute) and node.func.attr.value in _NAMESPACE_WRITES:
+            holder = node.func.value
+            if isinstance(holder, cst.Call) and self._namespace_mapping(holder):
+                # `globals().update(...)` rebinds names without any assignment.
+                self.file.dynamic_namespace = True
+            elif self._is_sys_modules(holder) and node.args:
+                # `sys.modules.setdefault("name", stub)` or `.pop("name")`.
+                first = node.args[0].value
+                if isinstance(first, cst.SimpleString) and not first.prefix:
+                    self.file.uncertain_imports.add(first.evaluated_value)
         if isinstance(node.func, cst.Attribute) and node.func.attr.value in {
             "append",
             "extend",
@@ -715,10 +876,11 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                     evidence_ids=self.refs(node),
                 )
             )
+            origin = (NameOrigin(name=module if alias.asname else bound, source="import"),)
+            if not self.stack:
+                self.file.imported[bound] = origin
             if not self.stack and not self.controls:
-                self.file.exports[bound] = (
-                    NameOrigin(name=module if alias.asname else bound, source="import"),
-                )
+                self.file.exports[bound] = origin
 
     def visit_ImportFrom(self, node):
         module = "." * len(node.relative) + (self.text(node.module) if node.module else "")
@@ -750,8 +912,10 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
                     evidence_ids=self.refs(node),
                 )
             )
+            full = module + ("" if module.endswith(".") else ".") + name
+            if not self.stack:
+                self.file.imported[bound] = (NameOrigin(name=full, source="import"),)
             if not self.stack and not self.controls:
-                full = module + ("" if module.endswith(".") else ".") + name
                 self.file.exports[bound] = (NameOrigin(name=full, source="import"),)
 
     def visit_Del(self, node):
@@ -761,15 +925,20 @@ class Extractor(ControlExtractor, cst.CSTVisitor):
             else [node.target]
         )
         unbinds_name = False
+        # Inside a function `del name` drops a local. Only at module or class level does
+        # it remove a name other code may resolve.
+        local = any(isinstance(item[0], cst.FunctionDef) for item in self.stack)
         for target in targets:
             if isinstance(target, cst.Subscript):
-                unbinds_name |= self._namespace_mapping(target.value)
+                unbinds_name |= (
+                    self._namespace_mapping(target.value) and self._replaced_module(target) is None
+                )
                 self._item_write(target)
             elif isinstance(target, cst.Attribute):
                 for origin in self.origins(target):
                     if origin.source == "import":
                         self.file.uncertain_imports.add(origin.name)
-            else:
+            elif not local:
                 unbinds_name = True
         if not unbinds_name:
             return
@@ -790,177 +959,320 @@ class Extraction:
     registry: EvidenceRegistry
     files: dict[tuple[EvidenceSide, str], ParsedFile]
     resolver: object
+    # What the `collect` hook of `extract_python` returned, by file.
+    collected: dict = field(default_factory=dict)
 
 
-def extract_python(snapshot: CapturedSnapshot, options: PythonOptions | None = None) -> Extraction:
+def _extract_file(side, path, raw: bytes, options: PythonOptions, registry, collect):
+    """Parse one file and run the extractor over it.
+
+    Returns the parsed file (nothing when it could not be analyzed), its syntax status,
+    and what `collect` made of the file while its syntax tree was at hand.
+    """
+    try:
+        if len(raw) > options.max_file_bytes:
+            raise ValueError("Python file byte budget exceeded")
+        module = cst.parse_module(raw)
+        module.visit(_Budget(options.max_nodes))
+        wrapper = MetadataWrapper(module)
+        result = ParsedFile(side, path, wrapper.module, raw.decode("utf-8"))
+        wrapper.visit(Extractor(result, registry, options))
+        collected = None
+        if collect is not None:
+            collected = collect(result, wrapper, registry)
+            # The tree is large and whoever asked to collect has what it needs from it.
+            result.module = None
+        return result, ANALYZED, collected
+    except (cst.ParserSyntaxError, RecursionError, ValueError) as error:
+        # A budget error says which limit was hit; other errors only their kind.
+        detail = str(error) if type(error) is ValueError else type(error).__name__
+        syntax = CapabilityStatus(status="unsupported", reason=f"File not analyzed: {detail}")
+        return None, syntax, None
+
+
+def _extract_job(job):
+    """One file in a worker process: the same extraction, with its own evidence registry."""
+    side, path, raw, kind, snapshot_id, options, collect = job
+    registry = EvidenceRegistry(SingleFileSource(snapshot_id, side, path, raw, kind))
+    result, syntax, collected = _extract_file(side, path, raw, options, registry, collect)
+    if result is not None:
+        result.module = None
+    return result, syntax, collected, registry.refs()
+
+
+@contextmanager
+def gc_paused():
+    """Hold the cyclic garbage collector while building many plain objects.
+
+    Analysis results are millions of small objects without reference cycles. Each
+    collection walks all of them and frees nothing, which costs a large share of the
+    run on a big repository. Reference counting still frees everything as usual.
+    """
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
+
+
+WORKER_TIMEOUT_SECONDS = 1800
+SHARES_PER_WORKER = 4
+
+
+def _extract_in_processes(jobs, workers: int):
+    """Run the per-file work in several worker processes; nothing when that fails.
+
+    Each worker is a fresh, isolated interpreter that gets a share of the files, the
+    largest dealt out first so the shares are even. Results come back in job order.
+    """
+    import pickle
+    import subprocess
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    by_size = sorted(range(len(jobs)), key=lambda index: -len(jobs[index][2]))
+    # More shares than workers: file size only roughly predicts the work, and a worker
+    # that finishes early then takes another share instead of idling.
+    count = min(len(jobs), workers * SHARES_PER_WORKER)
+    shares = [by_size[start::count] for start in range(count)]
+    command = [sys.executable, "-I", "-m", "genesis_ci.python.extract_worker"]
+
+    def run(share):
+        data = pickle.dumps([jobs[index] for index in share], protocol=pickle.HIGHEST_PROTOCOL)
+        done = subprocess.run(
+            command, input=data, capture_output=True, check=True, timeout=WORKER_TIMEOUT_SECONDS
+        )
+        return pickle.loads(done.stdout)
+
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            parts = list(pool.map(run, shares))
+    except (OSError, subprocess.SubprocessError, pickle.PickleError, EOFError, ImportError):
+        # No worker could be started or one failed; the caller does the work itself.
+        return None
+    outcomes = [None] * len(jobs)
+    for share, part in zip(shares, parts, strict=True):
+        if len(part) != len(share):
+            return None
+        for index, outcome in zip(share, part, strict=True):
+            outcomes[index] = outcome
+    return outcomes
+
+
+def extract_python(
+    snapshot: CapturedSnapshot,
+    options: PythonOptions | None = None,
+    *,
+    workers: int = 1,
+    collect=None,
+    validate: bool = True,
+) -> Extraction:
+    """Extract every captured Python file.
+
+    Files are independent until call resolution, so with `workers` above one they are
+    parsed and visited in separate processes; the result is the same either way.
+    `collect(parsed_file, wrapper, registry)` runs for each analyzed file while its
+    syntax tree exists and must be a module-level function; what it returns is kept in
+    `Extraction.collected`, and the tree is dropped afterwards. `validate=False` skips
+    the consistency check of the report pipeline's own data, for callers that only use
+    what they collected and validate that themselves.
+    """
     from .resolve import Resolver
 
     options = options or PythonOptions()
     registry = EvidenceRegistry(snapshot.source)
-    parsed = {}
-    coverage = []
-    for file in snapshot.capture.manifest.files:
-        if not file.path.endswith((".py", ".pyi")):
-            continue
-        raw = snapshot.source.read_bytes(file.side, file.path)
-        try:
-            if len(raw) > options.max_file_bytes:
-                raise ValueError("Python file byte budget exceeded")
-            module = cst.parse_module(raw)
-            module.visit(_Budget(options.max_nodes))
-            wrapper = MetadataWrapper(module)
-            result = ParsedFile(file.side, file.path, wrapper.module, raw.decode("utf-8"))
-            wrapper.visit(Extractor(result, registry, options))
-            parsed[(file.side, file.path)] = result
-            syntax = ANALYZED
-        except (cst.ParserSyntaxError, RecursionError, ValueError) as error:
-            syntax = CapabilityStatus(
-                status="unsupported", reason=f"File not analyzed: {type(error).__name__}"
+    sources = [
+        file for file in snapshot.capture.manifest.files if file.path.endswith((".py", ".pyi"))
+    ]
+    outcomes = None
+    if workers > 1 and len(sources) > 1:
+        snapshot_id = snapshot.capture.manifest.snapshot_id
+        jobs = [
+            (
+                file.side,
+                file.path,
+                snapshot.source.read_bytes(file.side, file.path),
+                file.kind,
+                snapshot_id,
+                options,
+                collect,
             )
+            for file in sources
+        ]
+        with gc_paused():
+            outcomes = _extract_in_processes(jobs, workers)
+            for outcome in outcomes or ():
+                registry.adopt(outcome[3])
+    if outcomes is None:
+        outcomes = [
+            _extract_file(
+                file.side,
+                file.path,
+                snapshot.source.read_bytes(file.side, file.path),
+                options,
+                registry,
+                collect,
+            )
+            for file in sources
+        ]
+    parsed = {}
+    collected = {}
+    coverage = []
+    for file, (result, syntax, gathered, *_) in zip(sources, outcomes, strict=True):
+        if result is not None:
+            parsed[(file.side, file.path)] = result
+            if gathered is not None:
+                collected[(file.side, file.path)] = gathered
         coverage.append(
             FileCoverage(
                 side=file.side, path=file.path, syntax=syntax, bindings=syntax, calls=syntax
             )
         )
-    unavailable = {(c.side, c.path) for c in coverage if c.syntax.status != "analyzed"}
-    unavailable.update(
-        (o.side, o.path) for o in snapshot.capture.omissions if o.path.endswith((".py", ".pyi"))
-    )
-    unavailable.update(
-        (o.side, o.path + "/__init__.py")
-        for o in snapshot.capture.omissions
-        if o.reason == "submodule"
-    )
-    resolver = Resolver(parsed, options.source_roots, unavailable)
-    for file in parsed.values():
-        file.calls[:] = [
-            call.model_copy(
-                update={
-                    "target": resolver.callable_target(
-                        resolver.resolve(call.callee, file.side, file.path), file.side
+    # From here on only plain result objects are built.
+    with gc_paused():
+        unavailable = {(c.side, c.path) for c in coverage if c.syntax.status != "analyzed"}
+        unavailable.update(
+            (o.side, o.path) for o in snapshot.capture.omissions if o.path.endswith((".py", ".pyi"))
+        )
+        unavailable.update(
+            (o.side, o.path + "/__init__.py")
+            for o in snapshot.capture.omissions
+            if o.reason == "submodule"
+        )
+        resolver = Resolver(parsed, options.source_roots, unavailable)
+        for file in parsed.values():
+            file.calls[:] = [
+                call.model_copy(
+                    update={
+                        "target": resolver.callable_target(
+                            resolver.resolve(call.callee, file.side, file.path), file.side
+                        )
+                    }
+                )
+                for call in file.calls
+            ]
+            for call in file.calls:
+                if call.target.status != "resolved":
+                    file.unresolved.append(
+                        UnresolvedFact(
+                            unresolved_id="unresolved_" + call.call_id,
+                            feature="call",
+                            reason=call.target.reason or "Candidate target",
+                            evidence_ids=call.evidence_ids,
+                        )
                     )
+        coverage = [
+            item.model_copy(
+                update={
+                    "calls": incomplete("Unresolved or candidate calls remain")
+                    if (item.side, item.path) in parsed
+                    and parsed[(item.side, item.path)].unresolved
+                    else item.calls,
+                    "bindings": incomplete(
+                        "Binding values are conservative; conditional/reassigned/dynamic values may be unknown"
+                    )
+                    if (item.side, item.path) in parsed
+                    and any(
+                        b.conditional or b.value.kind in {"unknown", "subscript"}
+                        for b in parsed[(item.side, item.path)].bindings
+                    )
+                    else item.bindings,
                 }
             )
-            for call in file.calls
+            for item in coverage
         ]
-        for call in file.calls:
-            if call.target.status != "resolved":
-                file.unresolved.append(
-                    UnresolvedFact(
-                        unresolved_id="unresolved_" + call.call_id,
-                        feature="call",
-                        reason=call.target.reason or "Candidate target",
-                        evidence_ids=call.evidence_ids,
-                    )
-                )
-    coverage = [
-        item.model_copy(
-            update={
-                "calls": incomplete("Unresolved or candidate calls remain")
-                if (item.side, item.path) in parsed and parsed[(item.side, item.path)].unresolved
-                else item.calls,
-                "bindings": incomplete(
-                    "Binding values are conservative; conditional/reassigned/dynamic values may be unknown"
-                )
-                if (item.side, item.path) in parsed
-                and any(
-                    b.conditional or b.value.kind in {"unknown", "subscript"}
-                    for b in parsed[(item.side, item.path)].bindings
-                )
-                else item.bindings,
-            }
-        )
-        for item in coverage
-    ]
-    symbols = tuple(symbol for file in parsed.values() for symbol in file.symbols)
-    symbol_map = {}
-    for symbol in symbols:
-        symbol_map.setdefault((symbol.side, symbol.symbol_id), []).append(symbol)
-    failed = {(item.side, item.path) for item in coverage if item.syntax.status != "analyzed"}
-    uncertain = {item.path for item in snapshot.capture.omissions if item.affects_completeness}
-    changed = set()
-    # Without a baseline there is nothing to compare against, so nothing is changed.
-    compared = snapshot.capture.manifest.base_revision is not None
-    for sid in sorted({s.symbol_id for s in symbols}) if compared else ():
-        path = sid.split("#")[0]
-        if any(path == p or path.startswith(p + "/") for p in uncertain) or any(
-            (side, path) in failed for side in EvidenceSide
-        ):
-            continue
-        before, after = (
-            symbol_map.get((EvidenceSide.base, sid)),
-            symbol_map.get((EvidenceSide.head, sid)),
-        )
-        if (
-            before is None
-            or after is None
-            or tuple(s.source_digest for s in before) != tuple(s.source_digest for s in after)
-        ):
-            changed.add(sid)
-    unresolved = [f"{side.value}:{path}:syntax_unavailable" for side, path in sorted(failed)]
-    unresolved += [
-        f"{item.side.value}:{item.path}:{item.reason}"
-        for item in snapshot.capture.omissions
-        if item.affects_completeness
-    ]
-    files = list(parsed.values())
-    all_calls = tuple(call for file in files for call in file.calls)
-    fact_unresolved = tuple(item for file in files for item in file.unresolved)
-    overall = (
-        incomplete("Some input files or call targets could not be fully analyzed")
-        if not coverage or failed or unresolved or fact_unresolved
-        else ANALYZED
-    )
-    facts = FactPack(
-        coverage=overall,
-        functions=tuple(
-            SymbolFact(
-                symbol_id=s.symbol_id,
-                side=s.side,
-                kind=s.kind,
-                is_async=s.is_async,
-                evidence_ids=s.evidence_ids,
+        symbols = tuple(symbol for file in parsed.values() for symbol in file.symbols)
+        symbol_map = {}
+        for symbol in symbols:
+            symbol_map.setdefault((symbol.side, symbol.symbol_id), []).append(symbol)
+        failed = {(item.side, item.path) for item in coverage if item.syntax.status != "analyzed"}
+        uncertain = {item.path for item in snapshot.capture.omissions if item.affects_completeness}
+        changed = set()
+        # Without a baseline there is nothing to compare against, so nothing is changed.
+        compared = snapshot.capture.manifest.base_revision is not None
+        for sid in sorted({s.symbol_id for s in symbols}) if compared else ():
+            path = sid.split("#")[0]
+            if any(path == p or path.startswith(p + "/") for p in uncertain) or any(
+                (side, path) in failed for side in EvidenceSide
+            ):
+                continue
+            before, after = (
+                symbol_map.get((EvidenceSide.base, sid)),
+                symbol_map.get((EvidenceSide.head, sid)),
             )
-            for s in symbols
-        ),
-        imports=tuple(item for file in files for item in file.imports),
-        calls=tuple(
-            CallFact(
-                call_id=call.call_id,
-                side=call.side,
-                caller_symbol_id=call.symbol_id,
-                expression=call.callee.text,
-                target=call.target,
-                awaited=call.awaited,
-                evidence_ids=call.evidence_ids,
-            )
-            for call in all_calls
-        ),
-        conditions=tuple(item for file in files for item in file.conditions),
-        awaits=tuple(item for file in files for item in file.awaits),
-        unresolved=fact_unresolved,
-    )
-    analysis = PythonAnalysis(
-        snapshot_id=snapshot.capture.manifest.snapshot_id,
-        options=options,
-        source_roots=options.source_roots,
-        symbols=symbols,
-        bindings=tuple(item for file in files for item in file.bindings),
-        calls=all_calls,
-        loops=tuple(item for file in files for item in file.loops),
-        assertions=tuple(item for file in files for item in file.assertions),
-        loop_controls=tuple(item for file in files for item in file.loop_controls),
-        exception_handlers=tuple(item for file in files for item in file.exception_handlers),
-        coverage=tuple(coverage),
-        facts=facts,
-        change_set=ChangeSet(
-            files=tuple(item.change for item in snapshot.capture.file_diff.changes),
-            changed_symbol_ids=tuple(sorted(changed)),
-            unresolved=tuple(unresolved),
-        ),
-        evidence=registry.freeze().evidence_catalog(),
-    )
-    from .validate import validate_python
+            if (
+                before is None
+                or after is None
+                or tuple(s.source_digest for s in before) != tuple(s.source_digest for s in after)
+            ):
+                changed.add(sid)
+        unresolved = [f"{side.value}:{path}:syntax_unavailable" for side, path in sorted(failed)]
+        unresolved += [
+            f"{item.side.value}:{item.path}:{item.reason}"
+            for item in snapshot.capture.omissions
+            if item.affects_completeness
+        ]
+        files = list(parsed.values())
+        all_calls = tuple(call for file in files for call in file.calls)
+        fact_unresolved = tuple(item for file in files for item in file.unresolved)
+        overall = (
+            incomplete("Some input files or call targets could not be fully analyzed")
+            if not coverage or failed or unresolved or fact_unresolved
+            else ANALYZED
+        )
+        facts = FactPack(
+            coverage=overall,
+            functions=tuple(
+                SymbolFact(
+                    symbol_id=s.symbol_id,
+                    side=s.side,
+                    kind=s.kind,
+                    is_async=s.is_async,
+                    evidence_ids=s.evidence_ids,
+                )
+                for s in symbols
+            ),
+            imports=tuple(item for file in files for item in file.imports),
+            calls=tuple(
+                CallFact(
+                    call_id=call.call_id,
+                    side=call.side,
+                    caller_symbol_id=call.symbol_id,
+                    expression=call.callee.text,
+                    target=call.target,
+                    awaited=call.awaited,
+                    evidence_ids=call.evidence_ids,
+                )
+                for call in all_calls
+            ),
+            conditions=tuple(item for file in files for item in file.conditions),
+            awaits=tuple(item for file in files for item in file.awaits),
+            unresolved=fact_unresolved,
+        )
+        analysis = PythonAnalysis(
+            snapshot_id=snapshot.capture.manifest.snapshot_id,
+            options=options,
+            source_roots=options.source_roots,
+            symbols=symbols,
+            bindings=tuple(item for file in files for item in file.bindings),
+            calls=all_calls,
+            loops=tuple(item for file in files for item in file.loops),
+            assertions=tuple(item for file in files for item in file.assertions),
+            loop_controls=tuple(item for file in files for item in file.loop_controls),
+            exception_handlers=tuple(item for file in files for item in file.exception_handlers),
+            coverage=tuple(coverage),
+            facts=facts,
+            change_set=ChangeSet(
+                files=tuple(item.change for item in snapshot.capture.file_diff.changes),
+                changed_symbol_ids=tuple(sorted(changed)),
+                unresolved=tuple(unresolved),
+            ),
+            evidence=registry.freeze().evidence_catalog(),
+        )
+        if validate:
+            from .validate import validate_python
 
-    validate_python(analysis)
-    return Extraction(analysis, registry, parsed, resolver)
+            validate_python(analysis)
+        return Extraction(analysis, registry, parsed, resolver, collected)
