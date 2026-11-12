@@ -238,7 +238,12 @@ export function FlowEdge({
         />
       )}
       {travels && (
-        <circle key={`dot-${playKey}`} r={3.5} fill="var(--change)" opacity={0}>
+        <circle
+          key={`dot-${playKey}`}
+          r={3.5}
+          fill="var(--edge-strong)"
+          opacity={0}
+        >
           <animateMotion
             ref={motionRef}
             begin="indefinite"
@@ -265,7 +270,7 @@ export function FlowEdge({
         <EdgeLabelRenderer>
           <div
             className={cn(
-              "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[11.5px] leading-4 shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160",
+              "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160",
               data.exception
                 ? "text-risk"
                 : skipped

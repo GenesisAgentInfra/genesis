@@ -9,12 +9,12 @@ import {
   type NodeMouseHandler,
 } from "@xyflow/react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { Maximize, Minus, Play, Plus } from "lucide-react"
+import { Maximize, Minus, Moon, Play, Plus, Sun } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Crumbs } from "@/components/crumbs"
 import { DetailPanel, type PanelSubject } from "@/components/detail-panel"
 import { Headline } from "@/components/headline"
+import { MapMark } from "@/components/map-mark"
 import {
   CUT_ARM,
   CanvasContext,
@@ -59,7 +59,9 @@ import {
 import { cn } from "@/lib/utils"
 import { STRINGS } from "@/i18n"
 import { routeTo } from "@/layout"
-import { reachOf, type Model } from "@/model"
+import { matches, reachOf, type Filter, type Model } from "@/model"
+import { useReviewed } from "@/review"
+import { useTheme } from "@/theme"
 
 const NODE_TYPES = {
   step: StepNode,
@@ -220,6 +222,17 @@ function Viewer({ model }: { model: Model }) {
   const focus = model.stops.length > 0
 
   const [selected, setSelected] = React.useState<Selected>()
+  // The one kind of change the reader narrowed the page down to, and what they have seen.
+  const [filter, setFilter] = React.useState<Filter>()
+  const { reviewed, toggle: toggleReviewed } = useReviewed(model)
+  const { theme, toggle: toggleTheme } = useTheme()
+  const walkable = React.useMemo(
+    () =>
+      model.stops
+        .filter((stop) => matches(stop, filter))
+        .map((stop) => stop.no),
+    [model, filter]
+  )
   // The change picked on the map: its card rings and what it leads to answers.
   const [current, setCurrent] = React.useState<{ node: string; no: number }>()
   const [play, setPlay] = React.useState({
@@ -362,8 +375,8 @@ function Viewer({ model }: { model: Model }) {
       const head = headRef.current?.getBoundingClientRect()
       const top = Math.max(head ? head.bottom + 16 : 0, 24)
       const left = narrow ? 12 : 24
-      // The zoom controls stand at the right edge, or just left of the panel.
-      const right = narrow ? 12 : (withPanel ? PANEL_W + 24 : 12) + 48
+      // The zoom controls stand at the right edge, under the panel when it is open.
+      const right = narrow ? 12 : withPanel ? PANEL_W + 40 : 60
       const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 28
       return {
         x: left,
@@ -418,7 +431,8 @@ function Viewer({ model }: { model: Model }) {
   )
   /**
    * Bring a part of the map into the free area, never smaller than `min`. When that is
-   * wider or taller than the area, start from its top left, where the flows begin.
+   * wider or taller than the area, start from its top left, where the flows begin; with
+   * `fromTop` it starts at the top even when it fits, so nothing blank stands over it.
    */
   const frame = React.useCallback(
     (
@@ -426,7 +440,8 @@ function Viewer({ model }: { model: Model }) {
       withPanel: boolean,
       duration: number,
       min: number,
-      max = 1
+      max = 1,
+      fromTop = false
     ) => {
       const box = area(withPanel)
       const zoom = Math.min(
@@ -434,7 +449,7 @@ function Viewer({ model }: { model: Model }) {
         Math.max(min, Math.min(box.w / bounds.width, box.h / bounds.height))
       )
       const across = bounds.width * zoom <= box.w
-      const down = bounds.height * zoom <= box.h
+      const down = !fromTop && bounds.height * zoom <= box.h
       void flow.setViewport(
         {
           x: across
@@ -670,7 +685,7 @@ function Viewer({ model }: { model: Model }) {
       picked.length ? picked.map((node) => node.id) : [focused]
     )
     if (!bounds) return
-    // At the top of the module its name comes along, clear of the breadcrumbs.
+    // At the top of the module its name comes along.
     const frameBox = boxOf(focused)
     if (frameBox && bounds.y - frameBox.y < 140) {
       bounds.height += bounds.y - frameBox.y
@@ -678,7 +693,8 @@ function Viewer({ model }: { model: Model }) {
       bounds.width += bounds.x - frameBox.x
       bounds.x = frameBox.x
     }
-    frame(bounds, showPanel, glide, READ_ZOOM)
+    // An open module starts right under the headline, the way the whole map does.
+    frame(bounds, showPanel, glide, READ_ZOOM, 1, true)
     // Runs when the focus changes; the rest is read fresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused, ready])
@@ -749,6 +765,27 @@ function Viewer({ model }: { model: Model }) {
               item.kind === "removed_flow" && item.flowId === selected.flowId
           )?.no
         : undefined)
+
+  /** On to the next change the stepper walks, or back to the one before; it wraps. */
+  const stepBy = (by: number) => {
+    if (!walkable.length) return
+    const at = pickedNo ? walkable.indexOf(pickedNo) : -1
+    const next =
+      at < 0
+        ? by > 0
+          ? 0
+          : walkable.length - 1
+        : (at + by + walkable.length) % walkable.length
+    pickStop(walkable[next])
+  }
+  /** The stops the panel is about, for marking them as seen. */
+  const panelStops = subject
+    ? subject.coupons.length
+      ? [...new Set(subject.coupons.map((coupon) => coupon.no))]
+      : pickedNo && subject.type !== "step"
+        ? [pickedNo]
+        : []
+    : []
 
   /** Walk through a flow the way it usually runs, the camera riding along. */
   const walk = (flowId: string) => {
@@ -875,6 +912,11 @@ function Viewer({ model }: { model: Model }) {
     }
     if (node.type !== "step") return
     const step = node as StepNodeType
+    if (step.data.stub) {
+      // The pill that stands for steps left out opens the module on its flow.
+      if (at) focusModule(at, flowIdOf(node))
+      return
+    }
     openPanel({ type: "step", node: step.id })
     if (step.data.coupons.length && !step.data.removedFlow) pick(step)
     else if (!inView(step.id, true))
@@ -886,7 +928,7 @@ function Viewer({ model }: { model: Model }) {
     escape: () => {},
     other: () => {},
     enter: (id: string) => void id,
-    step: (by: number) => void by,
+    step: (by: number): void => void by,
   })
   React.useEffect(() => {
     keys.current = {
@@ -905,12 +947,7 @@ function Viewer({ model }: { model: Model }) {
         const node = nodeById.get(id)
         if (node) onNodeClick({} as React.MouseEvent, node)
       },
-      step: (by: number) => {
-        const total = model.stops.length
-        if (!total) return
-        const from = pickedNo ?? (by > 0 ? 0 : 1)
-        pickStop(((from - 1 + by + total) % total) + 1)
-      },
+      step: stepBy,
     }
   })
   React.useEffect(() => {
@@ -921,12 +958,21 @@ function Viewer({ model }: { model: Model }) {
         return
       }
       if (
-        target?.closest("[role=listbox], input, textarea, select, button") ||
+        target?.closest("[role=listbox], input, textarea, select") ||
         target?.isContentEditable
       )
         return
       if (event.key === "Escape") {
         keys.current.escape()
+        return
+      }
+      // A button keeps Enter and Space for itself; the arrows still walk the changes, so
+      // they go on working right after an arrow of the stepper was clicked.
+      if (target?.closest("button")) {
+        if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+          event.preventDefault()
+          keys.current.step(event.key === "ArrowRight" ? 1 : -1)
+        }
         return
       }
       if (event.key === "Enter" || event.key === " ") {
@@ -977,6 +1023,8 @@ function Viewer({ model }: { model: Model }) {
           ? `row${SEP}${selected.flowId}`
           : undefined,
     knownRisks: !model.hasReport,
+    filter,
+    reviewed,
     run: play.run,
     armed: play.armed,
     pending: Boolean(current) && !play.armed && !reducedMotion,
@@ -991,8 +1039,15 @@ function Viewer({ model }: { model: Model }) {
   React.useEffect(() => {
     walkRef.current = walk
   })
+  const overviewRef = React.useRef(toOverview)
+  React.useEffect(() => {
+    overviewRef.current = toOverview
+  })
   const handlers = React.useMemo(
-    () => ({ onRun: (flowId: string) => walkRef.current(flowId) }),
+    () => ({
+      onRun: (flowId: string) => walkRef.current(flowId),
+      onOverview: () => overviewRef.current(),
+    }),
     []
   )
   const pickStopRef = React.useRef(pickStop)
@@ -1006,6 +1061,44 @@ function Viewer({ model }: { model: Model }) {
     if (todo?.walk) walkRef.current(todo.walk)
     else if (todo?.stop) pickStopRef.current(todo.stop)
   }, [atlas])
+
+  // The change on show is part of the address ("#change=3"), so a link opens on it.
+  const pickedRef = React.useRef(pickedNo)
+  React.useEffect(() => {
+    pickedRef.current = pickedNo
+  })
+  const asked = React.useRef<number | undefined>(undefined)
+  React.useEffect(() => {
+    if (!ready) return
+    const open = () => {
+      const no = Number(/^#change=(\d+)$/.exec(location.hash)?.[1] ?? 0)
+      if (!no || no > model.stops.length || no === pickedRef.current) return
+      asked.current = no
+      pickStopRef.current(no)
+    }
+    open()
+    window.addEventListener("hashchange", open)
+    return () => window.removeEventListener("hashchange", open)
+  }, [ready, model])
+  React.useEffect(() => {
+    if (!ready) return
+    // A change asked for by the address is still on its way: leave the address alone.
+    if (asked.current !== undefined) {
+      if (pickedNo === undefined) return
+      asked.current = undefined
+    }
+    const hash = pickedNo ? `#change=${pickedNo}` : ""
+    if (location.hash === hash) return
+    try {
+      history.replaceState(
+        history.state,
+        "",
+        hash || location.pathname + location.search
+      )
+    } catch {
+      // Some browsers refuse this on a page opened from a file; the page works without.
+    }
+  }, [pickedNo, ready])
 
   return (
     <CanvasContext.Provider value={canvas}>
@@ -1095,18 +1188,17 @@ function Viewer({ model }: { model: Model }) {
                   narrow={narrow}
                   compact={narrow && showPanel}
                   picked={pickedNo}
+                  walk={walkable}
+                  filter={filter}
+                  reviewed={reviewed}
+                  onFilter={setFilter}
+                  onToggleReviewed={(no) => toggleReviewed([no])}
                   onPick={focus ? pickStop : undefined}
+                  onStep={focus ? stepBy : undefined}
                 />
               </div>
             )}
-            {(!model.hasReport || focusedTitle) && (
-              <Crumbs
-                model={model}
-                t={t}
-                module={focusedTitle}
-                onOverview={toOverview}
-              />
-            )}
+            {!model.hasReport && <MapMark model={model} t={t} />}
           </div>
 
           {/* The walk says what it walks, where it is, and how to stop it. */}
@@ -1130,43 +1222,53 @@ function Viewer({ model }: { model: Model }) {
             </div>
           )}
 
-          {/* Zoom, for readers without a trackpad, and the way back to the whole map. */}
-          {!(narrow && showPanel) && atlas.nodes.length > 0 && (
-            <div
-              className={cn(
-                "absolute bottom-8 z-10 flex flex-col overflow-hidden rounded-full bg-card shadow-[var(--shadow-float)] ring-1 ring-line",
-                showPanel && !narrow ? "right-[408px]" : "right-3"
+          {/* The light or dark rendition; under it zoom, for readers without a trackpad, and
+              the way back to the whole map. */}
+          {!(narrow && showPanel) && (
+            <div className="absolute right-3 bottom-8 z-10 flex flex-col gap-2">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={theme === "dark" ? t.toLight : t.toDark}
+                title={theme === "dark" ? t.toLight : t.toDark}
+                className="rounded-full bg-card text-ink-2 shadow-[var(--shadow-float)] ring-1 ring-line hover:bg-card hover:text-ink"
+                onClick={toggleTheme}
+              >
+                {theme === "dark" ? <Sun /> : <Moon />}
+              </Button>
+              {atlas.nodes.length > 0 && (
+                <div className="flex flex-col overflow-hidden rounded-full bg-card shadow-[var(--shadow-float)] ring-1 ring-line">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t.zoomIn}
+                    className="rounded-none text-ink-2"
+                    onClick={() => void flow.zoomIn(motionOf(glide ? 200 : 0))}
+                  >
+                    <Plus />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t.zoomOut}
+                    className="rounded-none text-ink-2"
+                    onClick={() => void flow.zoomOut(motionOf(glide ? 200 : 0))}
+                  >
+                    <Minus />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t.fitView}
+                    className="rounded-none border-t border-line text-ink-2"
+                    onClick={() =>
+                      focused ? toOverview() : fitAll(glide, showPanel)
+                    }
+                  >
+                    <Maximize />
+                  </Button>
+                </div>
               )}
-            >
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t.zoomIn}
-                className="rounded-none text-ink-2"
-                onClick={() => void flow.zoomIn(motionOf(glide ? 200 : 0))}
-              >
-                <Plus />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t.zoomOut}
-                className="rounded-none text-ink-2"
-                onClick={() => void flow.zoomOut(motionOf(glide ? 200 : 0))}
-              >
-                <Minus />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t.fitView}
-                className="rounded-none border-t border-line text-ink-2"
-                onClick={() =>
-                  focused ? toOverview() : fitAll(glide, showPanel)
-                }
-              >
-                <Maximize />
-              </Button>
             </div>
           )}
 
@@ -1193,9 +1295,11 @@ function Viewer({ model }: { model: Model }) {
                 transition={panelMotion(reducedMotion)}
                 className={cn(
                   "absolute z-20 overflow-hidden rounded-[20px] bg-card shadow-[var(--shadow-float)] ring-1 ring-line",
+                  // On a desk the panel is as tall as what it says, and never so tall that
+                  // it covers the controls under it.
                   narrow
                     ? "inset-x-2 bottom-2 h-[52dvh]"
-                    : "top-3 right-3 bottom-3 w-[384px]"
+                    : "top-3 right-3 max-h-[calc(100dvh-180px)] w-[384px]"
                 )}
               >
                 <DetailPanel
@@ -1213,6 +1317,17 @@ function Viewer({ model }: { model: Model }) {
                     !subject.view.removed &&
                     !subject.ghost
                       ? () => walk(subject.view!.flow.flow_id)
+                      : undefined
+                  }
+                  review={
+                    focus && panelStops.length
+                      ? {
+                          seen: panelStops.every((no) => reviewed.has(no)),
+                          reviewed,
+                          onToggle: () => toggleReviewed(panelStops),
+                          onNext:
+                            walkable.length > 1 ? () => stepBy(1) : undefined,
+                        }
                       : undefined
                   }
                   onClose={closePanel}
@@ -1263,7 +1378,7 @@ function WalkBar({
             aria-live="polite"
             className={cn(
               "min-w-0 truncate",
-              said ? "text-change-ink" : "text-ink-2"
+              said ? "font-medium text-ink" : "text-ink-2"
             )}
           >
             {said ?? step.data.step.name}
@@ -1274,7 +1389,7 @@ function WalkBar({
         variant="ghost"
         size="xs"
         onClick={onStop}
-        className="shrink-0 rounded-full px-2.5 text-[12.5px] text-ink-2"
+        className="shrink-0 rounded-full px-2.5 text-[13px] text-ink-2"
       >
         {done ? t.endWalk : t.stopWalk}
       </Button>

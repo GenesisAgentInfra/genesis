@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
     <title>Genesis</title>
+    <script>
+      // The rendition, set before the first paint: light, unless the reader chose dark
+      // (see src/theme.ts).
+      ;(function () {
+        var theme = "light"
+        try {
+          if (localStorage.getItem("genesis:theme") === "dark") theme = "dark"
+        } catch (error) {}
+        document.documentElement.dataset.theme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
