@@ -1,0 +1,726 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-12T10:00:00+00:00",
+  "title": "Design System: Genesis Viewer",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas Grey",
+        "canonical": "#f4f4f5",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#424243",
+          "#616162",
+          "#828283",
+          "#a5a5a6",
+          "#c9c9ca",
+          "#eeeeef"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#111113",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616163",
+          "#828285",
+          "#a5a5a7",
+          "#c9c9cc",
+          "#eeeef1"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "#5c5d63",
+        "tonalRamp": [
+          "#0a0b0f",
+          "#24252a",
+          "#414247",
+          "#606167",
+          "#818288",
+          "#a3a4ab",
+          "#c7c9cf",
+          "#edeef5"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "canonical": "#74757b",
+        "tonalRamp": [
+          "#0a0b0f",
+          "#24252a",
+          "#414247",
+          "#606167",
+          "#818288",
+          "#a3a5ab",
+          "#c7c9cf",
+          "#edeef5"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e6e6e9",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616163",
+          "#828285",
+          "#a5a5a7",
+          "#c9c9cc",
+          "#eeeef1"
+        ]
+      },
+      "field": {
+        "role": "neutral",
+        "displayName": "Field Grey",
+        "canonical": "#f4f4f5",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#424243",
+          "#616162",
+          "#828283",
+          "#a5a5a6",
+          "#c9c9ca",
+          "#eeeeef"
+        ],
+        "note": "Same value as canvas; kept as its own token for rows and excerpts inside cards."
+      },
+      "muted-tint": {
+        "role": "neutral",
+        "displayName": "Muted Tint",
+        "canonical": "#f1f1f3",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#424243",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeef0"
+        ]
+      },
+      "handle-rim": {
+        "role": "neutral",
+        "displayName": "Handle Rim",
+        "canonical": "#c9cace",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414245",
+          "#606164",
+          "#818286",
+          "#a4a5a9",
+          "#c8c9cd",
+          "#edeef2"
+        ]
+      },
+      "edge": {
+        "role": "neutral",
+        "displayName": "Edge Grey",
+        "canonical": "#cfd0d5",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414246",
+          "#606165",
+          "#818287",
+          "#a4a5a9",
+          "#c8c9ce",
+          "#edeef3"
+        ]
+      },
+      "edge-strong": {
+        "role": "neutral",
+        "displayName": "Edge Strong",
+        "canonical": "#3a3b40",
+        "tonalRamp": [
+          "#0a0b0f",
+          "#242529",
+          "#414247",
+          "#606166",
+          "#818288",
+          "#a3a5ab",
+          "#c7c9cf",
+          "#edeef4"
+        ]
+      },
+      "edge-exception": {
+        "role": "secondary",
+        "displayName": "Exception Edge",
+        "canonical": "#e8b7b1",
+        "tonalRamp": [
+          "#170504",
+          "#361d1a",
+          "#583835",
+          "#7c5651",
+          "#a27570",
+          "#c39994",
+          "#e6bfba",
+          "#ffe5e1"
+        ]
+      },
+      "edge-exception-strong": {
+        "role": "secondary",
+        "displayName": "Exception Edge Strong",
+        "canonical": "#b5524a",
+        "tonalRamp": [
+          "#220000",
+          "#4e0002",
+          "#781917",
+          "#9e3d37",
+          "#c45f57",
+          "#eb8278",
+          "#fdb4ac",
+          "#fee5e2"
+        ]
+      },
+      "select": {
+        "role": "secondary",
+        "displayName": "Selection Blue",
+        "canonical": "#2f6feb",
+        "tonalRamp": [
+          "#00003c",
+          "#001967",
+          "#083894",
+          "#2058c5",
+          "#3a7af6",
+          "#65a1ff",
+          "#90c8ff",
+          "#bcefff"
+        ]
+      },
+      "change": {
+        "role": "primary",
+        "displayName": "Change Amber",
+        "canonical": "#e2860b",
+        "tonalRamp": [
+          "#230000",
+          "#471000",
+          "#6e2d00",
+          "#974a00",
+          "#c16800",
+          "#e28f38",
+          "#ffb76f",
+          "#ffdfa2"
+        ]
+      },
+      "change-bg": {
+        "role": "primary",
+        "displayName": "Change Tint",
+        "canonical": "#fff6e8",
+        "tonalRamp": [
+          "#0e0b06",
+          "#29241d",
+          "#474138",
+          "#676055",
+          "#898175",
+          "#aba498",
+          "#cfc8be",
+          "#f4eee4"
+        ]
+      },
+      "change-ink": {
+        "role": "primary",
+        "displayName": "Change Ink",
+        "canonical": "#8a4a00",
+        "tonalRamp": [
+          "#1e0200",
+          "#3f1800",
+          "#643400",
+          "#8b511b",
+          "#b37036",
+          "#d49563",
+          "#f5bc8f",
+          "#ffe3bb"
+        ]
+      },
+      "risk": {
+        "role": "secondary",
+        "displayName": "Risk Red",
+        "canonical": "#d92d20",
+        "tonalRamp": [
+          "#2e0000",
+          "#580000",
+          "#850000",
+          "#b4190f",
+          "#e43b2c",
+          "#ff6e5c",
+          "#ff9c89",
+          "#ffc9b6"
+        ]
+      },
+      "risk-bg": {
+        "role": "secondary",
+        "displayName": "Risk Tint",
+        "canonical": "#fdf0ef",
+        "tonalRamp": [
+          "#110908",
+          "#2c2222",
+          "#493f3e",
+          "#695e5d",
+          "#8b7f7e",
+          "#aea2a1",
+          "#d2c6c5",
+          "#f8ebea"
+        ]
+      },
+      "ok": {
+        "role": "tertiary",
+        "displayName": "Covered Green",
+        "canonical": "#17803d",
+        "tonalRamp": [
+          "#001300",
+          "#003106",
+          "#00511f",
+          "#1a7439",
+          "#399854",
+          "#69ba7c",
+          "#95dda4",
+          "#c2ffce"
+        ]
+      },
+      "ok-bg": {
+        "role": "tertiary",
+        "displayName": "Covered Tint",
+        "canonical": "#ebf7ef",
+        "tonalRamp": [
+          "#060d08",
+          "#1f2822",
+          "#3b453e",
+          "#5a645d",
+          "#7b857e",
+          "#9da8a1",
+          "#c1cdc5",
+          "#e6f2ea"
+        ]
+      },
+      "tile-trigger-bg": {
+        "role": "tertiary",
+        "displayName": "Trigger Tile",
+        "canonical": "#e6f5ec",
+        "tonalRamp": [
+          "#050e08",
+          "#1d2822",
+          "#39453e",
+          "#58655d",
+          "#79867e",
+          "#9ba9a1",
+          "#bfcdc5",
+          "#e4f3ea"
+        ]
+      },
+      "tile-trigger-ink": {
+        "role": "tertiary",
+        "displayName": "Trigger Glyph",
+        "canonical": "#1a7f45",
+        "tonalRamp": [
+          "#001300",
+          "#00300d",
+          "#005125",
+          "#1d7340",
+          "#3b975c",
+          "#6aba82",
+          "#96dcaa",
+          "#c3ffd3"
+        ]
+      },
+      "tile-action-bg": {
+        "role": "tertiary",
+        "displayName": "Action Tile",
+        "canonical": "#efeafd",
+        "tonalRamp": [
+          "#0c0a11",
+          "#26232d",
+          "#43404c",
+          "#635f6d",
+          "#847f90",
+          "#a6a2b2",
+          "#cac7d5",
+          "#f0ecf9"
+        ]
+      },
+      "tile-action-ink": {
+        "role": "tertiary",
+        "displayName": "Action Glyph",
+        "canonical": "#6a3fd4",
+        "tonalRamp": [
+          "#12003b",
+          "#2a0066",
+          "#462394",
+          "#6541c5",
+          "#8561f6",
+          "#a68bff",
+          "#c8b4ff",
+          "#edddff"
+        ]
+      },
+      "tile-decision-bg": {
+        "role": "tertiary",
+        "displayName": "Decision Tile",
+        "canonical": "#ffeee1",
+        "tonalRamp": [
+          "#100a05",
+          "#2c231c",
+          "#4a4037",
+          "#6b5e54",
+          "#8e7f74",
+          "#b0a297",
+          "#d3c6bd",
+          "#f8ece3"
+        ]
+      },
+      "tile-decision-ink": {
+        "role": "tertiary",
+        "displayName": "Decision Glyph",
+        "canonical": "#c9530a",
+        "tonalRamp": [
+          "#270000",
+          "#4e0100",
+          "#771f00",
+          "#a33c00",
+          "#cf5a18",
+          "#f08351",
+          "#ffac81",
+          "#ffd6af"
+        ]
+      },
+      "tile-external-bg": {
+        "role": "tertiary",
+        "displayName": "External Tile",
+        "canonical": "#fff4d1",
+        "tonalRamp": [
+          "#0f0b01",
+          "#2b2512",
+          "#49422b",
+          "#6a6145",
+          "#8c8262",
+          "#aea588",
+          "#d1c9af",
+          "#f6eed7"
+        ]
+      },
+      "tile-external-ink": {
+        "role": "tertiary",
+        "displayName": "External Glyph",
+        "canonical": "#9a6200",
+        "tonalRamp": [
+          "#1c0300",
+          "#3d1b00",
+          "#603700",
+          "#865501",
+          "#ae7524",
+          "#ce9958",
+          "#f0bf86",
+          "#ffe6b4"
+        ]
+      },
+      "tile-result-bg": {
+        "role": "tertiary",
+        "displayName": "Result Tile",
+        "canonical": "#efeff1",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#424243",
+          "#616163",
+          "#828284",
+          "#a5a5a7",
+          "#c9c9cb",
+          "#eeeef0"
+        ]
+      },
+      "tile-result-ink": {
+        "role": "tertiary",
+        "displayName": "Result Glyph",
+        "canonical": "#4f5057",
+        "tonalRamp": [
+          "#0a0b10",
+          "#24252b",
+          "#404148",
+          "#606168",
+          "#818289",
+          "#a3a4ac",
+          "#c7c8d1",
+          "#edeef6"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The sentence in the headline block top left (16px / 23px on phones); the largest type in the product."
+      },
+      "subhead": {
+        "displayName": "Subhead",
+        "purpose": "The change summary at the top of each change in the detail panel."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card names (two-line clamp) and the panel header; 13.5px on compact pills."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Effect-on-users paragraph; page body is 14px / 1.5."
+      },
+      "body-sm": {
+        "displayName": "Body Small",
+        "purpose": "Branch rows, the change field, the counts and the flows line of the headline."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Sentence-case field labels in the panel, ink-3."
+      },
+      "tag": {
+        "displayName": "Tag",
+        "purpose": "New / removed / new-risk / risk tags and the may-affect tag."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Before/after code and excerpts; paths and test ids at 11.5px."
+      }
+    },
+    "shadows": [
+      {
+        "name": "node",
+        "value": "0 1px 2px rgb(17 17 19 / 0.04), 0 4px 14px rgb(17 17 19 / 0.05)",
+        "purpose": "Cards, pills, tags and edge labels at rest."
+      },
+      {
+        "name": "node-hover",
+        "value": "0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08)",
+        "purpose": "Card hover; under the current halo and the selection ring."
+      },
+      {
+        "name": "float",
+        "value": "0 1px 2px rgb(17 17 19 / 0.05), 0 12px 32px rgb(17 17 19 / 0.1)",
+        "purpose": "Headline block, top bar, detail panel, back-to-change button, off-map card."
+      },
+      {
+        "name": "current",
+        "value": "0 0 0 3px rgb(226 134 11 / 0.12), 0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08)",
+        "purpose": "The current change's card, with a solid amber border."
+      },
+      {
+        "name": "selection",
+        "value": "0 0 0 3px rgb(47 111 235 / 0.14), 0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08)",
+        "purpose": "An unchanged card opened in the panel, with a blue border."
+      },
+      {
+        "name": "ring",
+        "value": "0 0 0 0 rgb(226 134 11 / 0.38) -> 0 0 0 12px rgb(226 134 11 / 0)",
+        "purpose": "The first beat of the ripple on the current card (240ms)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Panel slide, headline swaps, ring, tags."
+      },
+      {
+        "name": "ease-draw",
+        "value": "cubic-bezier(0.45, 0, 0.55, 1)",
+        "purpose": "Edge draw and the travelling dot."
+      },
+      {
+        "name": "ripple",
+        "value": "ring 0-240ms; edges draw 120-420ms (300ms); next steps light at 420ms; may-affect tags 420-600ms (180ms, y 2px)",
+        "purpose": "When the reader picks a change, counted from arming; at most 0.6s."
+      },
+      {
+        "name": "glide",
+        "value": "520ms, ease-out cubic, linear interpolation",
+        "purpose": "Camera to a focused module, a picked change, or back to the whole atlas."
+      },
+      {
+        "name": "panel",
+        "value": "260ms; x 20px desktop, y 24px phones",
+        "purpose": "Detail panel and its backing strip, when the reader opens or closes it."
+      },
+      {
+        "name": "state",
+        "value": "160ms",
+        "purpose": "Dimming and lighting of cards and edges."
+      },
+      {
+        "name": "settle",
+        "value": "drag, scroll, click or any key but left/right",
+        "purpose": "Jumps the ripple to its end state."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "Removes the ripple, the walk, the glides, the panel slide and all transitions."
+      },
+      {
+        "name": "walk",
+        "value": "lead 560ms to the trigger at 0.85 zoom; each edge 300ms; 140ms pause per step, 560ms more at a change",
+        "purpose": "\"走一遍\": a flow walked from its trigger, the camera riding along."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px",
+        "note": "Partial-analysis note shows in the top bar."
+      },
+      {
+        "name": "md",
+        "value": "768px",
+        "note": "Below: 16px headline, bottom sheet 52dvh; with it open the counts give way to the sentence."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Step Card (current change)",
+      "kind": "card",
+      "refersTo": "step-card",
+      "description": "White 252px card with kind tile, name, branch rows and the change in an amber field; the current change takes a solid amber border and halo.",
+      "html": "<div class=\"ds-card\" tabindex=\"0\"><div class=\"ds-card-head\"><span class=\"ds-tile ds-tile-decision\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 3h5v5\"/><path d=\"M8 3H3v5\"/><path d=\"M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3\"/><path d=\"m15 9 6-6\"/></svg></span><div class=\"ds-card-name\">Refund above 500?</div></div><div class=\"ds-rows\"><div class=\"ds-row\">Above 500</div><div class=\"ds-row\">500 or less</div></div><div class=\"ds-change\"><p>Manual review threshold lowered from 1000 to 500.</p><div class=\"ds-verdict\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#17803d\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/></svg> Tested</div></div></div>",
+      "css": ".ds-card{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;width:252px;box-sizing:border-box;background:#fff;color:#111113;border:1px solid #e2860b;border-radius:18px;padding:12px;box-shadow:0 0 0 3px rgb(226 134 11/.12),0 2px 4px rgb(17 17 19/.05),0 10px 26px rgb(17 17 19/.08);transition:box-shadow .16s,border-color .16s}.ds-card:focus-visible{outline:2px solid #2f6feb;outline-offset:3px}.ds-card-head{display:flex;align-items:center;gap:10px}.ds-tile{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;flex-shrink:0}.ds-tile-decision{background:#ffeee1;color:#c9530a}.ds-card-name{font-size:14px;line-height:20px;font-weight:500}.ds-rows{margin-top:10px;display:flex;flex-direction:column;gap:6px}.ds-row{background:#f4f4f5;border-radius:10px;padding:7px 10px;font-size:12.5px;line-height:18px;color:#5c5d63}.ds-change{margin-top:10px;background:#fff6e8;border-radius:12px;padding:8px 10px}.ds-change p{margin:0;font-size:12.5px;line-height:18px;color:#8a4a00}.ds-verdict{margin-top:4px;display:flex;align-items:center;gap:4px;font-size:11.5px;line-height:16px;color:#5c5d63}"
+    },
+    {
+      "name": "Step Pill",
+      "kind": "card",
+      "refersTo": "step-pill",
+      "description": "Compact 44px pill for a start or a plain end with no change, rows, loops or tags.",
+      "html": "<div class=\"ds-pill\" tabindex=\"0\"><span class=\"ds-ptile\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528\"/></svg></span><span>Wait for return</span></div>",
+      "css": ".ds-pill{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;height:44px;box-sizing:border-box;padding:6px 14px 6px 6px;background:#fff;border:1px solid #e6e6e9;border-radius:14px;font-size:13.5px;line-height:20px;font-weight:500;color:#111113;box-shadow:0 1px 2px rgb(17 17 19/.04),0 4px 14px rgb(17 17 19/.05);transition:box-shadow .16s}.ds-pill:hover{box-shadow:0 2px 4px rgb(17 17 19/.05),0 10px 26px rgb(17 17 19/.08)}.ds-pill:focus-visible{outline:2px solid #2f6feb;outline-offset:3px}.ds-ptile{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:#efeff1;color:#4f5057}"
+    },
+    {
+      "name": "Tags",
+      "kind": "chip",
+      "refersTo": "tag-new",
+      "description": "Tags under a card name, and the may-affect tag hung on a farther result.",
+      "html": "<span class=\"ds-tag ds-tag-new\">New</span> <span class=\"ds-tag ds-tag-risk\">New risk</span> <span class=\"ds-far\">May affect</span>",
+      "css": ".ds-tag{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;display:inline-block;border-radius:5px;padding:0 4px;font-size:11px;line-height:16px;font-weight:500}.ds-tag-new{background:#ebf7ef;color:#17803d}.ds-tag-risk{background:#fdf0ef;color:#d92d20}.ds-far{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;display:inline-block;border-radius:9999px;padding:1px 8px;font-size:11px;line-height:16px;font-weight:500;background:#fff;color:#8a4a00;box-shadow:0 0 0 1px rgb(226 134 11/.45),0 1px 2px rgb(17 17 19/.04),0 4px 14px rgb(17 17 19/.05)}"
+    },
+    {
+      "name": "Module Frame",
+      "kind": "card",
+      "refersTo": "module-frame",
+      "description": "A module drawn around its flows on the one-map atlas; the name keeps its size on screen.",
+      "html": "<div class=\"ds-fr\"><div class=\"ds-fr-h\"><span class=\"ds-fr-n\">Refunds</span><span class=\"ds-fr-c\">4 changes</span></div><div class=\"ds-fr-l\"><span>Request refund</span><span class=\"ds-fr-k\">4 changes</span><button class=\"ds-fr-run\">&#9654; Walk through</button></div><div class=\"ds-fr-flow\"><span class=\"ds-fr-card\"></span><span class=\"ds-fr-line\"></span><span class=\"ds-fr-card ds-fr-on\"></span><span class=\"ds-fr-line\"></span><span class=\"ds-fr-card\"></span></div></div>",
+      "css": ".ds-fr{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;width:520px;box-sizing:border-box;padding:0 32px 32px;border:1.5px solid rgb(226 134 11/.45);border-radius:32px;background:rgb(255 255 255/.45)}.ds-fr-h{display:flex;align-items:center;gap:12px;height:88px}.ds-fr-n{font-size:15px;font-weight:500;color:#111113}.ds-fr-c{font-size:12px;color:#8a4a00}.ds-fr-l{display:flex;align-items:flex-end;gap:10px;height:48px;padding-bottom:10px;box-sizing:border-box;font-size:13px;font-weight:500;color:#111113}.ds-fr-k{font-size:12px;font-weight:400;color:#8a4a00}.ds-fr-run{border:0;border-radius:9999px;padding:2px 8px;background:#fff;font:inherit;font-size:11.5px;font-weight:500;color:#5c5d63;box-shadow:0 0 0 1px #e6e6e9,0 1px 2px rgb(17 17 19/.04),0 4px 14px rgb(17 17 19/.05);cursor:pointer}.ds-fr-run:hover{color:#111113}.ds-fr-run:focus-visible{outline:2px solid #2f6feb;outline-offset:2px}.ds-fr-flow{display:flex;align-items:center}.ds-fr-card{width:96px;height:44px;border-radius:14px;background:#fff;border:1px solid #e6e6e9;box-shadow:0 1px 2px rgb(17 17 19/.04),0 4px 14px rgb(17 17 19/.05)}.ds-fr-on{border-color:rgb(226 134 11/.45);background:#fff6e8}.ds-fr-line{flex:1;height:1.25px;background:#cfd0d5}"
+    },
+    {
+      "name": "Headline Block",
+      "kind": "nav",
+      "refersTo": "headline",
+      "description": "Top-left float: where this change lands in one sentence, then what needs attention.",
+      "html": "<div class=\"ds-hb\"><div class=\"ds-hb-s\"><p>This change lands on 1 flow in Refunds; 2 more are off the current map.</p></div><div class=\"ds-hb-n\"><span>6 changes · 2 untested · 1 new risk · <u>1 file not analyzed</u></span></div></div>",
+      "css": ".ds-hb{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;width:600px;max-width:100%;box-sizing:border-box;background:#fff;border-radius:18px;padding:12px 16px 10px;box-shadow:0 0 0 1px #e6e6e9,0 1px 2px rgb(17 17 19/.05),0 12px 32px rgb(17 17 19/.1)}.ds-hb-s{display:flex;align-items:flex-end;gap:8px;min-height:52px}.ds-hb-s p{margin:0;min-width:0;font-size:18px;line-height:26px;font-weight:500;color:#111113;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.ds-hb-c{color:#74757b}.ds-hb-st{flex-shrink:0;display:inline-flex;align-items:center;gap:4px;padding-bottom:5px;font-size:12.5px;color:#5c5d63;white-space:nowrap}.ds-hb-f{margin-top:4px;height:24px;display:flex;align-items:center;gap:6px;overflow:hidden;font-size:12.5px;line-height:20px;color:#5c5d63}.ds-hb-l{flex-shrink:0;color:#74757b}.ds-gap{margin-left:8px}.ds-chip{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;border-radius:9999px;padding:1px 8px;background:#f4f4f5;color:#111113;font:inherit;cursor:pointer;transition:background .16s}.ds-chip:hover{background:#e8e8eb}.ds-chip:focus-visible{outline:2px solid #2f6feb;outline-offset:2px}.ds-hb-m{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:11.5px}.ds-hb-n{margin-top:6px;border-top:1px solid #e6e6e9;padding-top:8px;display:flex;align-items:center;gap:8px;font-size:12.5px;line-height:20px;color:#74757b}.ds-hb-n u{text-decoration:underline dotted rgb(116 117 123/.4);text-underline-offset:3px}.ds-ib{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:0;border-radius:9999px;background:transparent;color:#5c5d63;cursor:pointer;transition:background .16s,color .16s}.ds-ib:hover{background:#f1f1f3;color:#111113}.ds-ib:focus-visible{outline:2px solid #2f6feb;outline-offset:2px}.ds-hb-i{min-width:40px;text-align:center;font-weight:500;color:#111113;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Breadcrumbs",
+      "kind": "nav",
+      "refersTo": "crumbs",
+      "description": "With a module in focus: the way back to the whole atlas.",
+      "html": "<nav class=\"ds-cr2\"><button class=\"ds-cr2-b\">Overview</button><span class=\"ds-cr2-s\">/</span><span class=\"ds-cr2-f\">Refunds</span></nav>",
+      "css": ".ds-cr2{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;background:#fff;border-radius:9999px;font-size:12.5px;line-height:20px;color:#74757b;box-shadow:0 0 0 1px #e6e6e9,0 1px 2px rgb(17 17 19/.05),0 12px 32px rgb(17 17 19/.1)}.ds-cr2-b{border:0;background:transparent;padding:0;font:inherit;color:#5c5d63;cursor:pointer;border-radius:4px}.ds-cr2-b:hover{color:#111113}.ds-cr2-b:focus-visible{outline:2px solid #2f6feb;outline-offset:2px}.ds-cr2-s{color:rgb(116 117 123/.6)}.ds-cr2-f{font-weight:500;color:#111113}"
+    },
+    {
+      "name": "Before / After Rows",
+      "kind": "custom",
+      "refersTo": "code-row-before",
+      "description": "Stacked code rows in the detail panel; before struck on risk tint, after on amber tint.",
+      "html": "<div class=\"ds-diff\"><div class=\"ds-cr ds-before\"><span>Before</span><code>if refund.amount &gt; 1000:</code></div><div class=\"ds-cr ds-after\"><span>After</span><code>if refund.amount &gt; 500:</code></div><div class=\"ds-path\">refunds/service.py:20</div></div>",
+      "css": ".ds-diff{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;display:flex;flex-direction:column;gap:6px;width:352px}.ds-cr{display:grid;grid-template-columns:36px minmax(0,1fr);align-items:baseline;gap:8px;border-radius:10px;padding:6px 10px}.ds-cr span{font-size:11.5px;line-height:18px;color:#74757b}.ds-cr code{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:18px;white-space:pre-wrap}.ds-before{background:#fdf0ef}.ds-before code{color:#5c5d63;text-decoration:line-through;text-decoration-color:rgb(217 45 32/.5)}.ds-after{background:#fff6e8}.ds-after code{color:#111113}.ds-path{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:11.5px;line-height:17px;color:#74757b}"
+    },
+    {
+      "name": "Detail Panel",
+      "kind": "card",
+      "refersTo": "detail-panel",
+      "description": "Floating right panel: step header with its kind, the change, its effect, the test status with its note, and the code folded away.",
+      "html": "<aside class=\"ds-panel\"><header class=\"ds-ph\"><span class=\"ds-tile ds-tile-decision\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 3h5v5\"/><path d=\"M8 3H3v5\"/><path d=\"M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3\"/><path d=\"m15 9 6-6\"/></svg></span><div class=\"ds-ph-t\"><h2>Refund above 500?</h2><p>Decision</p></div><button class=\"ds-ib\" aria-label=\"Close\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M18 6 6 18M6 6l12 12\"/></svg></button></header><div class=\"ds-pb\"><p class=\"ds-hl\">Manual review threshold lowered from 1000 to 500.</p><h3 class=\"ds-lbl\">Effect on users</h3><p class=\"ds-body\">Unshipped refunds between 500 and 1000 now wait for review.</p><div class=\"ds-tests\"><div class=\"ds-tv\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#17803d\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/></svg> Covered by tests</div><p class=\"ds-note\">A test sends 600 and checks that it waits for review.</p></div><button class=\"ds-fold\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"m9 18 6-6-6-6\"/></svg> View code</button></div></aside>",
+      "css": ".ds-panel{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;width:384px;background:#fff;border-radius:20px;box-shadow:0 0 0 1px #e6e6e9,0 1px 2px rgb(17 17 19/.05),0 12px 32px rgb(17 17 19/.1);overflow:hidden}.ds-ph{display:flex;align-items:center;gap:10px;padding:14px 16px 12px}.ds-ph .ds-tile{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#ffeee1;color:#c9530a}.ds-ph-t{flex:1;min-width:0}.ds-ph h2{margin:0;font-size:14px;line-height:20px;font-weight:500;color:#111113}.ds-ph p{margin:0;font-size:12px;line-height:16px;color:#74757b}.ds-ib{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:12px;background:transparent;color:#74757b;cursor:pointer}.ds-ib:hover{background:#f1f1f3;color:#111113}.ds-ib:focus-visible{outline:2px solid #2f6feb;outline-offset:2px}.ds-pb{padding:0 16px 24px}.ds-hl{margin:0;font-size:17px;line-height:26px;font-weight:500;color:#111113}.ds-cap{margin:4px 0 0;font-size:12px;line-height:16px;color:#74757b}.ds-lbl{margin:12px 0 4px;font-size:12px;line-height:16px;font-weight:500;color:#74757b}.ds-body{margin:0;font-size:14px;line-height:22px;color:#5c5d63}.ds-tests{margin-top:12px;border-top:1px solid #e6e6e9;padding-top:12px}.ds-tv{display:flex;align-items:center;gap:6px;font-size:13px;line-height:18px;font-weight:500;color:#111113}.ds-note{margin:6px 0 0;font-size:13px;line-height:19px;color:#5c5d63}.ds-fold{margin-top:12px;display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;padding:0;font:inherit;font-size:12.5px;line-height:20px;font-weight:500;color:#5c5d63;cursor:pointer}.ds-fold:hover{color:#111113}.ds-fold:focus-visible{outline:2px solid #2f6feb;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Builder Canvas",
+    "overview": "The viewer is an agent-builder canvas: white cards on a light grey field, joined by thin curves, read left to right. The look follows OpenAI Agent Builder's canvas, which the user pinned. Nothing on the field is decorative. A card shows what kind of step it is, its name, its branches as rows, and the change it carries when it has one. All chrome floats over the canvas: a headline block top left and a panel on the right. None of it is docked into columns.\n\nThe whole product is one map. Each module is a large frame holding its flows, each flow drawn in full under its name; on the left, the ways in (requests, background tasks, schedules) send lines along the gutters into the flows they start. Every change on the map is written in amber on its card, and dashed amber lines run from a change to the same change on another flow (\"同一处改动\") and to flows it may reach (\"可能影响\"). The headline above says where the change lands and what needs attention. Clicking a module brings it into focus; \"走一遍\" on a flow walks it from its trigger to its end; clicking a change rings it and opens its details. Nothing switches pages and nothing is stepped through one by one.\n\nThree signal colours do all the talking. Amber marks change and what it reaches, red marks risk and loss, and blue marks selection. Everything else is ink on white or grey. The density suits reading at a desk: 18px headline, 14px cards, 12 to 12.5px secondary text, and generous space between ranks.\n\nThis world replaces the earlier ticket-wallet world. Stamps, perforations, condensed display type and navy carrier colour belong to that world and are gone. The pan-and-zoom canvas it refused is now the primary surface.",
+    "keyCharacteristics": [
+      "Light grey canvas (#f4f4f5) with white cards, 18px corners, a hairline border and a soft two-layer shadow.",
+      "Pastel kind tiles (trigger green, action violet, decision orange, external yellow, result grey) are the only colour at rest.",
+      "Amber is change and what it reaches; red is risk and removal; blue is selection.",
+      "Floating chrome only: headline block top left, right panel (bottom sheet on phones). Nothing sits in the corners for its own sake.",
+      "One light rendition and system sans throughout. Mono is used only for code, paths, revisions and flows still named after their code.",
+      "Motion explains the change and nothing else: one ripple of at most 0.6s, a camera glide between changes of one flow, no entrance."
+    ],
+    "rules": [
+      {
+        "name": "The Three Signals Rule",
+        "body": "Amber means change and what it reaches, red means risk or what a change removed, and blue means selection. No other element may use these hues, and none of them may appear as decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Change-Is-Amber Rule",
+        "body": "Every change on the map carries an amber field and a 45% amber border, and only changes do. The change the reader picks takes the solid border and halo, and the steps it leads to answer in amber; lines to what a change also touches are dashed amber.",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Bold Rule",
+        "body": "Hierarchy comes from size and ink tone, with weights capped at 500. Text is never uppercase or letterspaced.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono-Means-Code Rule",
+        "body": "Monospace is only for code, file paths, test ids and revisions. Flows and steps still named after their code use it because their names are raw identifiers.",
+        "section": "typography"
+      },
+      {
+        "name": "The Quiet-Around-The-Change Rule",
+        "body": "When a change is on show, every card but the change, the steps it leads to (once the ripple reaches them) and a card opened in the panel drops its shadow, turns 75% white, fades its content to 60% and takes a grayscale tile. Edges outside the ripple, the way in and the change's own loops fall to 45%, their labels to 60%. A change off the map quiets the whole flow behind it. Quiet cards stay legible. They are never hidden.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** write the change on the card it touches, as a field inside the card.",
+      "**Do** keep amber for change: the changed cards, the one picked, the lines to what it touches.",
+      "**Do** keep red to risk and removal, and blue to selection.",
+      "**Do** float every piece of chrome over the canvas with the float shadow and a hairline ring, 12px from the edge.",
+      "**Do** quiet cards around the change (no shadow, grayscale tile, faded content) instead of hiding them.",
+      "**Do** give every step kind its pastel tile and Lucide glyph, at 32px on cards and 28px on pills and in the panel.",
+      "**Do** stack before above after in the panel so both can be read at a glance.",
+      "**Do** let only what changes move: the sentence fades, the flow prefix stays."
+    ],
+    "donts": [
+      "**Don't** split the product into pages or step through changes one by one; it is one map, and focus is a camera move.",
+      "**Don't** dock side columns of change records beside the canvas. The panel shows one step at a time.",
+      "**Don't** add a navigator, a second counter or a change list; the headline walks the changes.",
+      "**Don't** add an entrance animation or a canvas fade-in.",
+      "**Don't** use stamps, perforations, condensed display faces, uppercase labels or letterspacing.",
+      "**Don't** add a dark rendition or tinted card backgrounds. Cards are white and the canvas is #f4f4f5.",
+      "**Don't** use bold type. Hierarchy stops at 500.",
+      "**Don't** imply a test ran. Statuses say what reading the code found and never claim more.",
+      "**Don't** add a footer, a byline or a provenance line; the canvas runs to the bottom edge."
+    ]
+  }
+}

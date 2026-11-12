@@ -11,3 +11,7 @@ dist/
 .tools/
 .env.*
 !.env.example
+
+# Viewer front end: dependencies and scratch builds (the shipped build lives in the package)
+viewer/node_modules/
+viewer/dist/

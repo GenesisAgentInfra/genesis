@@ -1,0 +1,360 @@
+import * as React from "react"
+import { ChevronRight, X } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Evidence } from "@/components/evidence"
+import { KindTile, StatusMark } from "@/canvas/step-node"
+import { cn } from "@/lib/utils"
+import { localizeNote, localizeReason, type Strings } from "@/i18n"
+import { statusOf, type Coupon, type FlowView, type Model } from "@/model"
+import type { ChangeSide, MapStep } from "@/types"
+
+/** What the panel is about: a step (changed or not), a change off the map, or a removed flow. */
+export type PanelSubject =
+  | {
+      type: "step"
+      step: MapStep
+      view?: FlowView
+      ghost?: boolean
+      coupons: Coupon[]
+    }
+  | { type: "offMap"; coupons: Coupon[] }
+  | { type: "removedFlow"; name: string; code: boolean; coupons: Coupon[] }
+
+interface PanelProps {
+  model: Model
+  t: Strings
+  subject: PanelSubject
+  /** The stop on show, scrolled to when the step holds several changes. */
+  focus?: number
+  onClose: () => void
+}
+
+/** What a step or a change is, what it means for users, and what the tests say about it. */
+export function DetailPanel({ model, t, subject, focus, onClose }: PanelProps) {
+  const coupons = subject.coupons
+  const step = subject.type === "step" ? subject.step : undefined
+  // A risk the change itself carries is shown with that change, not a second time here.
+  const carried = new Set(
+    coupons.flatMap((coupon) => coupon.change.finding_ids ?? [])
+  )
+  const findings =
+    subject.type === "step" && subject.view
+      ? (subject.step.finding_ids ?? [])
+          .filter((id) => !carried.has(id))
+          .map((id) =>
+            subject.view!.findings.find((finding) => finding.finding_id === id)
+          )
+          .filter((finding) => finding !== undefined)
+      : []
+  const ghostSummary =
+    subject.type === "step" && subject.ghost
+      ? coupons[0]?.change.explanation?.summary
+      : undefined
+  const title =
+    subject.type === "step"
+      ? (ghostSummary ?? subject.step.name)
+      : subject.type === "offMap"
+        ? t.offMap
+        : subject.name
+  const titleIsCode =
+    (subject.type === "step" &&
+      (subject.view?.flow.stage === "skeleton" ||
+        (subject.ghost && !ghostSummary))) ||
+    (subject.type === "removedFlow" && subject.code)
+  const subtitle =
+    subject.type === "step"
+      ? subject.ghost
+        ? t.removed
+        : t.stepKind[subject.step.kind]
+      : subject.type === "offMap"
+        ? t.offMapHint
+        : t.removed
+  const report = model.payload.report
+  const head = report
+    ? (report.head_ref ??
+      (report.head_revision?.startsWith("worktree:")
+        ? t.workingTree
+        : report.head_revision?.slice(0, 7)))
+    : undefined
+  const base = report
+    ? (report.base_ref ?? report.base_revision?.slice(0, 7))
+    : undefined
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-3">
+        {step && <KindTile kind={step.kind} small />}
+        <div className="min-w-0 flex-1">
+          <h2
+            title={title}
+            className={cn(
+              "truncate text-[14px] leading-5 font-medium text-ink",
+              titleIsCode && "font-mono text-[13px]"
+            )}
+          >
+            {title}
+          </h2>
+          <p className="truncate text-[12px] leading-4 text-ink-3">
+            {subtitle}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label={t.close}
+          className="-mr-1 text-ink-3"
+        >
+          <X />
+        </Button>
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col gap-6 px-4 pb-5">
+          {coupons.map((coupon) => (
+            <ChangeDetail
+              key={`${coupon.no}-${coupon.primary}`}
+              coupon={coupon}
+              model={model}
+              t={t}
+              focused={coupons.length > 1 && focus === coupon.no}
+              // A removed step is already titled with its change's summary.
+              titled={Boolean(ghostSummary)}
+            />
+          ))}
+          {findings.map((finding) => (
+            <section
+              key={finding.finding_id}
+              className="rounded-[12px] bg-risk-bg px-3 py-2.5"
+            >
+              <h3 className="text-[12px] leading-4 font-medium text-risk">
+                {t.risks} · {t.severity[finding.severity]}
+                {model.findingStatus.get(finding.finding_id) &&
+                  ` · ${t.findingStatus[model.findingStatus.get(finding.finding_id)!]}`}
+              </h3>
+              <p className="mt-1 text-[13px] leading-[19px] text-ink">
+                {finding.statement}
+              </p>
+            </section>
+          ))}
+          {subject.type === "removedFlow" && !coupons.length && (
+            <p className="text-[14px] leading-[22px] text-ink-2">
+              {t.flowGone}
+            </p>
+          )}
+          {step && !coupons.length && (
+            <section className="flex flex-col gap-2">
+              {step.reason && (
+                <p className="text-[13px] leading-[19px] text-ink-2">
+                  {step.reason}
+                </p>
+              )}
+              <Label>{t.inCode}</Label>
+              <Evidence ids={step.evidence_ids ?? []} model={model} t={t} />
+            </section>
+          )}
+          {report && base && head && (
+            <p className="mt-auto pt-2 text-[11.5px] leading-4 text-ink-3">
+              {t.refs} <span className="font-mono">{base}</span> →{" "}
+              <span className="font-mono">{head}</span>
+            </p>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="text-[12px] leading-4 font-medium text-ink-3">{children}</h3>
+  )
+}
+
+/** The changed code, before above after, so the two can be read at one glance. */
+function CodeRow({
+  side,
+  label,
+  tone,
+}: {
+  side: ChangeSide
+  label: string
+  tone: "before" | "after"
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[36px_minmax(0,1fr)] items-baseline gap-2 rounded-[10px] px-2.5 py-1.5",
+        tone === "before" ? "bg-risk-bg" : "bg-change-bg"
+      )}
+    >
+      <span className="text-[11.5px] leading-[18px] text-ink-3">{label}</span>
+      <code
+        className={cn(
+          "text-[12px] leading-[18px] [overflow-wrap:anywhere] whitespace-pre-wrap",
+          tone === "before"
+            ? "text-ink-2 line-through decoration-risk/50"
+            : "text-ink"
+        )}
+      >
+        {side.text}
+      </code>
+    </div>
+  )
+}
+
+function ChangeDetail({
+  coupon,
+  model,
+  t,
+  focused,
+  titled,
+}: {
+  coupon: Coupon
+  model: Model
+  t: Strings
+  focused: boolean
+  /** The panel title already says what changed. */
+  titled: boolean
+}) {
+  const ref = React.useRef<HTMLElement>(null)
+  React.useEffect(() => {
+    if (focused)
+      ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+  }, [focused])
+  const { change } = coupon
+  const tests = change.tests
+  const status = statusOf(tests)
+  const risks = (change.finding_ids ?? [])
+    .map((id) =>
+      model.payload.report?.finding_changes?.find(
+        (item) => item.finding.finding_id === id
+      )
+    )
+    .filter((item) => item !== undefined)
+  const where = change.after?.evidence_ids ?? change.before?.evidence_ids ?? []
+  const summary = change.explanation?.summary
+  const hasCode = Boolean(
+    change.before ||
+    change.after ||
+    where.length ||
+    coupon.place.reason ||
+    tests?.items?.length
+  )
+  return (
+    <section ref={ref} className="flex scroll-mt-3 flex-col gap-3">
+      {!titled && (
+        <p className="text-[17px] leading-[26px] font-medium text-ink">
+          {summary ?? t.changeKind[change.kind]}
+        </p>
+      )}
+      {change.explanation?.effect && (
+        <div className="flex flex-col gap-1">
+          <Label>{t.effect}</Label>
+          <p className="text-[14px] leading-[22px] text-ink-2">
+            {change.explanation.effect}
+          </p>
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+        <StatusMark
+          status={status}
+          label={tests ? t.verdict[tests.verdict] : t.status.unsure}
+          className="text-[13px] leading-[18px] font-medium text-ink [&_svg]:size-4"
+        />
+        {tests?.note && (
+          <p className="text-[13px] leading-[19px] text-ink-2">
+            {localizeNote(tests.note, model.lang)}
+          </p>
+        )}
+      </div>
+      {risks.map((item) => (
+        <div
+          key={item.finding.finding_id}
+          className="rounded-[12px] bg-risk-bg px-3 py-2.5"
+        >
+          <p className="text-[12px] leading-4 font-medium text-risk">
+            {item.status === "introduced"
+              ? t.newRisk
+              : t.findingStatus[item.status]}{" "}
+            · {t.severity[item.finding.severity]}
+          </p>
+          <p className="mt-1 text-[13px] leading-[19px] text-ink">
+            {item.finding.statement}
+          </p>
+        </div>
+      ))}
+      {hasCode && (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-[12.5px] leading-5 font-medium text-ink-2 hover:text-ink">
+            <ChevronRight
+              aria-hidden
+              className="size-3.5 transition-transform duration-160 group-data-[state=open]:rotate-90"
+            />
+            <span className="group-data-[state=open]:hidden">{t.viewCode}</span>
+            <span className="hidden group-data-[state=open]:inline">
+              {t.hideCode}
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-3 pt-2.5">
+            {(change.before || change.after) && (
+              <div className="flex flex-col gap-1.5">
+                {change.before && (
+                  <CodeRow
+                    side={change.before}
+                    label={t.before}
+                    tone="before"
+                  />
+                )}
+                {change.after && (
+                  <CodeRow side={change.after} label={t.after} tone="after" />
+                )}
+              </div>
+            )}
+            <Evidence
+              ids={where}
+              model={model}
+              t={t}
+              skipText={(change.after ?? change.before)?.text}
+            />
+            {coupon.place.reason && (
+              <div className="flex flex-col gap-0.5">
+                <Label>{t.placed}</Label>
+                <p className="text-[12px] leading-[18px] text-ink-3">
+                  {localizeReason(coupon.place.reason, model.lang)}
+                </p>
+              </div>
+            )}
+            {tests?.items && tests.items.length > 0 && (
+              <div className="flex flex-col gap-0.5">
+                <Label>{t.tests}</Label>
+                <ul className="flex flex-col gap-0.5">
+                  {tests.items.map((item) => {
+                    const [file, name] = item.test_id
+                      .replace(/^head::|^base::/, "")
+                      .split("#")
+                    return (
+                      <li
+                        key={item.test_id}
+                        className="font-mono text-[11.5px] leading-[17px] [overflow-wrap:anywhere] text-ink-2"
+                      >
+                        {name ?? file}{" "}
+                        <span className="text-ink-3">{name ? file : ""}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </section>
+  )
+}
