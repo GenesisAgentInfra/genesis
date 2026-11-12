@@ -350,6 +350,10 @@ What the reader looks at first: a touched flow, whole, with its change standing 
 ### Flow Row
 A flow the change leaves alone: a white 44px card as wide as its frame, a 28px grey tile with the glyph of what starts it, the flow's name in 13.5px ink (mono for flows still named after their code) and "接口请求 · N 步" in ink-3 at the right ("代码结构" in place of the count for those, "已删除" and a dashed border and struck name for a flow that is gone). Clicking it opens its module framed on that flow; a removed flow opens its panel and takes the amber ring.
 
+A flow the plan has named and nobody has described yet reads as what the product does, not as code: its name is set in ink like any other, the right says "未归纳" alone (the tile already shows what starts it, and the room goes to the name), and when the plan gave it a sentence the row is 62px tall with that sentence under the name in 12px ink-3, one line, cut with an ellipsis and whole in the tooltip.
+
+The business processes of a module come first. Its lookups and upkeep (`tier: supporting`) fold into one 34px line under them, "另有 N 条查询和维护流程" with a chevron, dashed hairline, 12.5px ink-2; clicking it opens the module, where they are listed as rows after the others. A module with nothing but lookups and upkeep shows them as rows.
+
 ### Far View
 Below 0.5 zoom a changed card is covered by a solid amber block and carries a status dot at its corner (green tested, red untested, grey unsure; 10px on screen with a white ring); changes off the map do the same; every other card fades to 40%. The first view never goes there; it is what a reader sees after zooming out by hand.
 
@@ -392,7 +396,7 @@ Every step the change leaves alone, with no loop or tag to show: a 44px row with
 ### Module Frame
 A module of the product around its flows.
 - **Shape:** 24px radius, 1.5px border, white at 45% over the canvas. The header (56px) holds the module name in ink at 500 and "N 处改动" in change-ink or "N 条流程" in ink-3, both keeping their size on screen.
-- **States:** a frame holding changes takes a 45% amber border, deepening on hover (others go to 50% ink-3); the frame for changes outside the flows is dashed. On hover a closed frame shows "展开全部步骤" with a zoom-in glyph at the header's right. While a module is open every other frame, its cards and lines drop to 35%.
+- **States:** a frame holding changes takes a 45% amber border, deepening on hover (others go to 50% ink-3); the frame for changes outside the flows is dashed. On hover a closed frame shows "展开全部步骤" with a zoom-in glyph as a white pill laid over the header's right, so a module's name never gives up room to it. While a module is open every other frame, its cards and lines drop to 35%.
 - **Opening:** clicking a closed frame (or a row inside it) draws its untouched flows too, in place. Cards that stay slide to their new places over 320ms ease-out, new ones fade in over 220ms, and the lines return when the cards have settled; the camera glides (520ms) to the changed cards and their flow names, never below 0.8, from the top left when they do not fit. Reduced motion cuts.
 - **Flow name row:** over a drawn flow: its name (13px on screen, mono for flows still named after their code, struck through in ink at 1.5px for removed flows), a "代码结构" tag for skeleton flows, what starts it (a 14px glyph and "接口请求" / "后台任务" / "定时任务" in 12px ink-3), and the "走一遍" pill.
 

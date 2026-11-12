@@ -737,7 +737,17 @@ def partial(snapshot_id):
                 "flow_ids": ["flow_submit_report", "flow_approve_report"],
             }
         ],
-        flows=[submit, {**approve_flow(f, static=True), "limitations": [failed]}],
+        flows=[
+            submit,
+            {
+                # Not described yet: the plan's name and summary over the static structure.
+                **approve_flow(f, static=True),
+                "name": "经理审批",
+                "summary": "经理批准一张处于待审批状态的报销单。",
+                "name_from_plan": True,
+                "limitations": [failed],
+            },
+        ],
         findings=[loop_finding(f)],
         coverage={
             "scope": "规划中的 2 条流程；其中 1 条归纳失败，跨流程连接尚未处理。",

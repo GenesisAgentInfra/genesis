@@ -11,6 +11,10 @@ import type { EntryKind } from "@/types"
  * pills for the rest; a flow it leaves alone is one row, until its module is opened. Every
  * frame keeps to one grid: a touched module runs the full width, the others share rows of
  * equal cells under it.
+ *
+ * A row reads as what the product does: the business processes of a module come first, each
+ * under the name and the one sentence the plan gave it, and its lookups and upkeep fold
+ * into one line until the module is opened.
  */
 
 export const SEP = "::"
@@ -25,7 +29,10 @@ const OFFMAP_GAP = 20
 /** The least a frame holds across: one row, or one change outside the flows. */
 const ROW_W = 260
 const ROW_H = 44
+/** A row that also carries the sentence saying what the flow is for. */
+const ROW_TALL = 62
 const ROW_GAP = 8
+const MORE_H = 34
 
 export function stepNodeId(flowId: string, stepId: string): string {
   return `${flowId}${SEP}${stepId}`
@@ -59,10 +66,20 @@ export interface LabelData extends Record<string, unknown> {
 export interface RowData extends Record<string, unknown> {
   flowId: string
   name: string
+  /** What a user gets done with it, when the row has room for the sentence. */
+  summary?: string
   steps: number
+  /** Still named after its code. */
   code: boolean
+  /** Named by the plan; its steps are not described yet. */
+  pending: boolean
   struck: boolean
   entry?: EntryKind
+}
+/** The lookups and upkeep of a module, folded into one line until it is opened. */
+export interface MoreData extends Record<string, unknown> {
+  moduleId: string
+  count: number
 }
 export interface OffMapData extends Record<string, unknown> {
   coupon: Coupon
@@ -79,7 +96,9 @@ export type ModuleNode = Node<ModuleData, "module">
 export type LabelNode = Node<LabelData, "label">
 export type OffMapNode = Node<OffMapData, "offmap">
 export type RowNode = Node<RowData, "row">
-export type AtlasNode = StepNode | ModuleNode | LabelNode | OffMapNode | RowNode
+export type MoreNode = Node<MoreData, "more">
+export type AtlasNode =
+  StepNode | ModuleNode | LabelNode | OffMapNode | RowNode | MoreNode
 export type RelationEdge = Edge<RelationData, "relation">
 export type AtlasEdge = FlowEdge | RelationEdge
 
@@ -165,9 +184,20 @@ function placeFlow(
     edges: [],
     triggers: [`row${SEP}${flowId}`],
     w: ROW_W,
-    h: ROW_H,
+    h: planned(view) && view.flow.summary ? ROW_TALL : ROW_H,
   }
 }
+
+/** A flow the plan has named and nobody has described yet. */
+function planned(view: FlowView): boolean {
+  return view.flow.stage === "skeleton" && view.flow.name_from_plan === true
+}
+/** Still named after its code: a route or a function, not what a person would call it. */
+function codeNamed(view: FlowView): boolean {
+  return view.flow.stage === "skeleton" && !view.flow.name_from_plan
+}
+const supporting = (flow: PlacedFlow) =>
+  flow.view.flow.tier === "supporting" && !flow.view.removed
 
 /**
  * The atlas. `open` names the module frame whose flows are drawn step by step; `span` is
@@ -211,15 +241,25 @@ export function buildAtlas(
     views: FlowView[],
     offMap: Coupon[]
   ): Block => {
-    const placed = views.map((view) => {
-      const flow = placeFlow(model, view, id === open, span - 2 * P)
-      flows.set(view.flow.flow_id, flow)
-      home.set(view.flow.flow_id, id)
-      return flow
-    })
+    const placed = views
+      .map((view) => {
+        const flow = placeFlow(model, view, id === open, span - 2 * P)
+        flows.set(view.flow.flow_id, flow)
+        home.set(view.flow.flow_id, id)
+        return flow
+      })
+      // The business processes before the lookups and upkeep around them.
+      .sort((a, b) => Number(supporting(a)) - Number(supporting(b)))
     // What is drawn comes first, the rows after it.
     const drawn = placed.filter((flow) => flow.mode !== "row")
-    const rows = placed.filter((flow) => flow.mode === "row")
+    const every = placed.filter((flow) => flow.mode === "row")
+    // Until the module is opened its lookups and upkeep are one line, unless it has
+    // nothing else to show.
+    const folded =
+      id !== open && every.some((flow) => !supporting(flow))
+        ? every.filter(supporting)
+        : []
+    const rows = every.filter((flow) => !folded.includes(flow))
     const cards = Math.min(offMap.length, 3)
     const need = Math.max(
       ROW_W,
@@ -230,20 +270,23 @@ export function buildAtlas(
       flow: PlacedFlow,
       x: number,
       y: number,
-      w: number
+      w: number,
+      h = ROW_H
     ): RowNode => ({
       id: flow.triggers[0],
       type: "row",
       position: { x, y },
-      ...sized(w, ROW_H),
+      ...sized(w, h),
       draggable: false,
       connectable: false,
       selectable: false,
       data: {
         flowId: flow.view.flow.flow_id,
         name: flow.view.flow.name,
+        summary: h > ROW_H ? flow.view.flow.summary : undefined,
         steps: flow.view.flow.steps?.length ?? 0,
-        code: flow.view.flow.stage === "skeleton",
+        code: codeNamed(flow.view),
+        pending: planned(flow.view),
         struck: flow.view.removed,
         entry: flow.view.flow.entries[0]?.kind,
       },
@@ -300,7 +343,7 @@ export function buildAtlas(
           data: {
             flowId: view.flow.flow_id,
             name: view.flow.name,
-            code: view.flow.stage === "skeleton",
+            code: codeNamed(view),
             struck: view.removed,
             changes: model.stopsOn.get(view.flow.flow_id)?.length ?? 0,
             entry: view.flow.entries[0]?.kind,
@@ -345,9 +388,23 @@ export function buildAtlas(
       }
       rows.forEach((flow, index) => {
         y += index ? ROW_GAP : gap ? gap - 12 : 0
-        nodes.push(rowOf(flow, P, y, inner))
-        y += ROW_H
+        nodes.push(rowOf(flow, P, y, inner, flow.h))
+        y += flow.h
       })
+      if (folded.length) {
+        y += rows.length ? ROW_GAP : gap ? gap - 12 : 0
+        nodes.push({
+          id: `more${SEP}${id}`,
+          type: "more",
+          position: { x: P, y },
+          ...sized(inner, MORE_H),
+          draggable: false,
+          connectable: false,
+          selectable: false,
+          data: { moduleId: id, count: folded.length },
+        })
+        y += MORE_H
+      }
       return { nodes, edges, h: y + P }
     }
     return {

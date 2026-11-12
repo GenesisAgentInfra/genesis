@@ -9,6 +9,7 @@ import {
 } from "@xyflow/react"
 import {
   Bot,
+  ChevronDown,
   Clock,
   Code,
   Globe,
@@ -28,6 +29,7 @@ import type { EntryKind } from "@/types"
 import type {
   LabelNode,
   ModuleNode,
+  MoreNode,
   OffMapNode,
   RelationEdge,
   RowNode,
@@ -71,7 +73,7 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
         away && "opacity-35"
       )}
     >
-      <div className="flex h-[56px] items-center gap-2.5 px-6">
+      <div className="relative flex h-[56px] items-center gap-2.5 px-6">
         <span
           className="truncate leading-[1.2] font-medium text-ink"
           style={steady(15, 34)}
@@ -90,7 +92,8 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
             : t.moduleFlows(data.flows)}
         </span>
         {!data.open && (
-          <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-[12px] leading-4 text-ink-3 opacity-0 transition-opacity duration-160 group-hover:opacity-100">
+          // Laid over the header, so a module's name never gives up room to a hint.
+          <span className="pointer-events-none absolute top-1/2 right-4 inline-flex -translate-y-1/2 items-center gap-1 rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 text-ink-3 opacity-0 shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160 group-hover:opacity-100">
             <ZoomIn aria-hidden className="size-3.5" />
             {t.openModule}
           </span>
@@ -285,27 +288,56 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
       <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-field text-ink-3">
         <Icon aria-hidden className="size-3.5" />
       </span>
-      <span
-        title={data.name}
-        className={cn(
-          "min-w-0 flex-1 truncate text-[13.5px] leading-5 text-ink",
-          data.code && "font-mono text-[12.5px] text-ink-2",
-          data.struck &&
-            "text-ink-2 line-through decoration-ink decoration-[1.5px]"
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span
+          title={data.name}
+          className={cn(
+            "truncate text-[13.5px] leading-5 text-ink",
+            data.code && "font-mono text-[12.5px] text-ink-2",
+            data.struck &&
+              "text-ink-2 line-through decoration-ink decoration-[1.5px]"
+          )}
+        >
+          {data.name}
+        </span>
+        {data.summary && (
+          <span
+            title={data.summary}
+            className="truncate text-[12px] leading-[17px] text-ink-3"
+          >
+            {data.summary}
+          </span>
         )}
-      >
-        {data.name}
       </span>
       <span className="shrink-0 text-[11.5px] leading-4 text-ink-3">
         {data.struck
           ? t.removed
-          : [
-              data.entry && t.entryKind[data.entry],
-              data.code ? t.skeletonTag : t.stepsCount(data.steps),
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+          : data.pending
+            ? // The tile already shows what starts it; the room goes to its name.
+              t.notDescribed
+            : [
+                data.entry && t.entryKind[data.entry],
+                data.code ? t.skeletonTag : t.stepsCount(data.steps),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
       </span>
+    </div>
+  )
+}
+
+/** The lookups and upkeep of a module in one line; opening the module lists them. */
+export function MoreView({ data }: NodeProps<MoreNode>) {
+  const { t, focusedModule } = useCanvas()
+  return (
+    <div
+      className={cn(
+        "flex h-full w-full cursor-pointer items-center gap-1.5 rounded-[14px] border border-dashed border-line px-3 text-[12.5px] leading-[18px] text-ink-2 transition-[opacity,color,border-color] duration-160 hover:border-ink-3/50 hover:text-ink",
+        focusedModule && "opacity-35"
+      )}
+    >
+      <ChevronDown aria-hidden className="size-3.5 shrink-0" />
+      <span className="truncate">{t.supportingRow(data.count)}</span>
     </div>
   )
 }

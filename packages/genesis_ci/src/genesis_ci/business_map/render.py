@@ -67,6 +67,10 @@ STAGE_TEXT = {
     "skeleton": "Static structure. Not yet synthesized into business steps.",
     "synthesized": "Synthesized by a coding agent from the code evidence shown.",
 }
+PLANNED_TEXT = (
+    "Named by the plan and not described yet. The steps below are the static code "
+    "structure, not business steps."
+)
 VERDICT_TEXT = {
     "covered": "covered",
     "reached_only": "reached only",
@@ -304,6 +308,10 @@ def _flow(flow: MapFlow, refs, excerpts, findings, opened: bool, overlay=None) -
     count = overlay.count.get(flow.flow_id, 0) if overlay else 0
     reaching = overlay.reaching.get(flow.flow_id) if overlay else None
     marks = _tag(f"{count} change{'s' * (count != 1)}", "warn") if count else ""
+    if flow.name_from_plan:
+        marks += _tag("not described yet")
+    if flow.tier != "primary":
+        marks += _tag("supporting")
     reach = ""
     if reaching is not None:
         marks += _tag("possibly affected", "warn")
@@ -319,7 +327,9 @@ def _flow(flow: MapFlow, refs, excerpts, findings, opened: bool, overlay=None) -
         + marks
         + "</summary>"
         + (f"<p>{escape(flow.summary)}</p>" if flow.summary else "")
-        + f'<p class="muted">{escape(STAGE_TEXT[flow.stage.value])}</p>'
+        + '<p class="muted">'
+        + escape(PLANNED_TEXT if flow.name_from_plan else STAGE_TEXT[flow.stage.value])
+        + "</p>"
         + reach
         + f'<ol class="steps">{"".join(items)}</ol>'
         + (
@@ -379,6 +389,11 @@ def _off_map(report: ChangeReport, overlay: _Overlay, refs, excerpts) -> str:
     )
 
 
+def by_tier(flows, flow_ids) -> list[str]:
+    """The business processes of a domain before the lookups and upkeep around them."""
+    return sorted(flow_ids, key=lambda flow_id: flows[flow_id].tier != "primary")
+
+
 def render_html(
     business_map: BusinessMap,
     bundle: EvidenceBundle | None = None,
@@ -402,7 +417,7 @@ def render_html(
     sections = []
     for domain in business_map.domains:
         label = "grouped by path" if domain.support == "path_grouping" else "business domain"
-        body = "".join(shown(flows[flow_id]) for flow_id in domain.flow_ids)
+        body = "".join(shown(flows[flow_id]) for flow_id in by_tier(flows, domain.flow_ids))
         sections.append(f"<section><h2>{escape(domain.name)}{_tag(label)}</h2>{body}</section>")
     loose = [flow for flow in business_map.flows if flow.flow_id not in grouped]
     if loose:
@@ -613,12 +628,20 @@ def render_summary(business_map: BusinessMap, report: ChangeReport | None = None
         sections.append(("Ungrouped", loose))
     for name, flow_ids in sections:
         lines += ["", f"## {name}", ""]
-        for flow_id in flow_ids:
+        for flow_id in by_tier(flows, flow_ids):
             flow = flows[flow_id]
             left = flow.accounting.unaccounted
             note = f", {left} facts not accounted for" if left else ""
             mark = ", changed" if flow_id in touched else ""
-            lines.append(f"- {flow.name} ({len(flow.steps)} steps, {flow.stage.value}{note}{mark})")
+            role = ", supporting" if flow.tier != "primary" else ""
+            # A flow the plan named has no business steps yet; its step count is code.
+            state = (
+                "not described yet"
+                if flow.name_from_plan
+                else f"{len(flow.steps)} steps, {flow.stage.value}"
+            )
+            told = f": {flow.summary}" if flow.summary and flow.name_from_plan else ""
+            lines.append(f"- {flow.name}{told} ({state}{role}{note}{mark})")
     uncertain = uncertain_items(business_map)
     if uncertain:
         lines += ["", "## Uncertain", ""] + [f"- {item}" for item in uncertain]

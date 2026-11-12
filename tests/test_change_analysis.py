@@ -796,8 +796,8 @@ def test_source_changes_go_to_the_step_citing_them_and_a_new_flow_owns_its_findi
     entries = {item.symbol_id.partition("#")[2]: item for item in workspace.entries().values()}
     plan = {
         "flows": [
-            {"key": "send", "entry_ids": [entries["send_order"].entry_id]},
-            {"key": "status", "entry_ids": [entries["status"].entry_id]},
+            {"key": "send", "name": "下单", "entry_ids": [entries["send_order"].entry_id]},
+            {"key": "status", "name": "查看状态", "entry_ids": [entries["status"].entry_id]},
         ]
     }
     planned_tasks = workspace.save_plan(MapPlan.model_validate(plan))["tasks"]

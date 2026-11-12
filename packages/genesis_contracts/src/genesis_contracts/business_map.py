@@ -105,6 +105,14 @@ class FlowStage(StrEnum):
     synthesized = "synthesized"
 
 
+class FlowTier(StrEnum):
+    """`primary` flows are the business processes a reader comes for: they decide
+    something or have an effect. `supporting` flows are lookups and upkeep."""
+
+    primary = "primary"
+    supporting = "supporting"
+
+
 class FindingSource(StrEnum):
     rule = "rule"
     agent_observation = "agent_observation"
@@ -249,6 +257,10 @@ class MapFlow(ContractModel):
     summary: Text | None = None
     stage: FlowStage
     support: Support
+    tier: FlowTier = FlowTier.primary
+    # A skeleton flow named by the plan: its name and summary are the agent's reading
+    # of the entry points and no evidence has been checked for them yet.
+    name_from_plan: bool = False
     entries: tuple[MapEntry, ...] = Field(min_length=1)
     steps: tuple[MapStep, ...] = ()
     edges: tuple[MapEdge, ...] = ()
@@ -294,6 +306,8 @@ class MapFlow(ContractModel):
                 raise ValueError("a skeleton flow contains only static steps")
         elif self.support != Support.agent_synthesis:
             raise ValueError("a synthesized flow is agent synthesis")
+        elif self.name_from_plan:
+            raise ValueError("a synthesized flow is named by its accepted description")
         return self
 
 

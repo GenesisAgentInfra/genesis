@@ -21,6 +21,8 @@
       "summary": "员工提交报销单；金额达到阈值时先由模型审核，再等待经理审批，否则自动批准。",
       "stage": "synthesized",
       "support": "agent_synthesis",
+      "tier": "primary",
+      "name_from_plan": false,
       "entries": [
         {
           "entry_id": "entry_submit_report",
@@ -276,9 +278,12 @@
     },
     {
       "flow_id": "flow_approve_report",
-      "name": "POST /reports/{report_id}/approve · approve_report",
+      "name": "经理审批",
+      "summary": "经理批准一张处于待审批状态的报销单。",
       "stage": "skeleton",
       "support": "static_fact",
+      "tier": "primary",
+      "name_from_plan": true,
       "entries": [
         {
           "entry_id": "entry_approve_report",

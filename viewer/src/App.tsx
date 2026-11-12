@@ -43,6 +43,7 @@ import {
   type LabelData,
   type ModuleData,
   type OffMapData,
+  type MoreData,
   type RowData,
 } from "@/atlas/build"
 import {
@@ -51,6 +52,7 @@ import {
   ModuleView,
   OffMapView,
   RelationView,
+  MoreView,
   RowView,
 } from "@/atlas/nodes"
 import { cn } from "@/lib/utils"
@@ -64,6 +66,7 @@ const NODE_TYPES = {
   label: LabelView,
   offmap: OffMapView,
   row: RowView,
+  more: MoreView,
 }
 const EDGE_TYPES = {
   flow: FlowEdge,
@@ -587,6 +590,7 @@ function Viewer({ model }: { model: Model }) {
           ? (node.data as LabelData | RowData).flowId || undefined
           : undefined
   const homeOf = (node: AtlasNode): string | undefined => {
+    if (node.type === "more") return (node.data as MoreData).moduleId
     const flowId = flowIdOf(node)
     return flowId === "__offmap" ? APART : atlas.home.get(flowId ?? "")
   }
@@ -807,6 +811,11 @@ function Viewer({ model }: { model: Model }) {
     if (focused && at && at !== focused) {
       if (changeOn) pickStop(changeOn)
       else focusModule(at, flowIdOf(node))
+      return
+    }
+    if (node.type === "more") {
+      // The folded lookups and upkeep are listed by opening their module.
+      if (at) focusModule(at)
       return
     }
     if (node.type === "label" || node.type === "row") {

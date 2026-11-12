@@ -203,6 +203,9 @@ function samples(payload: Payload): string[] {
     if (flow.stage === "synthesized") {
       texts.push(flow.name, flow.summary ?? "")
       for (const step of flow.steps ?? []) texts.push(step.name)
+    } else if (flow.name_from_plan) {
+      // Named by the plan: the name and summary are written for the reader.
+      texts.push(flow.name, flow.summary ?? "")
     }
   }
   for (const item of payload.report?.changes ?? []) {
