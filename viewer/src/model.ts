@@ -19,10 +19,22 @@ export interface Coupon {
   change: ChangeItem
   place: Projection
   primary: boolean
+  /** The change brings a risk that was not there before. */
+  risky: boolean
+  /** How much the change asks to be looked at: the colour of its card. */
+  tone: Tone
 }
 
 /** What the tests say about a change, in the three words the page shows. */
 export type TestStatus = "tested" | "untested" | "unsure"
+
+/** The one thing a card's colour says: a new risk first, else what the tests say. */
+export type Tone = "risk" | TestStatus
+
+/** What the reader may narrow the changes down to. */
+export type Filter = Tone
+
+export const TONES: Tone[] = ["risk", "untested", "unsure", "tested"]
 
 export type StopKind = "step" | "removed_step" | "off_map" | "removed_flow"
 
@@ -39,6 +51,8 @@ export interface Stop {
   nodeId?: string
   /** None for a removed flow, which carries no verdict. */
   status?: TestStatus
+  risky: boolean
+  tone?: Tone
   /** Other flows the same change sits on, with its node there. */
   also: { flowId: string; nodeId: string }[]
   /** Flows that reach the changed code through calls, though no step of theirs rests on it. */
@@ -69,6 +83,10 @@ export interface Counts {
   /** The report lists fewer changes than were found. */
   truncated: boolean
   untested: number
+  unsure: number
+  tested: number
+  /** Changes that bring a new risk, and the new risks themselves. */
+  risky: number
   newRisks: number
   files: number
   tests: number
@@ -184,6 +202,20 @@ export function reachOf(view: FlowView, stepId: string): Reach {
     far: ends.filter((id) => !nearby.has(id)),
     ends: ends.length + (isEnd ? 1 : 0),
   }
+}
+
+/** Whether a change is one the reader asked to see. */
+export function matches(
+  item: { risky: boolean; status?: TestStatus },
+  filter?: Filter
+): boolean {
+  if (!filter) return true
+  return filter === "risk" ? item.risky : item.status === filter
+}
+
+/** What identifies a stop from one opening of the page to the next. */
+export function stopKey(stop: Stop): string {
+  return stop.change?.change_id ?? `flow:${stop.flowId ?? stop.no}`
 }
 
 export function removedNodeId(stepId: string, no: number): string {
@@ -351,8 +383,18 @@ export function buildModel(payload: Payload): Model {
     const no = stops.length + 1
     const places = [change.projection, ...(change.other_projections ?? [])]
     let primary: Coupon | undefined
+    const status = statusOf(change.tests)
+    const risky = (change.finding_ids ?? []).some((id) => introduced.has(id))
+    const tone: Tone = risky ? "risk" : status
     places.forEach((place, order) => {
-      const coupon: Coupon = { no, change, place, primary: order === 0 }
+      const coupon: Coupon = {
+        no,
+        change,
+        place,
+        primary: order === 0,
+        risky,
+        tone,
+      }
       if (order === 0) primary = coupon
       if (place.status === "unassigned") return
       const target = flowById.get(place.flow_id ?? "")
@@ -409,7 +451,9 @@ export function buildModel(payload: Payload): Model {
       coupon: primary,
       flowId: home,
       nodeId: nodeOf(change.projection, no),
-      status: statusOf(change.tests),
+      status,
+      risky,
+      tone,
       also,
       maybe,
     })
@@ -417,14 +461,23 @@ export function buildModel(payload: Payload): Model {
   for (const flow of removedFlows) {
     const no = stops.length + 1
     const change = mergedInto.get(flow.flow_id)
+    const risky = (change?.finding_ids ?? []).some((id) => introduced.has(id))
     stops.push({
       no,
       kind: "removed_flow",
       change,
       coupon: change
-        ? { no, change, place: change.projection, primary: true }
+        ? {
+            no,
+            change,
+            place: change.projection,
+            primary: true,
+            risky,
+            tone: risky ? "risk" : "unsure",
+          }
         : undefined,
       flowId: flow.flow_id,
+      risky,
       also: [],
       maybe: [],
     })
@@ -509,6 +562,9 @@ export function buildModel(payload: Payload): Model {
         (item) => item.code === "changes_truncated"
       ),
       untested: stops.filter((stop) => stop.status === "untested").length,
+      unsure: stops.filter((stop) => stop.status === "unsure").length,
+      tested: stops.filter((stop) => stop.status === "tested").length,
+      risky: stops.filter((stop) => stop.risky).length,
       newRisks: introduced.size,
       files: report?.unanalyzed_changes?.length ?? 0,
       tests: all.length - product.length,

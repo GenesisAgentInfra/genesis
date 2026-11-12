@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronRight, Play, X } from "lucide-react"
+import { Check, ChevronRight, Play, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -7,13 +7,38 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Evidence } from "@/components/evidence"
-import { KindTile, StatusMark } from "@/canvas/step-node"
+import { KindTile, NumberDisc, StatusMark } from "@/canvas/step-node"
 import { cn } from "@/lib/utils"
-import { localizeNote, localizeReason, type Strings } from "@/i18n"
-import { statusOf, type Coupon, type FlowView, type Model } from "@/model"
-import type { ChangeSide, MapStep } from "@/types"
+import {
+  localizeNote,
+  localizeReason,
+  type Strings,
+  type VerdictDetail,
+} from "@/i18n"
+import {
+  statusOf,
+  type Coupon,
+  type FlowView,
+  type Model,
+  type TestStatus,
+} from "@/model"
+import type { ChangeSide, CoverageAssessment, MapStep } from "@/types"
+
+/**
+ * What a verdict rests on, said after the one word the page uses for it everywhere. A
+ * change that is tested needs no more than that word.
+ */
+function detailOf(
+  tests: CoverageAssessment | undefined,
+  status: TestStatus
+): VerdictDetail | undefined {
+  if (!tests || tests.verdict === "covered") return undefined
+  if (tests.verdict === "not_reached") return "not_reached"
+  if (tests.verdict === "reached_only")
+    return status === "untested" ? "reached_untested" : "reached_unsure"
+  return "unknown"
+}
 
 /** What the panel is about: a step (changed or not), a change off the map, or a removed flow. */
 export type PanelSubject =
@@ -35,6 +60,13 @@ interface PanelProps {
   focus?: number
   /** Walk the flow this step belongs to, from its trigger to its end. */
   onWalk?: () => void
+  /** The changes on show as stops of the walk: whether they are seen, and the way on. */
+  review?: {
+    seen: boolean
+    reviewed: Set<number>
+    onToggle: () => void
+    onNext?: () => void
+  }
   onClose: () => void
 }
 
@@ -45,6 +77,7 @@ export function DetailPanel({
   subject,
   focus,
   onWalk,
+  review,
   onClose,
 }: PanelProps) {
   const coupons = subject.coupons
@@ -97,8 +130,8 @@ export function DetailPanel({
     : undefined
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-3">
+    <div className="flex h-full max-h-[inherit] min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2.5 px-4 pt-3.5 pb-3">
         {step && <KindTile kind={step.kind} small />}
         <div className="min-w-0 flex-1">
           <h2
@@ -135,7 +168,7 @@ export function DetailPanel({
           <X />
         </Button>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 [scrollbar-width:thin] overflow-y-auto overscroll-contain">
         <div className="flex flex-col gap-6 px-4 pb-5">
           {coupons.map((coupon) => (
             <ChangeDetail
@@ -144,6 +177,7 @@ export function DetailPanel({
               model={model}
               t={t}
               focused={coupons.length > 1 && focus === coupon.no}
+              seen={review?.reviewed.has(coupon.no) ?? false}
               // A removed step is already titled with its change's summary.
               titled={Boolean(ghostSummary)}
             />
@@ -153,7 +187,7 @@ export function DetailPanel({
               key={finding.finding_id}
               className="rounded-[12px] bg-risk-bg px-3 py-2.5"
             >
-              <h3 className="text-[12px] leading-4 font-medium text-risk">
+              <h3 className="text-[12px] leading-4 font-medium text-risk-ink">
                 {t.risks} · {t.severity[finding.severity]}
                 {model.findingStatus.get(finding.finding_id) &&
                   ` · ${t.findingStatus[model.findingStatus.get(finding.finding_id)!]}`}
@@ -180,13 +214,42 @@ export function DetailPanel({
             </section>
           )}
           {report && base && head && (
-            <p className="mt-auto pt-2 text-[11.5px] leading-4 text-ink-3">
+            <p className="mt-auto pt-2 text-[12px] leading-4 text-ink-3">
               {t.refs} <span className="font-mono">{base}</span> →{" "}
               <span className="font-mono">{head}</span>
             </p>
           )}
         </div>
-      </ScrollArea>
+      </div>
+      {review && (
+        // The walk's own controls, where the reading ends: seen, and on to the next.
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line px-3 py-2">
+          <Button
+            variant={review.seen ? "ghost" : "outline"}
+            size="sm"
+            aria-pressed={review.seen}
+            onClick={review.onToggle}
+            className={cn(
+              "rounded-full px-3 text-[13px]",
+              review.seen ? "text-ink-2" : "bg-card text-ink"
+            )}
+          >
+            <Check data-icon="inline-start" />
+            {review.seen ? t.reviewed : t.markReviewed}
+          </Button>
+          {review.onNext && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={review.onNext}
+              className="rounded-full px-3 text-[13px] text-ink-2"
+            >
+              {t.nextChange}
+              <ChevronRight data-icon="inline-end" />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -211,13 +274,14 @@ function CodeRow({
     <div
       className={cn(
         "grid grid-cols-[36px_minmax(0,1fr)] items-baseline gap-2 rounded-[10px] px-2.5 py-1.5",
-        tone === "before" ? "bg-risk-bg" : "bg-change-bg"
+        tone === "before" ? "bg-risk-bg" : "bg-ok-bg"
       )}
     >
-      <span className="text-[11.5px] leading-[18px] text-ink-3">{label}</span>
+      <span className="text-[12px] leading-[18px] text-ink-3">{label}</span>
+      {/* Code keeps its lines; one that is too long scrolls instead of breaking. */}
       <code
         className={cn(
-          "text-[12px] leading-[18px] [overflow-wrap:anywhere] whitespace-pre-wrap",
+          "block [scrollbar-width:thin] overflow-x-auto text-[12px] leading-[18px] whitespace-pre",
           tone === "before"
             ? "text-ink-2 line-through decoration-risk/50"
             : "text-ink"
@@ -234,12 +298,15 @@ function ChangeDetail({
   model,
   t,
   focused,
+  seen,
   titled,
 }: {
   coupon: Coupon
   model: Model
   t: Strings
   focused: boolean
+  /** The reader has marked this change as seen. */
+  seen: boolean
   /** The panel title already says what changed. */
   titled: boolean
 }) {
@@ -260,6 +327,7 @@ function ChangeDetail({
     .filter((item) => item !== undefined)
   const where = change.after?.evidence_ids ?? change.before?.evidence_ids ?? []
   const summary = change.explanation?.summary
+  const detail = detailOf(tests, status)
   const hasCode = Boolean(
     change.before ||
     change.after ||
@@ -268,12 +336,24 @@ function ChangeDetail({
     tests?.items?.length
   )
   return (
-    <section ref={ref} className="flex scroll-mt-3 flex-col gap-3">
-      {!titled && (
-        <p className="text-[17px] leading-[26px] font-medium text-ink">
-          {summary ?? t.changeKind[change.kind]}
+    <section
+      ref={ref}
+      data-tone={coupon.tone}
+      className="flex scroll-mt-3 flex-col gap-3"
+    >
+      <div className="flex items-start gap-2">
+        <NumberDisc no={coupon.no} seen={seen} className="mt-[3px]" />
+        <p
+          className={cn(
+            "min-w-0 flex-1 font-medium text-ink",
+            titled ? "text-[13px] leading-[26px]" : "text-[18px] leading-[26px]"
+          )}
+        >
+          {titled
+            ? t.changeNo(coupon.no)
+            : (summary ?? t.changeKind[change.kind])}
         </p>
-      )}
+      </div>
       {change.explanation?.effect && (
         <div className="flex flex-col gap-1">
           <Label>{t.effect}</Label>
@@ -283,11 +363,15 @@ function ChangeDetail({
         </div>
       )}
       <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-        <StatusMark
-          status={status}
-          label={tests ? t.verdict[tests.verdict] : t.status.unsure}
-          className="text-[13px] leading-[18px] font-medium text-ink [&_svg]:size-4"
-        />
+        {/* The same word as on the card, then what it rests on. */}
+        <p className="text-[13px] leading-[18px] text-ink-2">
+          <StatusMark
+            status={status}
+            label={t.status[status]}
+            className="align-top font-medium text-ink [&_svg]:size-4"
+          />
+          {detail && <span> · {t.verdictDetail[detail]}</span>}
+        </p>
         {tests?.note && (
           <p className="text-[13px] leading-[19px] text-ink-2">
             {localizeNote(tests.note, model.lang)}
@@ -299,7 +383,7 @@ function ChangeDetail({
           key={item.finding.finding_id}
           className="rounded-[12px] bg-risk-bg px-3 py-2.5"
         >
-          <p className="text-[12px] leading-4 font-medium text-risk">
+          <p className="text-[12px] leading-4 font-medium text-risk-ink">
             {item.status === "introduced"
               ? t.newRisk
               : t.findingStatus[item.status]}{" "}
@@ -312,7 +396,7 @@ function ChangeDetail({
       ))}
       {hasCode && (
         <Collapsible>
-          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-[12.5px] leading-5 font-medium text-ink-2 hover:text-ink">
+          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-[13px] leading-5 font-medium text-ink-2 hover:text-ink">
             <ChevronRight
               aria-hidden
               className="size-3.5 transition-transform duration-160 group-data-[state=open]:rotate-90"
@@ -362,7 +446,7 @@ function ChangeDetail({
                     return (
                       <li
                         key={item.test_id}
-                        className="font-mono text-[11.5px] leading-[17px] [overflow-wrap:anywhere] text-ink-2"
+                        className="font-mono text-[12px] leading-[17px] [overflow-wrap:anywhere] text-ink-2"
                       >
                         {name ?? file}{" "}
                         <span className="text-ink-3">{name ? file : ""}</span>

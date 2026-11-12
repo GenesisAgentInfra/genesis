@@ -1,8 +1,14 @@
 import type { Edge, Node } from "@xyflow/react"
 
-import { buildGraph, type FlowEdge, type StepNode } from "@/canvas/graph"
+import {
+  buildGraph,
+  type CutWords,
+  type FlowEdge,
+  type StepNode,
+} from "@/canvas/graph"
 import type { Strings } from "@/i18n"
-import type { Coupon, FlowView, Model } from "@/model"
+import type { Coupon, FlowView, Model, Tone } from "@/model"
+import { TONES } from "@/model"
 import type { EntryKind } from "@/types"
 
 /**
@@ -53,6 +59,10 @@ export interface ModuleData extends Record<string, unknown> {
   apart: boolean
   /** Every step of its flows is drawn. */
   open: boolean
+  /** It runs the full width, with a flow drawn out in it. */
+  wide: boolean
+  /** The most pressing colour among the changes in it. */
+  tone?: Tone
 }
 export interface LabelData extends Record<string, unknown> {
   flowId: string
@@ -60,11 +70,6 @@ export interface LabelData extends Record<string, unknown> {
   code: boolean
   struck: boolean
   changes: number
-  /** How many steps the flow has, and how many of them are drawn when it is cut down. */
-  steps: number
-  shown?: number
-  /** What starts the flow: a request, a task, a schedule. */
-  entry?: EntryKind
 }
 /** A flow as one row: untouched by the change, or gone after it. */
 export interface RowData extends Record<string, unknown> {
@@ -81,6 +86,8 @@ export interface RowData extends Record<string, unknown> {
   entry?: EntryKind
   /** Changes on another flow whose code this one can reach. */
   passing?: number
+  /** The stop a flow that is gone goes by. */
+  no?: number
 }
 /** The lookups and upkeep of a module, folded into one line until it is opened. */
 export interface MoreData extends Record<string, unknown> {
@@ -89,6 +96,10 @@ export interface MoreData extends Record<string, unknown> {
 }
 export interface OffMapData extends Record<string, unknown> {
   coupon: Coupon
+}
+/** The most pressing of some colours: a new risk before no test, and so on down. */
+function worst(tones: (Tone | undefined)[]): Tone | undefined {
+  return TONES.find((tone) => tones.includes(tone))
 }
 export interface RelationData extends Record<string, unknown> {
   label?: string
@@ -146,8 +157,8 @@ function drawFlow(
   model: Model,
   view: FlowView,
   max: number,
-  /** Words the line that stands for steps left out; given, the flow is cut down. */
-  between?: (steps: number) => string
+  /** Words what stands for steps left out; given, the flow is cut down. */
+  words?: CutWords
 ): PlacedFlow {
   const flowId = view.flow.flow_id
   const graph = buildGraph(
@@ -155,7 +166,7 @@ function drawFlow(
     model.findingStatus,
     !model.hasReport,
     max,
-    between
+    words
   )
   const steps = view.flow.steps ?? []
   const triggerIds = steps
@@ -204,7 +215,12 @@ function placeFlow(
     view.flow.stage === "skeleton" && !view.removed && !touched
   // Until its module is opened, a flow shows of itself what the change is about.
   if (!undescribed && (open || (touched && !view.removed)))
-    return drawFlow(model, view, max, open ? undefined : t.stepsBetween)
+    return drawFlow(
+      model,
+      view,
+      max,
+      open ? undefined : { between: t.stepsBetween, more: t.stepsMore }
+    )
   return {
     view,
     mode: "row",
@@ -257,6 +273,7 @@ export function buildAtlas(
     apart: boolean
     changes: number
     flows: number
+    tone?: Tone
     ids: string[]
     /** Some flow in it is drawn out, so it takes a row of its own. */
     drawn: boolean
@@ -323,6 +340,13 @@ export function buildAtlas(
         struck: flow.view.removed,
         entry: flow.view.flow.entries[0]?.kind,
         passing: passing.get(flow.view.flow.flow_id),
+        no: flow.view.removed
+          ? model.stops.find(
+              (stop) =>
+                stop.kind === "removed_flow" &&
+                stop.flowId === flow.view.flow.flow_id
+            )?.no
+          : undefined,
       },
     })
     // What is outside the flows runs as one strip: its changes, then the flows that are
@@ -380,12 +404,6 @@ export function buildAtlas(
             code: codeNamed(view),
             struck: view.removed,
             changes: model.stopsOn.get(view.flow.flow_id)?.length ?? 0,
-            steps: view.flow.steps?.length ?? 0,
-            shown:
-              flow.mode === "focus"
-                ? flow.nodes.filter((node) => !node.data.ghost).length
-                : undefined,
-            entry: view.flow.entries[0]?.kind,
           },
         })
         for (const node of flow.nodes) {
@@ -452,6 +470,10 @@ export function buildAtlas(
       apart,
       changes: changesOn(views) + offMap.length,
       flows: views.length,
+      tone: worst([
+        ...views.flatMap((view) => view.coupons.map((coupon) => coupon.tone)),
+        ...offMap.map((coupon) => coupon.tone),
+      ]),
       ids: views.map((view) => view.flow.flow_id),
       // Changes outside the flows are changes: they keep a row of their own too.
       drawn: drawn.length > 0 || (apart && offMap.length > 0),
@@ -510,6 +532,8 @@ export function buildAtlas(
         flows: block.flows,
         apart: block.apart,
         open: block.id === open,
+        wide: block.drawn,
+        tone: block.tone,
       },
     })
     for (const node of inside.nodes) {

@@ -19,9 +19,19 @@ export interface Skip {
   exception: boolean
 }
 
+/** Steps left out after a drawn one, with nothing drawn further on to lead to. */
+export interface Tail {
+  source: string
+  steps: number
+  /** The branch taken out of the source, when every way into the tail is the same one. */
+  label?: string
+  exception: boolean
+}
+
 export interface Cut {
   keep: Set<string>
   skips: Skip[]
+  tails: Tail[]
 }
 
 /** A gap of one step is cheaper to draw than to announce. */
@@ -147,11 +157,51 @@ export function cutFlow(
     )
   }
 
+  /**
+   * What is left out and stands on no dotted line: each such step goes to the first drawn
+   * step that leads to it, so the reader sees where the flow goes on and by how much.
+   */
+  const trail = (
+    skips: { inside: string[] }[]
+  ): (Tail & { inside: string[] })[] => {
+    const told = new Set(skips.flatMap((skip) => skip.inside))
+    const owner = new Map<string, string>()
+    for (const row of layout.rows) {
+      const id = row.step.step_id
+      if (!keep.has(id)) continue
+      for (const hidden of spread(id, out, "target"))
+        if (!told.has(hidden) && !owner.has(hidden)) owner.set(hidden, id)
+    }
+    const inside = new Map<string, string[]>()
+    for (const [hidden, id] of owner)
+      inside.set(id, [...(inside.get(id) ?? []), hidden])
+    return [...inside].map(([source, steps]) => {
+      const among = new Set(steps)
+      const ways = (out.get(source) ?? []).filter((edge) =>
+        among.has(edge.target)
+      )
+      const labels = new Set(ways.map((edge) => edgeLabel(edge) ?? ""))
+      return {
+        source,
+        steps: steps.length,
+        inside: steps,
+        label: labels.size === 1 ? [...labels][0] || undefined : undefined,
+        exception:
+          ways.length > 0 &&
+          ways.every((edge) => edge.relation === "exception"),
+      }
+    })
+  }
+
   for (let round = 0; round < ROUNDS; round++) {
     const skips = contract()
-    const short = skips.filter((skip) => skip.steps < WORTH_FOLDING)
-    if (!short.length) return { keep, skips }
-    for (const skip of short) for (const id of skip.inside) keep.add(id)
+    const tails = trail(skips)
+    const short = [...skips, ...tails].filter(
+      (item) => item.steps < WORTH_FOLDING
+    )
+    if (!short.length) return { keep, skips, tails }
+    for (const item of short) for (const id of item.inside) keep.add(id)
   }
-  return { keep, skips: contract() }
+  const skips = contract()
+  return { keep, skips, tails: trail(skips) }
 }
