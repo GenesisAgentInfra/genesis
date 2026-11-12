@@ -487,6 +487,16 @@ class Workspace:
                         "side": "head",
                     }
                 )
+        # An entry an earlier plan proposed stays available: a plan uses it by its id
+        # without proposing it again, and withdraws it by no longer mentioning it.
+        again = {item["entry_id"] for item in proposed}
+        mentioned = {entry for flow in plan.flows for entry in flow.entry_ids}
+        mentioned |= {item.entry_id for item in plan.skipped}
+        proposed += [
+            raw
+            for raw in (self.plan or {}).get("proposed", [])
+            if raw["entry_id"] in mentioned and raw["entry_id"] not in again
+        ]
         usable = set(known) | {item["entry_id"] for item in proposed}
         for index, flow in enumerate(plan.flows):
             if origin == "agent" and not flow.name:

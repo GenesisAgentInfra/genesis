@@ -133,8 +133,10 @@ genesis map plan --repo /absolute/app --session SESSION_ID --input /absolute/pla
 - If the analyzers missed a real entry, add it under `proposed_entries` with
   `symbol_id`, `kind`, `reason` and `evidence`. `kind` is one of `http_route`,
   `cli_command`, `task`, `scheduled`, `public_api`, `agent_tool`, `main`. This takes two
-  submissions: after the first, `status` lists the new entry with its id; then submit
-  the plan again with that id in a flow.
+  submissions: the result of the first lists the new entry under `entries` with its id
+  and `"detection": "agent_proposed"`; then submit the plan again with that id in a
+  flow. Do not propose it a second time: it stays available as long as a plan uses or
+  skips it, and a plan that no longer mentions it withdraws it.
 - Without `--input` the CLI makes one flow per framework entry. Use that only when the
   user wants the quickest possible result.
 
