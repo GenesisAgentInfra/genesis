@@ -186,15 +186,30 @@ class _Placement:
             return change.after.start[0]
         analysis = self.analysis
         line = analysis.workspace.symbols[symbol].range.start_line
+        same = analysis.diff.same.get(change.symbol_id)
         for fact in analysis.ordered(BASE, change.symbol_id):
             if (fact.range.start_line, fact.range.start_column or 0) >= change.before.start:
                 break
             chain = tuple(guard.fingerprint for guard in fact.guards)
-            survivor = analysis.workspace.by_fingerprint.get(fact.fingerprint)
+            # Where the facts of this definition were compared, a base fact is found on
+            # the head side by what it was matched with, not by its own fingerprint.
+            kept = fact.fingerprint if same is None else same.get(fact.fingerprint)
+            survivor = analysis.workspace.by_fingerprint.get(kept)
             # Code inside a branch that already ended does not lead to the removed code.
             if survivor is not None and chain == change.guards[: len(chain)]:
                 line = survivor.range.start_line
         return line
+
+    def _guards(self, change: RawChange) -> tuple[str, ...]:
+        """The conditions and loops a change sits under, as the head side names them.
+
+        Removed code carries the base names of its guards; one that did not survive has
+        no head name and matches nothing.
+        """
+        same = self.analysis.diff.same.get(change.symbol_id)
+        if change.after is not None or same is None:
+            return change.guards
+        return tuple(same.get(guard, "") for guard in change.guards)
 
     def place(self, change: RawChange) -> tuple[list[dict], set[str]]:
         """Map targets of a change, the first being the main one, and flows that reach it."""
@@ -228,7 +243,8 @@ class _Placement:
                         tightest[flow] = (end - start, flow, step)
             if tightest:
                 return projected([(flow, step) for _, flow, step in tightest.values()], CITED)
-        for guard in reversed(change.guards):
+        guards = self._guards(change)
+        for guard in reversed(guards):
             if guard in self.steps_of:
                 return projected(self.steps_of[guard], UNDER)
         for name, fact in self._users(change):
@@ -248,7 +264,7 @@ class _Placement:
                 continue
             line, nearest = self._line(change, symbol), {}
             # Prefer a step at the same nesting or around it over one in a finished branch.
-            around = [spot for spot in spots if spot[3] == change.guards[: len(spot[3])]]
+            around = [spot for spot in spots if spot[3] == guards[: len(spot[3])]]
             for spot_line, flow, step, _ in (*spots, *around):
                 if flow not in nearest or spot_line <= line:
                     nearest[flow] = (flow, step)

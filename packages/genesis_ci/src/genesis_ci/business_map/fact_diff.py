@@ -9,9 +9,13 @@ Facts cover conditions, calls, loops and results. Everything else that changed
 (assignments, defaults, decorators, docstrings) is found by a line comparison of each
 changed file and reported as a source change, so no edit goes unlisted.
 
-Limits: a fact that repeats inside one function is matched by its ordinal, so inserting
-a duplicate reports the last occurrence as the new one. A function that is moved and
-edited at once is reported as removed and added.
+A fact that repeats inside one function shares its text with its repeats, and its
+fingerprint only counts them. Repeats are therefore matched by where they are: the ones
+on a line that reads the same on both sides first, the rest in order between those.
+
+Limits: a repeat whose own line was edited is matched by order, which is a guess when
+repeats were added or removed next to it. A function that is moved and edited at once is
+reported as removed and added.
 """
 
 from __future__ import annotations
@@ -111,6 +115,9 @@ class FactDiff:
     evidence: dict[str, EvidenceRef]
     # Base symbol id to head symbol id, for definitions that only moved.
     moved: dict[str, str]
+    # For each definition whose facts were compared: base fingerprint to head fingerprint
+    # of every fact that stayed. The two differ where a repeat came or went before it.
+    same: dict[str, dict[str, str]] = field(default_factory=dict)
     truncated: bool = False
     skipped_files: tuple[str, ...] = ()
 
@@ -177,11 +184,71 @@ def _targets(fact: CodeFact, moved: dict[str, str]) -> frozenset[str]:
     return frozenset(moved.get(item, item) for item in fact.target.targets)
 
 
-def _symbol_changes(symbol_id: str, base: dict, head: dict, moved: dict) -> list[RawChange]:
-    """Changes among the facts of one definition that exists on both sides."""
-    common = base.keys() & head.keys()
-    gone = sorted((base[fp] for fp in base.keys() - common), key=_evaluation_order)
-    new = sorted((head[fp] for fp in head.keys() - common), key=_evaluation_order)
+def _family(fact: CodeFact, canonical) -> tuple:
+    """What a fact has in common with its repeats in one definition: its kind and text.
+
+    The fingerprint confirms that the text is the one it was made from. Where it is not,
+    as for text cut at the storage limit, the fact is matched by its fingerprint alone.
+    """
+    text = canonical(fact.text)
+    made = fact_fingerprint(
+        symbol=fact.symbol_id, kind=fact.kind.value, text=text, ordinal=fact.ordinal
+    )
+    return (fact.kind, text) if made == fact.fingerprint else (fact.kind, fact.fingerprint)
+
+
+def _where(fact: CodeFact) -> tuple[int, int]:
+    return fact.range.start_line, fact.range.start_column or 0
+
+
+def _same_statements(base: dict, head: dict, canonical: dict, kept: dict[int, int]) -> dict:
+    """Base fingerprint to head fingerprint for the facts of one definition that stayed.
+
+    A fingerprint tells the repeats of one text apart by counting them, so it names the
+    same statement on both sides only while no repeat came or went before it. Repeats
+    are matched by where they are instead. `kept` maps a base line to its head line for
+    the lines that read the same on both sides.
+    """
+    if not any(fact.ordinal for fact in (*base.values(), *head.values())):
+        return {fingerprint: fingerprint for fingerprint in base.keys() & head.keys()}
+    families: dict[tuple, tuple[list[CodeFact], list[CodeFact]]] = {}
+    for side, facts in enumerate((base, head)):
+        for fact in facts.values():
+            render = canonical.get(fact.language.value, _plain)
+            families.setdefault(_family(fact, render), ([], []))[side].append(fact)
+    same: dict[str, str] = {}
+    for old, new in families.values():
+        old.sort(key=_where)
+        new.sort(key=_where)
+        # A statement on a line that did not change is the statement that was there.
+        waiting: dict[int, list[int]] = {}
+        for index, fact in enumerate(new):
+            waiting.setdefault(fact.range.start_line, []).append(index)
+        fixed: list[tuple[int, int]] = []
+        for index, fact in enumerate(old):
+            there = waiting.get(kept.get(fact.range.start_line, 0))
+            if there and (not fixed or there[0] > fixed[-1][1]):
+                fixed.append((index, there.pop(0)))
+        # What is left between two of those is taken in order, as far as it goes.
+        pairs, first_old, first_new = list(fixed), 0, 0
+        for last_old, last_new in (*fixed, (len(old), len(new))):
+            pairs += zip(range(first_old, last_old), range(first_new, last_new), strict=False)
+            first_old, first_new = last_old + 1, last_new + 1
+        for index_old, index_new in pairs:
+            same[old[index_old].fingerprint] = new[index_new].fingerprint
+    return same
+
+
+def _symbol_changes(
+    symbol_id: str, base: dict, head: dict, moved: dict, same: dict[str, str]
+) -> list[RawChange]:
+    """Changes among the facts of one definition that exists on both sides.
+
+    `same` pairs the facts that stayed: base fingerprint to head fingerprint.
+    """
+    back = {after: before for before, after in same.items()}
+    gone = sorted((base[fp] for fp in base.keys() - same.keys()), key=_evaluation_order)
+    new = sorted((head[fp] for fp in head.keys() - back.keys()), key=_evaluation_order)
     module_level = symbol_id.endswith("#<module>")
     changes: list[RawChange] = []
 
@@ -215,8 +282,8 @@ def _symbol_changes(symbol_id: str, base: dict, head: dict, moved: dict) -> list
                 add(added, None, fact)
 
     # The same expression can lead somewhere else, for example after an import changed.
-    for fingerprint in sorted(common):
-        before, after = base[fingerprint], head[fingerprint]
+    for fingerprint in sorted(same):
+        before, after = base[fingerprint], head[same[fingerprint]]
         if before.kind != FactKind.call:
             continue
         was, now = _targets(before, moved), frozenset(after.target.targets)
@@ -226,25 +293,33 @@ def _symbol_changes(symbol_id: str, base: dict, head: dict, moved: dict) -> list
                 f"Now resolves to {', '.join(sorted(now))}; before: {', '.join(sorted(was))}."
             )
 
-    # A condition or loop whose text is unchanged but whose behaviour is not.
+    # A condition or loop whose text is unchanged but whose behaviour is not. Notes are
+    # kept by the base fingerprint of the condition or loop they are about.
     notes: dict[str, list[str]] = {}
     shifted: dict[str, list[CodeFact]] = {}
-    changed = {fact.fingerprint for fact in (*gone, *new)}
     for fact, verb in (*((fact, "removed") for fact in gone), *((fact, "added") for fact in new)):
-        if fact.kind in _JUMPS and fact.loops and fact.loops[-1] in common:
-            notes.setdefault(fact.loops[-1], []).append(f"`{fact.text}` {verb} inside the loop.")
+        if fact.kind not in _JUMPS or not fact.loops:
+            continue
+        loop = fact.loops[-1] if fact.side == BASE else back.get(fact.loops[-1])
+        if loop in same:
+            notes.setdefault(loop, []).append(f"`{fact.text}` {verb} inside the loop.")
     repeated_base = Counter((fact.kind, _flat(fact.text)) for fact in base.values())
     repeated_head = Counter((fact.kind, _flat(fact.text)) for fact in head.values())
-    for fingerprint in sorted(common):
-        before, after = base[fingerprint], head[fingerprint]
+    for fingerprint in sorted(same):
+        before, after = base[fingerprint], head[same[fingerprint]]
         key = (before.kind, _flat(before.text))
         if before.kind in _JUMPS or repeated_base[key] > 1 or repeated_head[key] > 1:
             continue
+        # An added, removed or modified guard is already reported and explains the move,
+        # so only the guards that stayed are compared.
         was = {guard.fingerprint: guard.branch for guard in before.guards}
-        now = {guard.fingerprint: guard.branch for guard in after.guards}
+        now = {
+            back[guard.fingerprint]: guard.branch
+            for guard in after.guards
+            if guard.fingerprint in back
+        }
         for guard in sorted(was.keys() | now.keys()):
-            # An added, removed or modified guard is already reported and explains the move.
-            if guard in changed or guard not in common or was.get(guard) == now.get(guard):
+            if guard not in same or was.get(guard) == now.get(guard):
                 continue
             moved_from = f"branch '{was[guard]}'" if guard in was else "outside it"
             moved_to = f"branch '{now[guard]}'" if guard in now else "outside it"
@@ -254,7 +329,7 @@ def _symbol_changes(symbol_id: str, base: dict, head: dict, moved: dict) -> list
             shifted.setdefault(guard, []).extend((before, after))
     for guard in sorted(notes):
         kind = "loop_bound_changed" if base[guard].kind == FactKind.loop else "condition_modified"
-        change = add(kind, base[guard], head[guard])
+        change = add(kind, base[guard], head[same[guard]])
         change.details.extend(dict.fromkeys(notes[guard]))
         change.covers.extend(
             (fact.side, change.before.path, fact.range.start_line, fact.range.end_line)
@@ -312,9 +387,37 @@ class _Sources:
     def __init__(self, source, catalog: dict[str, EvidenceRef]):
         self.source, self.catalog = source, catalog
         self.minted: dict[str, EvidenceRef] = {}
+        self._aligned: dict[str, list | None] = {}
+        self._kept: dict[str, dict[int, int]] = {}
 
     def lines(self, side, path) -> list[str]:
         return self.source.read_text(side, path).split("\n")
+
+    def aligned(self, path) -> list | None:
+        """How the lines of a file line up between the sides, indentation aside.
+
+        None when the file is too large to compare line by line.
+        """
+        if path not in self._aligned:
+            old = [line.strip() for line in self.lines(BASE, path)]
+            new = [line.strip() for line in self.lines(HEAD, path)]
+            self._aligned[path] = (
+                None
+                if len(old) * len(new) > LINE_BUDGET
+                else SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+            )
+        return self._aligned[path]
+
+    def kept(self, path) -> dict[int, int]:
+        """Base line to head line, for the lines that read the same on both sides."""
+        if path not in self._kept:
+            self._kept[path] = {
+                i1 + offset + 1: j1 + offset + 1
+                for tag, i1, i2, j1, _ in self.aligned(path) or ()
+                if tag == "equal"
+                for offset in range(i2 - i1)
+            }
+        return self._kept[path]
 
     def cite(self, side, path, first: int, last: int) -> str:
         ref = self.source.evidence(side, path, ReferenceRange(start_line=first, end_line=last))
@@ -446,7 +549,8 @@ def _plain(text: str) -> str:
 def _source_changes(path, by_path, covered, sources, comment, canonical) -> list[RawChange]:
     """Changed lines of one file that no reported fact change accounts for."""
     old_lines, new_lines = sources.lines(BASE, path), sources.lines(HEAD, path)
-    if len(old_lines) * len(new_lines) > LINE_BUDGET:
+    opcodes = sources.aligned(path)
+    if opcodes is None:
         raise OverflowError(path)
     old = [line.strip() for line in old_lines]
     new = [line.strip() for line in new_lines]
@@ -478,8 +582,7 @@ def _source_changes(path, by_path, covered, sources, comment, canonical) -> list
         )
 
     changes, seen = [], Counter()
-    matcher = SequenceMatcher(None, old, new, autojunk=False)
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+    for tag, i1, i2, j1, j2 in opcodes:
         if tag == "equal":
             continue
         gone, fresh = left(old, i1, i2, BASE), left(new, j1, j2, HEAD)
@@ -671,6 +774,7 @@ def diff_facts(
         for change in changes
         if change.kind in {ChangeKind.symbol_added, ChangeKind.symbol_removed}
     ]
+    stayed: dict[str, dict[str, str]] = {}
     for symbol_id in sorted(base.keys() & head.keys()):
         if is_test(head[symbol_id]):
             continue
@@ -687,7 +791,11 @@ def diff_facts(
                 for fp, fact in old_facts.items()
             )
         ):
-            for change in _symbol_changes(symbol_id, old_facts, new_facts, moved):
+            pairs = _same_statements(
+                old_facts, new_facts, canonical, sources.kept(head[symbol_id].path)
+            )
+            stayed[symbol_id] = pairs
+            for change in _symbol_changes(symbol_id, old_facts, new_facts, moved, pairs):
                 # A decorator of an added or removed function is part of that definition.
                 holder = next(
                     (
@@ -778,6 +886,7 @@ def diff_facts(
         changes=changes[:MAX_CHANGES],
         evidence=sources.minted,
         moved=moved,
+        same=stayed,
         truncated=len(changes) > MAX_CHANGES,
         skipped_files=tuple(skipped),
     )
