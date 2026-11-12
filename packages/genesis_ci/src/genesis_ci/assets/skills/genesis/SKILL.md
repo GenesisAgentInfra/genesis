@@ -279,8 +279,10 @@ Rules the CLI enforces:
   unless you set `"resolution": "candidate"` or `"unknown"` and give a `reason`. The
   same applies to a step you cannot ground.
 - **Error handling.** `try` and `except` are not analyzed. Describe a path into an
-  `except` block with `"relation": "exception"`, and submit it as `candidate` with a
-  reason when the CLI does not accept it as it is.
+  `except` block with `"relation": "exception"`, from the step that can fail to the
+  first step of the handler. The CLI has no fact to check it by, so it accepts the
+  edge as written and keeps it as a `candidate`: do not set `resolution` on it. A
+  `reason` is optional; give one when it is not obvious what raises.
 - **Accounting.** Every unit in `accountable` must be an anchor of some step, be the
   condition a branch edge takes, or be listed in `omitted` with a reason: `logging`,
   `input_validation`, `error_handling`, `instrumentation`, `merged_into_step` or

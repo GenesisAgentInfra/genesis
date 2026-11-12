@@ -6,7 +6,8 @@ accepted submissions and the facts each time something changes.
 
 An agent's submission is taken or rejected as a whole. What it calls resolved must
 be anchored in analyzer facts; a relation the facts cannot support has to be
-submitted as a candidate with a reason.
+submitted as a candidate with a reason. A path into an exception handler is the one
+relation no fact speaks about, so it is always kept as a candidate.
 """
 
 from __future__ import annotations
@@ -57,6 +58,10 @@ SEARCH_LIMIT = 40
 CLAIM_SECONDS = 900
 OTHER_FACT_LIMIT = 80
 ROOT_CANDIDATE_LIMIT = 40
+# What the map says about a path into an exception handler the agent gave no reason for.
+HANDLER_REASON = (
+    "try/except is not analyzed; this path into the handler is the agent's reading of the code."
+)
 _ACCOUNTED = {FactKind.condition, FactKind.loop, FactKind.raises}
 RULES = (
     "Name steps in business language; one step may cover several code facts.",
@@ -990,6 +995,10 @@ class Workspace:
             }
             if edge.label and edge.relation != EdgeRelation.branch:
                 item["label"] = edge.label
+            # `try` and `except` are not analyzed. Checked like any other edge, a path into
+            # a handler was refused when the `try` body ends in a `return` and taken as a
+            # fact when the handler merely follows it in the source. Neither is known.
+            unchecked = edge.relation == EdgeRelation.exception
             if edge.relation == EdgeRelation.branch:
                 conditions = [
                     fp
@@ -1047,7 +1056,7 @@ class Workspace:
                     resolution="resolved",
                     evidence_ids=evidence or list(self.by_fingerprint[conditions[0]].evidence_ids),
                 )
-            elif edge.resolution == "resolved":
+            elif edge.resolution == "resolved" and not unchecked:
                 supported = (
                     source["anchors"]
                     and target["anchors"]
@@ -1081,14 +1090,17 @@ class Workspace:
                     evidence_ids=evidence or target["evidence_ids"] or source["evidence_ids"],
                 )
             else:
-                if not edge.reason:
+                reason = edge.reason or (HANDLER_REASON if unchecked else "")
+                if not reason:
                     problems.append(
                         _problem(where + ".reason", "reason_required", "Say what is uncertain.")
                     )
                 item.update(
                     support="agent_synthesis",
-                    resolution=edge.resolution.value,
-                    reason=edge.reason or "",
+                    resolution="candidate"
+                    if edge.resolution == "resolved"
+                    else edge.resolution.value,
+                    reason=reason,
                     evidence_ids=evidence or target["evidence_ids"] or source["evidence_ids"],
                 )
             cited.update(item["evidence_ids"])
