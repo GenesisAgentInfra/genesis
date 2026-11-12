@@ -282,6 +282,17 @@ class PropagatedImpact(ContractModel):
     reason: Text
 
 
+class PossibleEntry(ContractModel):
+    """A function no code calls that leads to changed code and starts no flow on the map.
+
+    It may be a way in the analyzers did not recognise, or code nothing uses.
+    """
+
+    entry_id: Identifier
+    symbol_id: SymbolId
+    change_ids: tuple[Identifier, ...] = Field(min_length=1)
+
+
 class UnanalyzedChange(ContractModel):
     """A changed file the analyzers could not turn into facts."""
 
@@ -307,6 +318,7 @@ class ChangeReport(ContractModel):
     changes: tuple[ChangeItem, ...] = ()
     removed_flows: tuple[MapFlow, ...] = ()
     possibly_affected: tuple[PropagatedImpact, ...] = ()
+    possible_entries: tuple[PossibleEntry, ...] = ()
     unanalyzed_changes: tuple[UnanalyzedChange, ...] = ()
     finding_changes: tuple[FindingChange, ...] = ()
     limitations: tuple[Limitation, ...] = ()
@@ -323,6 +335,8 @@ class ChangeReport(ContractModel):
             raise ValueError("a change refers to a finding the report does not list")
         if any(set(item.change_ids) - changes for item in self.possibly_affected):
             raise ValueError("a propagated impact refers to an unknown change")
+        if any(set(item.change_ids) - changes for item in self.possible_entries):
+            raise ValueError("a possible entry refers to an unknown change")
         self._check_evidence()
         if self.analysis_status == "complete":
             self._check_complete()

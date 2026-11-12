@@ -1,12 +1,15 @@
 """Python entry detection: where execution enters the code from outside.
 
-Three sources, in decreasing confidence. Framework adapters recognise a decorator
-only when the file also imports that framework. The `__main__` guard marks the
-functions it calls. The root heuristic lists public functions nothing is seen to
-call; it is deliberately broad and is never treated as a confirmed entry.
+Four sources, in decreasing confidence. Framework adapters recognise a decorator
+only when the file also imports that framework. Classes listed together under a
+base that only declares a method are handlers a dispatcher runs. The `__main__`
+guard marks the functions it calls. The root heuristic lists public functions no
+code outside the tests is seen to call; it is deliberately broad and is never
+treated as a confirmed entry.
 
-Recognition is by decorator shape and imports only. Routers registered by a call
-such as `app.add_api_route(...)`, URL tables and plugin registries are not detected.
+Recognition is by the shape of the source only. Routers registered by a call such
+as `app.add_api_route(...)`, tables of functions, and decorators a project defines
+for its own registry are not detected.
 """
 
 from __future__ import annotations
@@ -43,11 +46,17 @@ TOOL_FRAMEWORKS = (
 )
 TOOL_DECORATORS = {"tool", "function_tool", "tool_plain"}
 MAIN_GUARDS = {'__name__ == "__main__"', "__name__ == '__main__'"}
+ABSTRACT = "abstractmethod"
+PROPERTIES = {"property", "abstractproperty", "cached_property", "setter", "getter", "deleter"}
+NOT_IMPLEMENTED = "NotImplementedError"
+# One class in a list is a value, not a registry.
+REGISTRY_MINIMUM = 2
 _ADAPTER_ORDER = (
     EntryKind.http_route,
     EntryKind.cli_command,
     EntryKind.task,
     EntryKind.agent_tool,
+    EntryKind.handler,
     EntryKind.main,
 )
 
@@ -122,6 +131,156 @@ def _is_test_path(path: str) -> bool:
     )
 
 
+def _decorator_names(parsed) -> set[str]:
+    found = set()
+    for decorator in parsed.decorators:
+        call = decorator.kind == "call" and bool(decorator.children)
+        callee = decorator.children[0] if call else decorator
+        found.add(callee.attribute if callee.kind == "attribute" else callee.text)
+    return found
+
+
+class _Classes:
+    """The classes of a snapshot: what each inherits and which methods it defines."""
+
+    def __init__(self, extraction: Extraction, by_symbol: dict, facts: list[CodeFact]):
+        self.extraction, self.by_symbol = extraction, by_symbol
+        self.methods: dict[tuple, dict[str, object]] = {}
+        for parsed in extraction.analysis.symbols:
+            inside, _, name = parsed.qualified_name.rpartition(".")
+            owner = parsed.path + "#" + inside
+            if parsed.kind == "function" and inside and self.is_class(parsed.side, owner):
+                self.methods.setdefault((parsed.side, owner), {})[name] = parsed
+        self.facts: dict[tuple, list[CodeFact]] = {}
+        for fact in facts:
+            self.facts.setdefault((fact.side, fact.symbol_id), []).append(fact)
+        self._chains: dict[tuple, tuple[str, ...]] = {}
+
+    def named(self, expr, side, path) -> str | None:
+        """The class an expression names, or creates an instance of."""
+        if expr.kind == "call" and expr.children:
+            expr = expr.children[0]
+        if expr.kind not in {"name", "attribute"}:
+            return None
+        targets = self.extraction.resolver.resolve(expr, side, path).targets
+        if len(targets) == 1 and self.is_class(side, targets[0]):
+            return targets[0]
+        return None
+
+    def is_class(self, side, symbol_id: str) -> bool:
+        symbol = self.by_symbol.get((side, symbol_id))
+        return symbol is not None and symbol.kind == "class"
+
+    def chain(self, side, cls: str) -> tuple[str, ...]:
+        """The class, then the classes it inherits from that are written in the code."""
+        if (side, cls) not in self._chains:
+            found, pending = [cls], [cls]
+            while pending:
+                path, _, name = pending.pop(0).partition("#")
+                file = self.extraction.files.get((side, path))
+                for base in file.bases.get(name, ()) if file is not None else ():
+                    for target in self.extraction.resolver.resolve(base, side, path).targets:
+                        if target not in found and self.is_class(side, target):
+                            found.append(target)
+                            pending.append(target)
+            self._chains[(side, cls)] = tuple(found)
+        return self._chains[(side, cls)]
+
+    def _declared_only(self, side, parsed) -> bool:
+        """A method the class leaves to its subclasses."""
+        if ABSTRACT in _decorator_names(parsed):
+            return True
+        body = self.facts.get((side, parsed.symbol_id), [])
+        return (
+            len(body) == 1 and body[0].kind == FactKind.raises and NOT_IMPLEMENTED in body[0].text
+        )
+
+    def declared(self, side, cls: str) -> list[str]:
+        """Public methods a class declares without implementing; properties are not run."""
+        return [
+            name
+            for name, parsed in self.methods.get((side, cls), {}).items()
+            if not name.startswith("_")
+            and not PROPERTIES & _decorator_names(parsed)
+            and self._declared_only(side, parsed)
+        ]
+
+    def implementation(self, side, cls: str, name: str) -> str | None:
+        """What runs when `name` is called on an instance of the class."""
+        for owner in self.chain(side, cls):
+            parsed = self.methods.get((side, owner), {}).get(name)
+            if parsed is not None:
+                return None if self._declared_only(side, parsed) else parsed.symbol_id
+        return None
+
+
+def _listed(value) -> list[tuple[str | None, object]]:
+    """The elements of a list, tuple or dictionary literal, a dictionary's with their keys."""
+    if value.kind in {"list", "tuple"}:
+        return [(None, child) for child in value.children]
+    if value.kind == "dict":
+        return [
+            (
+                item.key.value
+                if item.key is not None
+                and item.key.kind == "literal"
+                and isinstance(item.key.value, str)
+                else None,
+                item.value,
+            )
+            for item in value.entries
+        ]
+    return []
+
+
+def _registered(extraction: Extraction, by_symbol: dict, facts: list[CodeFact]):
+    """Handlers registered by listing their classes: (symbol, attributes, evidence).
+
+    The shape is a list, tuple or dictionary written at module or class level whose
+    elements are all classes with a shared base, where that base declares a method
+    without implementing it and every listed class implements it. A dispatcher runs
+    that method on whichever class it picks, so no call to the implementations is
+    visible. Whether the dispatcher is driven from outside the system is not known.
+    """
+    classes = _Classes(extraction, by_symbol, facts)
+    for (side, path), file in sorted(
+        extraction.files.items(), key=lambda item: (item[0][0].value, item[0][1])
+    ):
+        if _is_test_path(path):
+            continue
+        for binding in file.bindings:
+            listed = _listed(binding.value)
+            if len(listed) < REGISTRY_MINIMUM or binding.target.kind != "name":
+                continue
+            # A list built inside a function is a value of that call, not a registration.
+            owner = binding.symbol_id
+            if not owner.endswith("#<module>") and not classes.is_class(side, owner):
+                continue
+            named = [classes.named(expr, side, path) for _, expr in listed]
+            if None in named or len(set(named)) < REGISTRY_MINIMUM:
+                continue
+            chains = [classes.chain(side, cls) for cls in named]
+            for base in chains[0]:
+                if not all(base in chain for chain in chains[1:]):
+                    continue
+                for method in classes.declared(side, base):
+                    runs = [classes.implementation(side, cls, method) for cls in named]
+                    if None in runs:
+                        continue
+                    for (label, expr), symbol_id in zip(listed, runs, strict=True):
+                        attributes = {
+                            "registry": binding.target.text,
+                            "base": by_symbol[(side, base)].qualified_name,
+                        }
+                        if label:
+                            attributes["name"] = label
+                        yield (
+                            by_symbol[(side, symbol_id)],
+                            attributes,
+                            expr.evidence_ids or binding.evidence_ids,
+                        )
+
+
 def detect_python_entries(
     extraction: Extraction, symbols: tuple[CodeSymbol, ...], facts: list[CodeFact]
 ) -> tuple[list[CodeEntry], dict]:
@@ -178,6 +337,9 @@ def detect_python_entries(
                 )
                 break
 
+    for symbol, attributes, evidence in _registered(extraction, by_symbol, facts):
+        add(symbol, EntryKind.handler, EntryDetection.adapter, None, attributes, evidence)
+
     guards = {
         (fact.side, fact.fingerprint)
         for fact in facts
@@ -189,8 +351,11 @@ def detect_python_entries(
     for fact in facts:
         if fact.kind != FactKind.call or fact.target is None:
             continue
+        # A call from a test is not a way production code gets there.
+        in_test = _is_test_path(fact.symbol_id.partition("#")[0])
         for target in fact.target.targets:
-            called.setdefault((fact.side, target), set()).add(fact.symbol_id)
+            if not in_test:
+                called.setdefault((fact.side, target), set()).add(fact.symbol_id)
             guarded = any(
                 (fact.side, guard.fingerprint) in guards and guard.branch == "true"
                 for guard in fact.guards

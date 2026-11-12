@@ -58,6 +58,7 @@ SEARCH_LIMIT = 40
 CLAIM_SECONDS = 900
 OTHER_FACT_LIMIT = 80
 ROOT_CANDIDATE_LIMIT = 40
+POSSIBLE_ENTRY_LIMIT = 20
 # What the map says about a path into an exception handler the agent gave no reason for.
 HANDLER_REASON = (
     "try/except is not analyzed; this path into the handler is the agent's reading of the code."
@@ -474,7 +475,10 @@ class Workspace:
                     )
                 )
                 continue
-            if entry_id(item.symbol_id) in known:
+            # A candidate is a guess the agent may confirm, and say what kind of entry it
+            # is. What the analyzers recognised is settled.
+            current = known.get(entry_id(item.symbol_id))
+            if current is not None and current.detection != "root_heuristic":
                 problems.append(
                     _problem(where + ".symbol_id", "already_an_entry", entry_id(item.symbol_id))
                 )
@@ -1460,6 +1464,13 @@ class Workspace:
                         for flow in stored.flows
                         if flow.flow_id in affected
                     ],
+                    # Uncalled functions that lead to the changes and start no flow: ways
+                    # in the map may lack.
+                    "possible_entries": [
+                        item.model_dump(mode="json")
+                        for item in report.possible_entries[:POSSIBLE_ENTRY_LIMIT]
+                    ],
+                    "possible_entries_total": len(report.possible_entries),
                 }
             }
         if self.plan is None:
