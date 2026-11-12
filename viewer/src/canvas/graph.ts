@@ -24,6 +24,8 @@ const COL_GAP = 40
 /** How far past a column a line runs before it turns, and between two lines turning there. */
 const TURN = 14
 const LANE = 8
+/** Between two lines that each carry a label where they run side by side. */
+const LABEL_LANE = 26
 const BAND_GAP = 48
 const GHOST_GAP = 28
 /** A card for a step the change removed: its name and what was said about it. */
@@ -429,11 +431,43 @@ function arrange(
   const bandOf = fitted.of
   const bands = fitted.count
   // A line that goes on to the next band leaves by the right and comes back in by the
-  // left, so a wrapped flow keeps room on both sides for those lines.
-  const crossing = Array.from({ length: bands }, () => 0)
+  // left, so a wrapped flow keeps room on both sides for those lines. Between the bands
+  // each runs at a level of its own. The one that ends lowest runs highest and turns
+  // furthest out on the left, so they come down without crossing; a line that carries a
+  // label keeps the room its label needs.
+  const crossKey = (way: Way, hop: number) => `${way.edge.id}|${hop}`
+  const leaving: { key: string; from: number; to: number; named: boolean }[][] =
+    Array.from({ length: bands }, () => [])
   for (const way of ways)
-    for (let rank = way.from; rank < way.to; rank++)
-      if (bandOf[rank] !== bandOf[rank + 1]) crossing[bandOf[rank]] += 1
+    for (let hop = 0; hop < way.ys.length - 1; hop++) {
+      const rank = way.from + hop
+      if (bandOf[rank] === bandOf[rank + 1]) continue
+      leaving[bandOf[rank]].push({
+        key: crossKey(way, hop),
+        from: way.ys[hop],
+        to: way.ys[hop + 1],
+        named: hop === 0 && Boolean(way.edge.data?.label),
+      })
+    }
+  const levelOf = new Map<string, { k: number; drop: number }>()
+  /** How far the lines between a band and the next spread down. */
+  const spread = leaving.map((list) => {
+    list.sort((a, b) => b.to - a.to || b.from - a.from)
+    let drop = 0
+    list.forEach((line, k) => {
+      const above = list[k - 1]
+      if (above)
+        drop +=
+          line.named && above.named
+            ? LABEL_LANE
+            : line.named || above.named
+              ? LABEL_LANE / 2 + 2
+              : LANE
+      levelOf.set(line.key, { k, drop })
+    })
+    return drop
+  })
+  const crossing = leaving.map((list) => list.length)
   const most = Math.max(...crossing, 0)
   const inset = bands > 1 ? TURN + Math.max(most - 1, 0) * LANE + 4 : 0
 
@@ -467,13 +501,9 @@ function arrange(
   let y = 0
   for (let band = 0; band < bands; band++) {
     shift[band] = y - top[band]
-    y +=
-      bottom[band] -
-      top[band] +
-      BAND_GAP +
-      Math.max(crossing[band] - 1, 0) * LANE
+    y += bottom[band] - top[band] + BAND_GAP + spread[band]
   }
-  const height = y - BAND_GAP - Math.max(crossing[bands - 1] - 1, 0) * LANE
+  const height = y - BAND_GAP - spread[bands - 1]
   const yIn = (rank: number, value: number) => value + shift[bandOf[rank]]
 
   const byId = new Map(nodes.map((node) => [node.id, node]))
@@ -486,7 +516,6 @@ function arrange(
   }
 
   // The lines: out to the right, a turn in the gap, on at the next height.
-  const crossed = Array.from({ length: bands }, () => 0)
   for (const way of ways) {
     const source = byId.get(way.edge.source)!
     const target = byId.get(way.edge.target)!
@@ -510,14 +539,10 @@ function arrange(
       const to = last ? end.y : yIn(next, way.ys[hop + 1])
       if (bandOf[next] !== bandOf[rank]) {
         const band = bandOf[rank]
-        const k = crossed[band]++
+        const { k, drop } = levelOf.get(crossKey(way, hop))!
         const right = bandRight[band] + TURN + k * LANE
-        const left = inset - TURN - k * LANE
-        const between =
-          bottom[band] +
-          shift[band] +
-          BAND_GAP / 2 +
-          (k - (crossing[band] - 1) / 2) * LANE
+        const left = inset - TURN - (crossing[band] - 1 - k) * LANE
+        const between = bottom[band] + shift[band] + BAND_GAP / 2 + drop
         points.push(
           { x: right, y: at.y },
           { x: right, y: between },
