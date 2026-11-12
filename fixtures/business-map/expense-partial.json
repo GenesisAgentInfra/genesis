@@ -50,7 +50,8 @@
           "evidence_ids": [
             "ev_9a4f7ba7e67635d9431dafaa"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_choose_path",
@@ -64,7 +65,8 @@
           "evidence_ids": [
             "ev_957e69dc56fc11356dfef026"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_model_review",
@@ -82,7 +84,8 @@
           ],
           "finding_ids": [
             "find_loop_no_count_bound"
-          ]
+          ],
+          "unexpanded": []
         },
         {
           "step_id": "step_mark_pending",
@@ -96,7 +99,8 @@
           "evidence_ids": [
             "ev_e1bb4e61264f2e02e39f51ce"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_return_pending",
@@ -110,7 +114,8 @@
           "evidence_ids": [
             "ev_434635683777743f376c4a33"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_auto_approve",
@@ -124,7 +129,8 @@
           "evidence_ids": [
             "ev_345db8bbf48e5c162a2e19d8"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_return_approved",
@@ -138,7 +144,8 @@
           "evidence_ids": [
             "ev_037d91dcafba6c9c45852850"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_notify_unknown",
@@ -149,7 +156,8 @@
           "reason": "待审批之后是否发送通知取决于运行时注册的处理器，已读取的代码中找不到它的目标。",
           "anchors": [],
           "evidence_ids": [],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         }
       ],
       "edges": [
@@ -300,7 +308,8 @@
           "evidence_ids": [
             "ev_bcff3cfacb21ad8b025c0d49"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_load_report",
@@ -314,7 +323,8 @@
           "evidence_ids": [
             "ev_ba338af22ea07341f4558590"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_check_pending",
@@ -328,7 +338,8 @@
           "evidence_ids": [
             "ev_9116ff4f0d8e85a25097cbce"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_reject",
@@ -342,7 +353,8 @@
           "evidence_ids": [
             "ev_781a7ee5de133afc743b1c42"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_mark_approved",
@@ -356,7 +368,8 @@
           "evidence_ids": [
             "ev_a8676a5b243a18cd732ba300"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         },
         {
           "step_id": "step_approve_done",
@@ -370,7 +383,8 @@
           "evidence_ids": [
             "ev_af72094eca9b69f2c194020b"
           ],
-          "finding_ids": []
+          "finding_ids": [],
+          "unexpanded": []
         }
       ],
       "edges": [
