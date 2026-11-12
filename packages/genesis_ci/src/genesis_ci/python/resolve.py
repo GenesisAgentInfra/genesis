@@ -41,6 +41,23 @@ _PROPERTIES = {"property", "cached_property"}
 # Library functions whose result is an object of a known class.
 _RESULTS = {"external:logging.getLogger": "external:logging.Logger"}
 INHERITED = "Member found in a base class; another base or a subclass may define it instead"
+PASSED = "Taken from what callers in this code base pass; another caller may pass something else"
+# How many call sites of one function are read to learn what a parameter receives.
+MAX_CALL_SITES = 24
+# How deep one parameter's value may lead through the parameters of its callers.
+MAX_PASSING_DEPTH = 8
+_NEVER = 1 << 30
+
+
+def _is_test_path(path):
+    """Tests hand in doubles; what they pass says nothing about the product's own objects."""
+    name = path.rsplit("/", 1)[-1]
+    return (
+        bool({"tests", "test"} & set(path.split("/")[:-1]))
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
 
 
 def unknown(reason):
@@ -92,6 +109,12 @@ class Resolver:
         self.by_id = {}
         # Assignments to `self.<attribute>`, by every class or function they are nested in.
         self.attributes = {}
+        # Where each function or class is called, once the calls have been resolved a
+        # first time. Empty until then, so the first pass reads declarations only.
+        self.call_sites = {}
+        self._passed_cache = {}
+        self._passing = []
+        self._taint = _NEVER
         for side, path in sorted(set(files) | self.unavailable):
             file = files.get((side, path))
             candidates = []
@@ -396,7 +419,89 @@ class Resolver:
             result = self._typed(annotation, side, path, seen)
         if (result is None or not result.targets) and name in file.defaults:
             result = self._injected(file.defaults[name], side, path, seen)
+        if (result is None or not result.targets) and annotation is None and self.call_sites:
+            targets = self._passed(name, side, path)
+            if targets:
+                result = Resolution(status="candidate", targets=targets, reason=PASSED)
         return result
+
+    def learn_call_sites(self):
+        """Index where every local function and class is called, from the resolved calls.
+
+        A parameter without an annotation is then typed by what its callers pass. Calls
+        written in tests are left out for product code: they pass doubles.
+        """
+        sites = {}
+        for (side, path), file in self.files.items():
+            for call in file.calls:
+                for target in call.target.targets:
+                    if (side, target) in self.kinds and not (
+                        _is_test_path(path) and not _is_test_path(target.partition("#")[0])
+                    ):
+                        sites.setdefault((side, target), []).append((path, call))
+        self.call_sites = sites
+        self._passed_cache = {}
+
+    def _passed(self, name, side, path):
+        """What the callers in this code base pass for an unannotated parameter."""
+        key = (side, path, name)
+        if key in self._passed_cache:
+            return self._passed_cache[key]
+        if key in self._passing:
+            # A value that leads back to a parameter still being worked out.
+            self._taint = min(self._taint, self._passing.index(key))
+            return ()
+        depth = len(self._passing)
+        if depth >= MAX_PASSING_DEPTH:
+            self._taint = 0
+            return ()
+        self._passing.append(key)
+        try:
+            targets = self._arguments_for(name, side, path)
+        finally:
+            self._passing.pop()
+        # Keep the answer only when it did not lean on one that is still unfinished.
+        if self._taint >= depth:
+            self._passed_cache[key] = targets
+            self._taint = _NEVER
+        return targets
+
+    def _arguments_for(self, name, side, path):
+        function, _, parameter = name.rpartition(".")
+        symbols = [
+            item for item in self.symbols.get((side, path, function), ()) if item.kind == "function"
+        ]
+        if len(symbols) != 1 or parameter not in symbols[0].parameters:
+            return ()
+        symbol = symbols[0]
+        if parameter in symbol.variadic_parameters:
+            return ()
+        index = symbol.parameters.index(parameter)
+        cls, _, method = function.rpartition(".")
+        in_class = bool(cls) and any(
+            item.kind == "class" for item in self.symbols.get((side, path, cls), ())
+        )
+        bound = in_class and symbol.parameters[:1] in (("self",), ("cls",))
+        if bound and index == 0:
+            return ()
+        # Creating an object calls the class, and its arguments go to `__init__`.
+        callee = path + "#" + (cls if in_class and method == "__init__" else function)
+        found = set()
+        for site_path, call in self.call_sites.get((side, callee), ())[:MAX_CALL_SITES]:
+            if any(item.spread for item in call.arguments):
+                continue
+            value = next((item.value for item in call.arguments if item.name == parameter), None)
+            if value is None:
+                positional = [item.value for item in call.arguments if item.name is None]
+                at = index - int(bound)
+                value = positional[at] if 0 <= at < len(positional) else None
+            if value is None:
+                continue
+            for target in self.resolve(value, side, site_path).targets:
+                # An object, a class or a function: something whose members can be followed.
+                if target.startswith("instance:") or (side, target) in self.kinds:
+                    found.add(target)
+        return tuple(sorted(found))
 
     def _injected(self, default, side, path, seen):
         """A parameter whose default is `Depends(provider)` receives what the provider makes."""

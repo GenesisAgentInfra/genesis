@@ -168,7 +168,12 @@ The context contains:
     `branches`.
   - `function`: a function the chain calls, once however often it is called. `inside`
     says how many conditions, loops and results it holds and which outside systems it
-    `reaches`.
+    `reaches`. With `"deferred": true` the function is not called on that line: it is
+    handed to another call (`executor.submit(self.work, item)`, `asyncio.to_thread(...)`,
+    a callback) or called inside a lambda, and `note` names the receiver. It runs when
+    and if the receiver calls it, often on another thread. Describe the step as what is
+    started or scheduled, and expand the function like any other when the work it does
+    belongs to the flow.
   - `system`: an outside system the chain talks to, once per system.
   - `await`: an awaited call that leaves the code.
 - `other_facts`, further facts of the entry function. They also anchor steps, but
@@ -360,6 +365,15 @@ same list on the static structure.
 - `possibly_affected` lists flows that can reach changed code without a step on it;
   `removed_flows` the entries that no longer exist; `unanalyzed_changes` the changed
   files Genesis did not analyze, such as other languages. Mention all three.
+
+Bring the changes onto the map before you report them as off it. A change listed under
+`possibly_affected` for a flow sits in a function that flow calls, or hands to a thread
+or a task runner, with no step on it yet. When you describe that flow, expand the
+functions on the way to the changed code by anchoring steps inside them; `status` shows
+`changes_placed` going up as they land. When a change is still `unassigned` and no flow
+is listed for it, look for a missing entry point first (a command registry, a scheduler,
+a message handler) and propose it as in section 2. Report a change as off the map only
+after that.
 
 Reformatting, comments and code that only moved are not changes.
 
