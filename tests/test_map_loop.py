@@ -512,7 +512,10 @@ def test_submissions_cannot_claim_more_than_the_facts_support(workspace):
         ("steps[3].reason", "reason_required")
     ]
     assert refused(lambda d: d["steps"].append(d["steps"][0])) == [
-        ("(document)", "invalid_value_error")
+        ("steps[7].key", "invalid_duplicate")
+    ]
+    assert refused(lambda d: d["edges"][4].update(target="archive")) == [
+        ("edges[4].target", "invalid_reference")
     ]
 
 
