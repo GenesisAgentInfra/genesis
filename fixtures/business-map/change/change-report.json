@@ -106,6 +106,7 @@
   ],
   "removed_flows": [],
   "possibly_affected": [],
+  "possible_entries": [],
   "unanalyzed_changes": [
     {
       "path": "docs/policy.md",

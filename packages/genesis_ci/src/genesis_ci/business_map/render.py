@@ -584,6 +584,12 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
             f"- {flows[item.flow_id].name}: {len(item.change_ids)} changes"
             for item in report.possibly_affected
         ]
+    if report.possible_entries:
+        lines += ["", "## Uncalled functions that lead to changed code, not on the map", ""]
+        lines += [
+            f"- {item.symbol_id}: {len(item.change_ids)} changes"
+            for item in report.possible_entries
+        ]
     if report.removed_flows:
         lines += ["", "## Removed flows", ""]
         lines += [f"- {flow.name}" for flow in report.removed_flows]

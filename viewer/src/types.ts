@@ -12,6 +12,7 @@ export type EntryKind =
   | "scheduled"
   | "public_api"
   | "agent_tool"
+  | "handler"
   | "main"
   | "root"
 export type Severity = "info" | "low" | "medium" | "high"
@@ -254,6 +255,12 @@ export interface ChangeReport {
     flow_id: string
     change_ids: string[]
     reason: string
+  }[]
+  /** Uncalled functions that lead to changed code and start no flow. Not drawn yet. */
+  possible_entries?: {
+    entry_id: string
+    symbol_id: string
+    change_ids: string[]
   }[]
   unanalyzed_changes?: {
     path: string

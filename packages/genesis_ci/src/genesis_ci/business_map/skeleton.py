@@ -74,6 +74,9 @@ def _entry_label(entry: CodeEntry) -> str:
     if entry.kind == "cli_command":
         # Typer and Click derive the command name from the function name.
         return "command " + entry.symbol_id.rsplit(".", 1)[-1].rsplit("#", 1)[-1].replace("_", "-")
+    if entry.kind == "handler" and "name" in attributes:
+        # The key a dictionary registers the handler under.
+        return "handler " + attributes["name"]
     return entry.kind.value.replace("_", " ")
 
 
