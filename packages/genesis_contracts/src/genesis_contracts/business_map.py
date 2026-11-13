@@ -118,6 +118,17 @@ class FindingSource(StrEnum):
     agent_observation = "agent_observation"
 
 
+class RiskCategory(StrEnum):
+    """The kind of harm, independent of severity, lifecycle and test evidence."""
+
+    reliability = "reliability"
+    correctness = "correctness"
+    data_integrity = "data_integrity"
+    security = "security"
+    performance = "performance"
+    other = "other"
+
+
 def _unique(values, label: str) -> None:
     values = list(values)
     if len(values) != len(set(values)):
@@ -149,6 +160,18 @@ class UnexpandedCall(ContractModel):
     reason: Text | None = None
 
 
+class StepContract(ContractModel):
+    """Source-backed I/O description, not a promise of runtime schema validation.
+
+    The containing step's evidence supports these statements. Omit the contract when
+    either side is unknown; do not infer required fields or validation from names.
+    """
+
+    input: Text
+    output: Text
+    constraints: Text | None = None
+
+
 class MapStep(ContractModel):
     step_id: Identifier
     name: Name
@@ -156,6 +179,7 @@ class MapStep(ContractModel):
     support: Support
     resolution: ResolutionStatus
     reason: Text | None = None
+    contract: StepContract | None = None
     anchors: tuple[Anchor, ...] = ()
     evidence_ids: tuple[str, ...] = ()
     finding_ids: tuple[Identifier, ...] = ()
@@ -169,6 +193,8 @@ class MapStep(ContractModel):
             raise ValueError("a candidate or unknown step requires a reason")
         if self.resolution != ResolutionStatus.unknown and not self.evidence_ids:
             raise ValueError("a step needs code evidence unless it is an explicit unknown")
+        if self.contract and not self.evidence_ids:
+            raise ValueError("a step contract needs code evidence")
         if self.resolution == ResolutionStatus.resolved and not self.anchors:
             raise ValueError("a resolved step must be anchored in analyzer facts")
         if self.support == Support.static_fact and not self.anchors:
@@ -364,6 +390,7 @@ class MapFinding(ContractModel):
     source: FindingSource
     rule: str | None = Field(default=None, min_length=1, max_length=128)
     severity: Severity
+    category: RiskCategory | None = None
     statement: Text
     anchors: tuple[Anchor, ...] = ()
     evidence_ids: tuple[str, ...] = Field(min_length=1)

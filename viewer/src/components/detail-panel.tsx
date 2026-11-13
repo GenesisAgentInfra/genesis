@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Check, ChevronRight, Play, X } from "lucide-react"
+import { ChevronRight, Play, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,7 @@ import {
   type TestStatus,
 } from "@/model"
 import type { ChangeSide, CoverageAssessment, MapStep } from "@/types"
+import { categoryOf, coverageKind } from "@/presentation"
 
 /**
  * What a verdict rests on, said after the one word the page uses for it everywhere. A
@@ -60,13 +61,7 @@ interface PanelProps {
   focus?: number
   /** Walk the flow this step belongs to, from its trigger to its end. */
   onWalk?: () => void
-  /** The changes on show as stops of the walk: whether they are seen, and the way on. */
-  review?: {
-    seen: boolean
-    reviewed: Set<number>
-    onToggle: () => void
-    onNext?: () => void
-  }
+  onNext?: () => void
   onClose: () => void
 }
 
@@ -77,7 +72,7 @@ export function DetailPanel({
   subject,
   focus,
   onWalk,
-  review,
+  onNext,
   onClose,
 }: PanelProps) {
   const coupons = subject.coupons
@@ -118,16 +113,6 @@ export function DetailPanel({
       : subject.type === "offMap"
         ? t.offMapHint
         : t.removed
-  const report = model.payload.report
-  const head = report
-    ? (report.head_ref ??
-      (report.head_revision?.startsWith("worktree:")
-        ? t.workingTree
-        : report.head_revision?.slice(0, 7)))
-    : undefined
-  const base = report
-    ? (report.base_ref ?? report.base_revision?.slice(0, 7))
-    : undefined
 
   return (
     <div className="flex h-full max-h-[inherit] min-h-0 flex-col">
@@ -177,9 +162,11 @@ export function DetailPanel({
               model={model}
               t={t}
               focused={coupons.length > 1 && focus === coupon.no}
-              seen={review?.reviewed.has(coupon.no) ?? false}
               // A removed step is already titled with its change's summary.
               titled={Boolean(ghostSummary)}
+              step={
+                subject.type === "step" && !subject.ghost ? step : undefined
+              }
             />
           ))}
           {findings.map((finding) => (
@@ -188,7 +175,8 @@ export function DetailPanel({
               className="rounded-[12px] bg-risk-bg px-3 py-2.5"
             >
               <h3 className="text-[12px] leading-4 font-medium text-risk-ink">
-                {t.risks} · {t.severity[finding.severity]}
+                {t.riskTypes}：{t.category[categoryOf(finding)]} ·{" "}
+                {t.severityLabel}：{t.severity[finding.severity]}
                 {model.findingStatus.get(finding.finding_id) &&
                   ` · ${t.findingStatus[model.findingStatus.get(finding.finding_id)!]}`}
               </h3>
@@ -209,45 +197,26 @@ export function DetailPanel({
                   {step.reason}
                 </p>
               )}
+              {subject.type === "step" && !subject.ghost && (
+                <StepContractDetail step={step} t={t} />
+              )}
               <Label>{t.inCode}</Label>
               <Evidence ids={step.evidence_ids ?? []} model={model} t={t} />
             </section>
           )}
-          {report && base && head && (
-            <p className="mt-auto pt-2 text-[12px] leading-4 text-ink-3">
-              {t.refs} <span className="font-mono">{base}</span> →{" "}
-              <span className="font-mono">{head}</span>
-            </p>
-          )}
         </div>
       </div>
-      {review && (
-        // The walk's own controls, where the reading ends: seen, and on to the next.
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line px-3 py-2">
+      {onNext && (
+        <div className="flex shrink-0 justify-end border-t border-line px-3 py-2">
           <Button
-            variant={review.seen ? "ghost" : "outline"}
+            variant="ghost"
             size="sm"
-            aria-pressed={review.seen}
-            onClick={review.onToggle}
-            className={cn(
-              "rounded-full px-3 text-[13px]",
-              review.seen ? "text-ink-2" : "bg-card text-ink"
-            )}
+            onClick={onNext}
+            className="rounded-full px-3 text-[13px] text-ink-2"
           >
-            <Check data-icon="inline-start" />
-            {review.seen ? t.reviewed : t.markReviewed}
+            {t.nextChange}
+            <ChevronRight data-icon="inline-end" />
           </Button>
-          {review.onNext && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={review.onNext}
-              className="rounded-full px-3 text-[13px] text-ink-2"
-            >
-              {t.nextChange}
-              <ChevronRight data-icon="inline-end" />
-            </Button>
-          )}
         </div>
       )}
     </div>
@@ -257,6 +226,40 @@ export function DetailPanel({
 function Label({ children }: { children: React.ReactNode }) {
   return (
     <h3 className="text-[12px] leading-4 font-medium text-ink-3">{children}</h3>
+  )
+}
+
+/** Only explicit source-backed contracts are shown; old reports stay readable. */
+function StepContractDetail({ step, t }: { step: MapStep; t: Strings }) {
+  const contract = step.contract
+  return (
+    <section className="flex flex-col gap-2 border-t border-line pt-3">
+      <Label>{t.ioContract}</Label>
+      {contract ? (
+        <dl className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px] leading-[19px]">
+          <dt className="text-ink-3">{t.contractInput}</dt>
+          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
+            {contract.input}
+          </dd>
+          <dt className="text-ink-3">{t.contractOutput}</dt>
+          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
+            {contract.output}
+          </dd>
+          {contract.constraints && (
+            <>
+              <dt className="text-ink-3">{t.contractConstraints}</dt>
+              <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
+                {contract.constraints}
+              </dd>
+            </>
+          )}
+        </dl>
+      ) : (
+        <p className="text-[13px] leading-[19px] text-ink-3">
+          {t.contractMissing}
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -298,17 +301,16 @@ function ChangeDetail({
   model,
   t,
   focused,
-  seen,
   titled,
+  step,
 }: {
   coupon: Coupon
   model: Model
   t: Strings
   focused: boolean
-  /** The reader has marked this change as seen. */
-  seen: boolean
   /** The panel title already says what changed. */
   titled: boolean
+  step?: MapStep
 }) {
   const ref = React.useRef<HTMLElement>(null)
   React.useEffect(() => {
@@ -325,7 +327,12 @@ function ChangeDetail({
       )
     )
     .filter((item) => item !== undefined)
-  const where = change.after?.evidence_ids ?? change.before?.evidence_ids ?? []
+  const where = [
+    ...new Set([
+      ...(change.after?.evidence_ids ?? change.before?.evidence_ids ?? []),
+      ...(step?.evidence_ids ?? []),
+    ]),
+  ]
   const summary = change.explanation?.summary
   const detail = detailOf(tests, status)
   const hasCode = Boolean(
@@ -342,7 +349,7 @@ function ChangeDetail({
       className="flex scroll-mt-3 flex-col gap-3"
     >
       <div className="flex items-start gap-2">
-        <NumberDisc no={coupon.no} seen={seen} className="mt-[3px]" />
+        <NumberDisc no={coupon.no} className="mt-[3px]" />
         <p
           className={cn(
             "min-w-0 flex-1 font-medium text-ink",
@@ -362,12 +369,14 @@ function ChangeDetail({
           </p>
         </div>
       )}
+      {step && <StepContractDetail step={step} t={t} />}
       <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+        <Label>{t.testEvidence}</Label>
         {/* The same word as on the card, then what it rests on. */}
         <p className="text-[13px] leading-[18px] text-ink-2">
           <StatusMark
             status={status}
-            label={t.status[status]}
+            label={t.coverage[coverageKind(tests)]}
             className="align-top font-medium text-ink [&_svg]:size-4"
           />
           {detail && <span> · {t.verdictDetail[detail]}</span>}
@@ -384,10 +393,11 @@ function ChangeDetail({
           className="rounded-[12px] bg-risk-bg px-3 py-2.5"
         >
           <p className="text-[12px] leading-4 font-medium text-risk-ink">
-            {item.status === "introduced"
-              ? t.newRisk
-              : t.findingStatus[item.status]}{" "}
-            · {t.severity[item.finding.severity]}
+            {t.riskTypes}：{t.category[categoryOf(item.finding)]} ·{" "}
+            {t.severityLabel}：{t.severity[item.finding.severity]}
+            <span className="ml-2 font-normal">
+              {t.findingStatus[item.status]}
+            </span>
           </p>
           <p className="mt-1 text-[13px] leading-[19px] text-ink">
             {item.finding.statement}

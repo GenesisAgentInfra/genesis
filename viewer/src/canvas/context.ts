@@ -36,8 +36,6 @@ export interface CanvasState {
   knownRisks: boolean
   /** The one kind of change the reader narrowed the page down to. */
   filter?: Filter
-  /** The stops the reader has marked as seen. */
-  reviewed: Set<number>
   /** Bumped for every new ripple. */
   run: number
   /** The ripple may start: the camera is on its way or there. */

@@ -1,5 +1,6 @@
 import { detectLang, type Lang } from "./i18n"
 import { layoutRoute, type RouteLayout } from "./layout"
+import { categoryOf, type DisplayCategory } from "./presentation"
 import type {
   ChangeItem,
   CoverageAssessment,
@@ -21,6 +22,7 @@ export interface Coupon {
   primary: boolean
   /** The change brings a risk that was not there before. */
   risky: boolean
+  categories?: DisplayCategory[]
   /** How much the change asks to be looked at: the colour of its card. */
   tone: Tone
 }
@@ -32,7 +34,7 @@ export type TestStatus = "tested" | "untested" | "unsure"
 export type Tone = "risk" | TestStatus
 
 /** What the reader may narrow the changes down to. */
-export type Filter = Tone
+export type Filter = Tone | `category:${DisplayCategory}`
 
 export const TONES: Tone[] = ["risk", "untested", "unsure", "tested"]
 
@@ -52,6 +54,7 @@ export interface Stop {
   /** None for a removed flow, which carries no verdict. */
   status?: TestStatus
   risky: boolean
+  categories?: DisplayCategory[]
   tone?: Tone
   /** Other flows the same change sits on, with its node there. */
   also: { flowId: string; nodeId: string }[]
@@ -206,10 +209,17 @@ export function reachOf(view: FlowView, stepId: string): Reach {
 
 /** Whether a change is one the reader asked to see. */
 export function matches(
-  item: { risky: boolean; status?: TestStatus },
+  item: { risky: boolean; status?: TestStatus; categories?: DisplayCategory[] },
   filter?: Filter
 ): boolean {
   if (!filter) return true
+  if (filter.startsWith("category:"))
+    return (
+      item.risky &&
+      (item.categories?.length ? item.categories : ["unclassified"]).includes(
+        filter.slice(9) as DisplayCategory
+      )
+    )
   return filter === "risk" ? item.risky : item.status === filter
 }
 
@@ -385,6 +395,15 @@ export function buildModel(payload: Payload): Model {
     let primary: Coupon | undefined
     const status = statusOf(change.tests)
     const risky = (change.finding_ids ?? []).some((id) => introduced.has(id))
+    const categories = [
+      ...new Set(
+        (change.finding_ids ?? [])
+          .filter((id) => introduced.has(id))
+          .map((id) => findings.get(id))
+          .filter((finding) => finding !== undefined)
+          .map(categoryOf)
+      ),
+    ]
     const tone: Tone = risky ? "risk" : status
     places.forEach((place, order) => {
       const coupon: Coupon = {
@@ -393,6 +412,7 @@ export function buildModel(payload: Payload): Model {
         place,
         primary: order === 0,
         risky,
+        categories,
         tone,
       }
       if (order === 0) primary = coupon
@@ -453,6 +473,7 @@ export function buildModel(payload: Payload): Model {
       nodeId: nodeOf(change.projection, no),
       status,
       risky,
+      categories,
       tone,
       also,
       maybe,

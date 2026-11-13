@@ -23,8 +23,10 @@ import {
 } from "lucide-react"
 
 import { NumberDisc, StatusMark } from "@/canvas/step-node"
+import { ReviewBadge } from "@/components/review-badge"
 import { outOfFocus, useCanvas } from "@/canvas/context"
 import { cn } from "@/lib/utils"
+import { coverageKind, shortSummary } from "@/presentation"
 import { matches, statusOf } from "@/model"
 import type { EntryKind } from "@/types"
 import type {
@@ -214,7 +216,11 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
   const status = statusOf(change.tests)
   const picked = canvas.apart === id
   const out =
-    !picked && !matches({ risky: data.coupon.risky, status }, canvas.filter)
+    !picked &&
+    !matches(
+      { risky: data.coupon.risky, status, categories: data.coupon.categories },
+      canvas.filter
+    )
   return (
     <div
       data-tone={data.coupon.tone}
@@ -231,15 +237,17 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
       />
       <NumberDisc
         no={data.coupon.no}
-        seen={canvas.reviewed.has(data.coupon.no)}
         className="absolute -top-2 -left-2 z-[7]"
       />
-      <p className="line-clamp-3 text-[13px] leading-[19px] text-tone-ink">
-        {change.explanation?.summary ?? t.changeKind[change.kind]}
+      {(data.coupon.risky || status !== "tested") && (
+        <ReviewBadge risky={data.coupon.risky} status={status} t={t} />
+      )}
+      <p className="line-clamp-2 text-[13px] leading-[19px] text-tone-ink">
+        {shortSummary(change) ?? t.changeKind[change.kind]}
       </p>
       <StatusMark
         status={status}
-        label={t.status[status]}
+        label={t.coverage[coverageKind(change.tests)]}
         className="text-[12px] leading-4 text-ink-2"
       />
     </div>
@@ -324,11 +332,7 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
       )}
     >
       {data.no !== undefined && (
-        <NumberDisc
-          no={data.no}
-          seen={canvas.reviewed.has(data.no)}
-          className="absolute -top-2 -left-2 z-[7]"
-        />
+        <NumberDisc no={data.no} className="absolute -top-2 -left-2 z-[7]" />
       )}
       <Handle
         type="target"

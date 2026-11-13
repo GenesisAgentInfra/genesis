@@ -4,7 +4,8 @@ import type { Edge, Node } from "@xyflow/react"
 import { edgeLabel } from "@/layout"
 import { cutFlow } from "./focus"
 import { removedNodeId, type Coupon, type FlowView } from "@/model"
-import type { FindingChange, MapStep } from "@/types"
+import type { FindingChange, MapFinding, MapStep } from "@/types"
+import { sortAlerts } from "@/presentation"
 
 /**
  * A flow drawn left to right: a step the change leaves alone is a small pill, a step it
@@ -41,6 +42,7 @@ export interface StepNodeData extends Record<string, unknown> {
   coupons: Coupon[]
   isNew: boolean
   risk?: "new" | "known"
+  alerts?: MapFinding[]
   ghost: boolean
   loops: { label: string }[]
   removedFlow: boolean
@@ -90,7 +92,7 @@ const labelWidth = (text: string) => Math.ceil(textWidth(text, 12, 6.7)) + 18
 export function heightOf(data: StepNodeData): number {
   if (data.compact) return PILL_H
   let height = 68
-  if (data.coupons.length) height += 104
+  if (data.coupons.length) height += 80
   if (data.loops.length) height += 24
   return height
 }
@@ -146,6 +148,18 @@ export function buildGraph(
         : "known"
       : undefined
     const isNew = view.newSteps.has(step.step_id)
+    const alertIds = new Set([
+      ...stepFindings,
+      ...coupons.flatMap((coupon) => coupon.change.finding_ids ?? []),
+    ])
+    const alerts = sortAlerts(
+      view.findings.filter(
+        (finding) =>
+          alertIds.has(finding.finding_id) &&
+          findingStatus.get(finding.finding_id) !== "resolved" &&
+          (knownRisks || findingStatus.get(finding.finding_id) === "introduced")
+      )
+    )
     // A pill has room for its name only, so a step with a badge to show keeps its card.
     const badged =
       isNew ||
@@ -158,6 +172,7 @@ export function buildGraph(
       coupons,
       isNew,
       risk,
+      alerts,
       ghost: false,
       loops,
       removedFlow: view.removed,

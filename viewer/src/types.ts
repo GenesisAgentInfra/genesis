@@ -15,6 +15,13 @@ export type EntryKind =
   | "main"
   | "root"
 export type Severity = "info" | "low" | "medium" | "high"
+export type RiskCategory =
+  | "reliability"
+  | "correctness"
+  | "data_integrity"
+  | "security"
+  | "performance"
+  | "other"
 
 export interface EvidenceRef {
   evidence_id: string
@@ -39,6 +46,12 @@ export interface MapEntry {
   evidence_ids: string[]
 }
 
+export interface StepContract {
+  input: string
+  output: string
+  constraints?: string
+}
+
 export interface MapStep {
   step_id: string
   name: string
@@ -46,6 +59,7 @@ export interface MapStep {
   support: "static_fact" | "agent_synthesis"
   resolution: Resolution
   reason?: string
+  contract?: StepContract
   anchors?: string[]
   evidence_ids?: string[]
   finding_ids?: string[]
@@ -101,6 +115,7 @@ export interface MapFinding {
   source: "rule" | "agent_observation"
   rule?: string
   severity: Severity
+  category?: RiskCategory
   statement: string
   evidence_ids: string[]
   condition?: string
@@ -215,7 +230,7 @@ export interface ChangeItem {
   detail?: string
   projection: Projection
   other_projections?: Projection[]
-  explanation?: { summary: string; effect?: string }
+  explanation?: { summary: string; short_summary?: string; effect?: string }
   tests?: CoverageAssessment
   finding_ids?: string[]
 }

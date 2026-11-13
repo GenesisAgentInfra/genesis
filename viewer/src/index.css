@@ -70,13 +70,13 @@
 :root {
   --canvas: #f4f4f5;
   --ink: #111113;
-  --ink-2: #5c5d63;
-  --ink-3: #74757b;
-  --line: #e6e6e9;
+  --ink-2: #4d5058;
+  --ink-3: #62656e;
+  --line: #d9dadd;
   --field: #f4f4f5;
-  --edge: #9496a0;
+  --edge: #7d818c;
   --edge-strong: #3a3b40;
-  --edge-exception: #d98d84;
+  --edge-exception: #c57368;
   --edge-exception-strong: #b5524a;
   --select: #2f6feb;
   --change: #e2860b;
@@ -142,9 +142,9 @@
   --ink: #f1f1f3;
   --ink-2: #b6b7bd;
   --ink-3: #8e9097;
-  --line: #2e2e33;
+  --line: #3b3d44;
   --field: #26262b;
-  --edge: #6f717a;
+  --edge: #90939d;
   --edge-strong: #d3d4d9;
   --edge-exception: #a35a52;
   --edge-exception-strong: #f09a90;

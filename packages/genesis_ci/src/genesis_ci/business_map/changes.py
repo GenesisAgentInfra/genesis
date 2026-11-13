@@ -733,6 +733,8 @@ class ChangeAnalysis:
                 verdict = ChangeAssessment.model_validate(stored)
                 tests, _ = self.assessed_tests(change, symbols, verdict)
                 item["explanation"] = {"summary": verdict.summary}
+                if verdict.short_summary:
+                    item["explanation"]["short_summary"] = verdict.short_summary
                 if verdict.effect:
                     item["explanation"]["effect"] = verdict.effect
             if tests is not None:

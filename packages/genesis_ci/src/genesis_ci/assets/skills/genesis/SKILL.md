@@ -236,7 +236,7 @@ Then write the flow and submit it. This example leaves nothing unaccounted:
     {"anchor": "fp_07d073458ec7ec545df423b0", "reason": "merged_into_step", "note": "exit test of the review loop"}
   ],
   "observations": [
-    {"statement": "The review calls the model in a loop with no upper bound.", "severity": "medium",
+    {"statement": "The review calls the model in a loop with no upper bound.", "severity": "medium", "category": "reliability",
      "step": "review",
      "evidence": [{"path": "expense/review.py", "start_line": 7, "end_line": 8, "quote": "while True"}]}
   ]
@@ -249,6 +249,21 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task TASK_ID --in
 
 Write every name, summary, branch label, note and observation in the user's language,
 in words a product person would use.
+
+Give each observation one `category` when the evidence supports it: `reliability`
+(retries, failures, recovery), `correctness` (wrong decisions or results), `data_integrity`
+(loss, duplicate side effects, inconsistent state), `security` (permissions or exposure),
+`performance` (latency or cost), or `other`. Category is separate from severity and test
+coverage. Omit it when uncertain; never turn a behavior change or missing test into a bug.
+
+For each step whose inputs and outputs you can establish, include an optional `contract`:
+`{"input": "What this step receives", "output": "What it returns or which path it selects",
+"constraints": "Source-backed conditions, validation, side effects or failure behavior"}`.
+Both `input` and `output` are required when supplied; `constraints` is optional. Cite all
+supporting code in the step's `evidence`, including the field reads, return values and
+conditions you describe. This is a description of the current code, not a proposed API or
+a guarantee of runtime validation. Never invent types, required fields or successful
+results. If the code cannot establish both sides, omit the contract.
 
 Rules the CLI enforces:
 
@@ -420,6 +435,9 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
 
 - `summary` says in business terms what is different, and `effect` what it means for the
   flow. Do not describe the line edit. Write both in the user's language.
+- Add `short_summary` for the map card: one short clause (up to 120 characters), preserving
+  the triggering condition and consequence. Keep the complete explanation in `summary`
+  and `effect`; do not omit qualifications to make an uncertain claim sound definite.
 - `verdict` is your reading of the tests. `covered`: a test's input takes the changed
   path and the test asserts on the result. `reached_only`: tests call the code but miss
   the changed path or assert nothing about it; `note` says what is missing.

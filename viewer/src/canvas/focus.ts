@@ -79,6 +79,33 @@ export function cutFlow(
     keep.add(before.get(id) ?? sources[0])
   }
 
+  // Keep the meaning of each affected branch: its first step, decisions and outcomes.
+  // Only intermediate work may fold. The original edges still own labels and uncertainty.
+  const byId = new Map(steps.map((step) => [step.step_id, step]))
+  const affected = new Set(marked)
+  const ahead = [...marked]
+  for (const id of marked)
+    for (const edge of out.get(id) ?? []) keep.add(edge.target)
+  while (ahead.length) {
+    const id = ahead.pop()!
+    const step = byId.get(id)
+    if (step?.kind === "decision" || step?.kind === "result" || !out.has(id))
+      keep.add(id)
+    for (const edge of out.get(id) ?? []) {
+      if (edge.relation === "exception") keep.add(edge.target)
+      if (affected.has(edge.target)) continue
+      affected.add(edge.target)
+      ahead.push(edge.target)
+    }
+  }
+  // A retry must remain a real loop, never disappear into an unrelated dotted tail.
+  for (const row of layout.rows)
+    for (const { edge } of row.loops)
+      if (affected.has(edge.source) || affected.has(edge.target)) {
+        keep.add(edge.source)
+        keep.add(edge.target)
+      }
+
   /** The hidden steps one end of `edges` away from a kept step, and on from those. */
   const spread = (
     from: string,

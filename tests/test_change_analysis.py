@@ -413,12 +413,16 @@ def test_the_change_task_takes_explanations_and_checks_verdicts(change):
     assert change.stored_report().changes == report.changes
 
     # The side prefix of a test id may be left out.
-    result = change.submit(CHANGE_TASK, assessed(report, SUBMIT_TEST.removeprefix("head::")))
+    submission = assessed(report, SUBMIT_TEST.removeprefix("head::"))
+    for item in submission["changes"]:
+        item["short_summary"] = "保留完整说明的短文案"
+    result = change.submit(CHANGE_TASK, submission)
     assert result["status"] == "accepted" and result["assessed"] == 4
     assert result["analysis_status"] == "complete" and result["changes_waiting"] == 0
     final = change.stored_report()
     item = by_kind(final, "condition_modified")
     assert item.explanation.summary == "说明 condition_modified"
+    assert item.explanation.short_summary == "保留完整说明的短文案"
     assert item.tests.verdict == "reached_only"
     assert item.tests.basis == ("static_fact", "agent_assessment")
     assert [case.test_id for case in item.tests.items] == [SUBMIT_TEST]

@@ -5,15 +5,15 @@ colors:
   canvas: "#f4f4f5"
   card: "#ffffff"
   ink: "#111113"
-  ink-2: "#5c5d63"
-  ink-3: "#74757b"
-  line: "#e6e6e9"
+  ink-2: "#4d5058"
+  ink-3: "#62656e"
+  line: "#d9dadd"
   field: "#f4f4f5"
   muted-tint: "#f1f1f3"
   handle-rim: "#c9cace"
-  edge: "#cfd0d5"
+  edge: "#7d818c"
   edge-strong: "#3a3b40"
-  edge-exception: "#e8b7b1"
+  edge-exception: "#c57368"
   edge-exception-strong: "#b5524a"
   select: "#2f6feb"
   change: "#e2860b"
@@ -110,7 +110,7 @@ components:
   step-card-next:
     borderColor: "rgb(58 59 64 / 0.45)"
   step-card-quiet:
-    backgroundColor: "rgb(255 255 255 / 0.75)"
+    backgroundColor: "{colors.card}"
     textColor: "{colors.ink}"
   step-pill:
     backgroundColor: "{colors.card}"
@@ -165,8 +165,9 @@ components:
     textColor: "{colors.ink}"
     typography: "{typography.headline}"
     rounded: "{rounded.card}"
-    padding: "12px 16px 10px"
-    width: "600px"
+    padding: "0 6px 0 12px"
+    height: "36px"
+    width: "fit-content"
   flow-chip:
     backgroundColor: "{colors.field}"
     textColor: "{colors.ink}"
@@ -317,13 +318,13 @@ One scale of four sizes; nothing sits between them.
 
 The canvas is a React Flow pane. A drawn flow is a grid of columns: dagre decides which column a step is in, the order down it, and the height a long line keeps to as it passes other columns; a column is as wide as its widest step, steps 16px apart down it; a gap between columns is at least 40px and as wide as the label and the turning lines in it need. Cards are 216px wide; pills are 44px tall and 120 to 236px wide, sized to their name. When a flow is wider than the frame allows it wraps onto bands 48px apart, the bands made about equally long; a line that goes on to the next band leaves by the right, runs back in the gap between the bands and comes in from the left. A step the change removed sets down in a free corner at the end of the last band, else in a row 28px below the flow. Panning is by scroll, zoom ranges from 0.05 to 1.6, and nodes cannot be dragged or connected.
 
-The atlas is one grid, as wide as the drawn flows need and no wider than the reader's screen shows at 0.8 (the canvas width less 84px, over 0.8). A module with a flow drawn out runs the full width; "流程之外" (changes on no flow, then flows that are gone, side by side) runs the full width under the touched modules; every other module is a cell, as many to a row as fit at 308px or more, each row's cells equally wide and as tall as its tallest, a short last row sharing the width evenly. Frames sit 32px apart and all end on the same left and right edge. Inside a frame (24px padding, a 56px header) drawn flows stack 36px apart, each under a 44px name row, and the rows of untouched flows follow, 8px apart. A drawn flow never runs wider than its frame's inside: it wraps onto bands instead. Module and flow names keep their size on screen as the reader zooms out (15px and 13px, growing up to 34px and 30px in map units). The first view frames the whole atlas between zoom 0.8 and 1; when it is larger than that, it starts from the top left, where the touched modules are.
+The atlas is one grid, as wide as the drawn flows need and no wider than the reader's screen shows at 0.8 (the canvas width less 84px, over 0.8). A module with a flow drawn out runs the full width; "流程之外" (changes on no flow, then flows that are gone, side by side) runs the full width under the touched modules; every other module is a cell, as many to a row as fit at 308px or more, each row's cells equally wide and as tall as its tallest, a short last row sharing the width evenly. Frames sit 32px apart and all end on the same left and right edge. Inside a frame (24px padding, a 56px header) drawn flows stack 36px apart, each under a 44px name row, and the rows of untouched flows follow, 8px apart. A drawn flow never runs wider than its frame's inside: it wraps onto bands instead. Module and flow names keep their size on screen as the reader zooms out (15px and 13px, growing up to 34px and 30px in map units). The first view frames the whole atlas between zoom 0.8 and 1.6; when it is larger than that, it starts from the top left, where the touched modules are.
 
-All chrome floats 12px from the viewport edges. The headline block sits top left, up to 600px wide (with the panel open, never under it: at most the width left of the panel, at least 340px); nothing sits under it, and with no report to walk a pill with the mark and the map's size stands in its place. Zoom controls sit 12px from the right and 32px from the bottom, and stay there, with the round theme button 8px above them; the map keeps 48px clear for them. The detail panel is 384px wide, inset 12px from the top and right, and as tall as what it says, never so tall that it reaches the controls under it; the camera keeps what matters in the area left of it.
+The headline and detail panel float 16px from the desktop viewport edges (12px on narrow screens). The overview starts 24px below the headline and shares its left edge; it never floats in the vertical center of a tall window. The compact change-list entry sits top left and fits within the area left of an open panel; and with no report to walk a pill with the mark and the map's size stands in its place. Zoom controls sit 12px from the right and 32px from the bottom, and stay there, with the round theme button 8px above them; the map keeps 48px clear for them. The detail panel is 384px wide, inset 16px from the top and right, and as tall as what it says, never so tall that it reaches the controls under it; the camera keeps what matters in the area left of it.
 
-The camera frames the free area: the canvas minus the measured headline stack (plus 16px), the open panel (384px plus 40px) and a 56px bottom margin. It frames the change and the steps it leads to first, then adds the farther results and the way in while everything still fits between zoom 0.62 and 1, and never drops the steps ahead for the way in. When even the change and its next steps do not fit at 0.62, the change sits a third in at 0.62 so what it leads to gets the rest. Opening the panel pans only when the panel would cover them; a resized window keeps the change framed unless the reader has moved away from it.
+The camera frames the free area below the measured headline with 24px separation, left of the open panel (384px plus 40px), and above a 28px bottom margin. Desktop automatic framing grows small maps up to 1.6 zoom. Opening details first fits the complete selected module if it stays readable at 0.8 or above; otherwise it fits the selected step and its immediate neighbors, falling back to the step alone. Detail framing includes 12 map units of padding and never forces the content beyond the free area. The desktop map is clipped outside that area, with 12px of shadow clearance, so manual panning cannot draw content underneath the headline or details.
 
-Below 768px the headline spans the width at 16px, the panel becomes a bottom sheet (inset 8px, 52dvh tall), and with the sheet open the kinds, the stepper and the list give way to the two sentences alone.
+Below 768px the panel retains its existing bottom-sheet layout (inset 8px, 52dvh tall). These refinements target the desktop layout.
 
 Panel rhythm: 16px gutters, 24px between sections, 12px within a change, 6px between before/after rows. Card rhythm: 12px padding, 10px from header to rows, 6px between rows.
 
@@ -340,7 +341,7 @@ The system is flat with a soft lift. White surfaces sit on grey and carry a hair
 - **Ring** (`0 0 0 0 → 0 0 0 12px`, the card's tone 38% to 0, 240ms): the first beat of the ripple, once per change.
 
 ### Named Rules
-**The Quiet-Around-The-Change Rule.** When a change is on show, every card but the change, the steps it leads to (once the ripple reaches them) and a card opened in the panel drops its shadow, turns 75% white, fades its content to 60% and takes a grayscale tile. Edges outside the ripple, the way in and the change's own loops fall to 45%, their labels to 60%. A change off the map quiets the whole flow behind it. Quiet cards stay legible. They are never hidden.
+**The Quiet-Around-The-Change Rule.** Keep other changed cards and the incoming path readable. Unrelated cards lose their shadow and take a grayscale tile, while their white surface and text retain full contrast. Edges outside the ripple, the way in and the change's own loops fall to 70%; branch labels remain fully legible at weight 500. Modules outside the focused module may still recede. Quiet cards are never hidden.
 
 ## Shapes
 
@@ -354,7 +355,7 @@ What the reader looks at first: a touched flow, cut down to its change. Opening 
 - **Left out:** the steps between two drawn ones are one dotted line (1.5/5, round caps) with a pill that counts them, after the branch they follow when there is one ("拆解完成 · 中间 4 步"). A line is left out where what is drawn already leads the same way. Steps left out with nothing drawn further on (the rest of the flow after a change, a branch the change does not touch) are a dotted 32px pill after the step they follow, "还有 4 步", on a dotted line named after the branch when there is one; clicking it opens the module on that flow. A gap or a tail of one step is drawn as that step.
 - **Unchanged steps** that are drawn are pills (below), their branches named on their lines.
 - **Changed steps** are cards (below), each marked for what the change did to it.
-- **Picking a card** rings it in place in its own tone, darkens the way in to it and the lines leaving it, and quiets the rest; the camera moves only when the card is out of the free area, and never zooms in for it.
+- **Picking a card** rings it in its own tone and darkens the way in and out. After details and the headline have laid out, fit the complete module or the selected step's local context into the free canvas, aligned below the headline. Resizing keeps that context in view; closing details returns to the larger top-aligned overview or module. Manual panning remains free between these explicit transitions.
 - **"走一遍"** walks a flow drawn whole from its trigger to its end where it stands. It is offered only with no report to walk: with one, the headline steps through the changes.
 
 ### Flow Row
@@ -373,14 +374,18 @@ A white full pill centred under the map while a flow is walked: a play glyph, "�
 ### Zoom Controls
 A white full pill, three 28px ghost icon buttons stacked (zoom in, zoom out, whole map), float shadow and hairline ring. The last returns from a focused module to the whole map.
 
-### Headline Block
-Top left: a white 18px float, 12px 16px 8px padding.
-- **Verdict:** what this change asks of the reader, in the headline style and never cut short: "这次改动带来 1 个新风险，还有 2 处没测到。" It names new risks first, then what no test reaches, then what nobody can tell; with none of those it says the changes are tested. With no change it says so, or that no changed file could be analyzed.
-- **Where:** under it in 13px ink-2, two lines at most: "改动落在「退款」模块的 1 条流程上，另有 2 处在流程之外。"
-- **Kinds:** after a hairline, a row of 24px pills: "全部 6", then one per kind that occurs, each with a dot of its tone: 新风险, 没测到, 不确定, 有测试. Picking one narrows the page down to it: the stepper and the list walk only those changes, and the cards of every other kind step back. Picking it again, or "全部", brings them all back. A change may count in two kinds (a risk that is also untested).
-- **Stepper:** at the right of the kinds, two 24px ghost chevrons around "逐个看", which becomes "2 / 6" once a change is picked; it wraps at both ends, and ← → do the same from the keyboard, also right after a chevron was clicked. Each chevron's tooltip names its key. A change outside the open module closes that module first.
-- **List:** under the kinds, "清单 已看 2 / 6" with a chevron ("6 处都看过了" and a tick once they all are). It folds out a float under the headline, over the map: one row per change with its number in its tone, its summary, its flow, "新风险" and its test status, and a round button that marks it as seen. A row picks its change and folds the list away; so does a click on the map, or Esc. What is marked as seen is kept in the browser under the two revisions compared.
-- **Notes:** at the right of the list's line, in 13px: "1 个文件没分析" and "部分完成" with a warning glyph and a dotted underline, opening a tooltip on hover, focus or tap that names the files and says their changes are not on the map; "改了 T 个测试" in plain ink-3.
+### Change List Entry
+A compact 36px white pill at the top left contains “改动清单”, the change count, and
+previous/next buttons. The current position appears once a change is selected. No large
+verdict card, location sentence, always-visible category chips, or review-progress row.
+The diagram already carries the changes and their locations.
+
+The button opens a 360px popover containing one clickable row per change: its number,
+concise description, and a native shadcn Badge for “风险”, “待验证” or existing behavior
+checks. No heading, progress counter, filters, review buttons or shortcut footer. Picking a change closes the popover; Escape closes it and
+returns focus to its trigger.
+Warnings about unanalyzed files and incomplete analysis stay visible beside the pill.
+When there are no product changes, a short neutral status replaces the entry.
 
 ### Step Card
 A step the change touched (or one with a tag to show): quiet and white, holding the change it carries.
@@ -418,10 +423,10 @@ A module of the product around its flows.
 
 ### Lines
 Every line reads against the canvas, turns at right angles and says which way it goes.
-- **At rest:** #9496a0 at 1.75px (3:1 on the canvas), corners rounded at 10px, ending in a small filled arrowhead of the same colour; error paths in #d98d84, dashed. The port a line leaves is a 9px white dot; the port it lands on is not drawn, the arrowhead is.
+- **At rest:** #7d818c at 2px, corners rounded at 10px, ending in a small filled arrowhead of the same colour; error paths in #c57368, dashed. The port a line leaves is a 9px white dot; the port it lands on is not drawn, the arrowhead is.
 - **Way:** out of the right of its step, a turn in the gap after that column, on at the height of its target. A line that passes other columns keeps the lane dagre reserved for it; lines turning in the same gap keep 8px apart, and only lines leaving the same step share a turn. A line that goes on to the next band of a wrapped flow leaves by the right, runs back between the bands and comes in from the left; there each line keeps a level of its own, the one that ends lowest running highest and turning furthest out, so they come down without crossing. A step back to an earlier one (a retry) runs dashed in a lane clear of the cards between its ends.
 - **Labels:** a branch or a condition is a white pill (12px ink-2, red for an error path) on the line just after its first turn, so two branches of one decision are named where they part. On a line that wraps to the next band the pill sits on its run between the bands; two such lines keep 26px apart there, and the second pill sits further back along its line than the first, so the two never stand one over the other.
-- **Lit:** the way in to the picked change, the lines leaving it and the lines of a walk go to #3a3b40 (error paths #b5524a) at 2.25px, arrowheads with them; a line that draws itself gets its arrowhead as it arrives.
+- **Lit:** the way in to the picked change, the lines leaving it and the lines of a walk go to #3a3b40 (error paths #b5524a) at 2.5px, arrowheads with them; a line that draws itself gets its arrowhead as it arrives.
 - **No shared lanes:** no line runs from one frame to another at rest. What starts a flow is written beside its name; lines between frames appear only for the picked change (below).
 
 ### Change Lines
@@ -438,9 +443,10 @@ A white 20px float, closed by default. Clicking a card opens it on that step (a 
 - **Header:** a small kind tile, the step name (or the removed step's summary, or "不在流程上的改动"), the step kind (or 已删除) in ink-3, a "走一遍" outline pill for steps of a live flow when there is no report to walk, and a ghost close button.
 - **Each change:** its number and the summary as a subhead ("第 N 处改动" when the header already says the summary), "对用户的影响", then after a hairline the test status in the card's own word followed by what it rests on, the CLI's note in the page language, then risk boxes in red tint. "查看代码" folds away the before/after rows, the evidence (a mono path over a field-grey excerpt, never repeating the code just shown), why the change sits on this step, and the test ids in mono. An unchanged step shows its reason and code at once.
 - **Before / after:** before is a risk-tinted row with struck ink-2 text; after is a green-tinted row with ink text; each has a 36px label column. Code keeps its lines: a line too long for the row scrolls sideways.
-- **Seen, and on:** under a change, a bar that stays put: "标记为看过" (an outline pill that becomes "已看过") at the left, "下一处改动" at the right. It is the same mark as in the list.
+- **Next:** the panel footer contains only “下一处改动” when another change exists. Review marking and local review-state persistence are removed.
 - **Height:** on a desk the panel is as tall as what it says and scrolls inside past that.
-- **Refs:** "对比 base → head" in 12px ink-3 with mono refs closes the panel.
+- **Contract:** show the selected step’s explicit input, output and optional constraints after its impact. Missing contracts get one honest empty state. Contract descriptions are backed by the step’s cited source and never inferred from names.
+- **Secondary copy:** omit the base/head comparison and standalone source-assessment disclaimer. Test labels continue to describe evidence without claiming execution.
 
 ### Walk Through (signature)
 "走一遍" walks a flow the way worth watching: from its trigger, at each decision the branch passing the most changes, then the one off the error path, then the longer one. The camera moves to the trigger (560ms) at 0.85 zoom and rides along; each edge draws itself in 300ms with a dot on its tip, each step it reaches lifts its border (its tone on a change, strong grey otherwise) and rings once; the walk pauses 140ms at a step and 560ms more at a change. Everything off the walk steps back; the details panel stays open if it was. Any click, scroll or key on the map ends it, as does the bar's button; with reduced motion the whole walk shows at once, framed.
@@ -452,7 +458,7 @@ One ripple per change, at most 0.6s from its start, counted from when it is arme
 - At 420ms the steps the change leads to take their strong-grey border.
 - 420–600ms, the "可能影响" tags fade up 2px.
 
-It plays when the reader clicks a change: at once when the card is already in view and readable, otherwise after the camera glides to it (520ms, ease-out cubic), armed at 70% of the glide. Edges the ripple will draw stay hidden until then. Dimming and lighting take 160ms. A drag, scroll, click or key settles it at its end state. Only a newly picked change plays it again. A removed flow shows its end state at once; a removed step, a result or a step with no way out plays only the ring. Reduced motion removes all of it, including the panel slide and the headline fade.
+It plays when the reader clicks a change, after the camera begins gliding to the reading area beside its details (520ms, ease-out cubic), armed at 70% of the glide. Edges the ripple will draw stay hidden until then. Dimming and lighting take 160ms. A drag, scroll, click or key settles it at its end state. Only a newly picked change plays it again. A removed flow shows its end state at once; a removed step, a result or a step with no way out plays only the ring. Reduced motion removes all of it, including the panel slide and the headline fade.
 
 ## Do's and Don'ts
 
@@ -461,8 +467,8 @@ It plays when the reader clicks a change: at once when the card is already in vi
 - **Do** colour a change by what it asks of the reader: red for a new risk, amber for no test, grey for no verdict, green for tested; blue for selection. Say what the change did to the step with the glyph at its corner.
 - **Do** give a change one number and show it wherever the change shows: on its card, in the list, in the panel, in the address.
 - **Do** make every hue a token with a light and a dark value.
-- **Do** float every piece of chrome over the canvas with the float shadow and a hairline ring, 12px from the edge.
-- **Do** quiet cards around the change (no shadow, grayscale tile, faded content) instead of hiding them.
+- **Do** keep the headline and details floating 16px from desktop edges, with the existing float shadow and hairline ring.
+- **Do** quiet unrelated surfaces and icons instead of fading the words or hiding the surrounding path.
 - **Do** give every step kind its pastel tile and Lucide glyph, at 32px on cards and 28px on pills and in the panel.
 - **Do** stack before above after in the panel so both can be read at a glance.
 - **Do** let only what changes move: the sentence fades, the flow prefix stays.
@@ -484,3 +490,35 @@ It plays when the reader clicks a change: at once when the card is already in vi
 - **Don't** use bold type. Hierarchy stops at 500.
 - **Don't** imply a test ran. Statuses say what reading the code found and never claim more.
 - **Don't** add a footer, a byline or a provenance line; the canvas runs to the bottom edge.
+
+
+## Desktop review refinements (2026-11-12)
+
+Risk category, severity, finding lifecycle and test evidence are separate dimensions.
+Categories are reliability, correctness, data integrity and side effects, permissions and
+security, performance and cost, and other. Render an absent or unknown category as
+unclassified; never infer it by scanning a finding's prose. Risk categories and test evidence
+appear in details. The change list has no filters and always shows every review stop.
+
+A changed step shows its name, an explicit “风险” or “待验证” badge, one short clause,
+and its test evidence. Red means a reported risk; amber means missing behavior checks,
+not a lower severity. Risk category and severity appear in details. Additional findings
+add a count to the risk badge. Use authored
+`short_summary` when supplied; otherwise keep the existing summary with a two-line visual
+limit and the full text in details. Remove the nested tinted summary surface. Keep finding
+lifecycle and complete explanations in the detail panel. Test labels describe source
+assessment, never successful execution or a guarantee of safety.
+
+The overview preserves affected decision nodes, outcomes, exception targets and retry
+endpoints. Intermediate work may still fold, retaining source-authored branch labels.
+Unchanged flows stay collapsed until opened. This does not invent conditions or graph
+edges missing from the input. The expense development example has explicitly authored
+short labels and a reliability category; old reports remain supported without these fields.
+
+The compact entry replaces the large summary card. The desktop overview starts 24px
+below it; opening the temporary list popover does not reframe the canvas. Details retain
+their reserved area at the right so the diagram cannot slide underneath the panel.
+
+Risk and validation labels on cards and in the change list use the same native shadcn
+Badge (radix-nova). Code evidence remains inline: current payloads have no repository URL
+and a worktree revision cannot be mapped to a GitHub blob without upstream metadata.

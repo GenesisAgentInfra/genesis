@@ -59,8 +59,7 @@ import {
 import { cn } from "@/lib/utils"
 import { STRINGS } from "@/i18n"
 import { routeTo } from "@/layout"
-import { matches, reachOf, type Filter, type Model } from "@/model"
-import { useReviewed } from "@/review"
+import { reachOf, type Model } from "@/model"
 import { useTheme } from "@/theme"
 
 const NODE_TYPES = {
@@ -83,6 +82,8 @@ const ARROWS = [
   ["arrow-exception-strong", "var(--edge-exception-strong)"],
 ] as const
 const PANEL_W = 384
+// Small maps grow to use the desktop canvas without making cards oversized.
+const AUTO_MAX_ZOOM = 1.6
 /** The first look is never smaller than this: a map nobody can read is no overview. */
 const READ_ZOOM = 0.8
 const APART = moduleNodeId("__apart")
@@ -222,16 +223,10 @@ function Viewer({ model }: { model: Model }) {
   const focus = model.stops.length > 0
 
   const [selected, setSelected] = React.useState<Selected>()
-  // The one kind of change the reader narrowed the page down to, and what they have seen.
-  const [filter, setFilter] = React.useState<Filter>()
-  const { reviewed, toggle: toggleReviewed } = useReviewed(model)
   const { theme, toggle: toggleTheme } = useTheme()
   const walkable = React.useMemo(
-    () =>
-      model.stops
-        .filter((stop) => matches(stop, filter))
-        .map((stop) => stop.no),
-    [model, filter]
+    () => model.stops.map((stop) => stop.no),
+    [model]
   )
   // The change picked on the map: its card rings and what it leads to answers.
   const [current, setCurrent] = React.useState<{ node: string; no: number }>()
@@ -250,6 +245,7 @@ function Viewer({ model }: { model: Model }) {
     done: boolean
   }>()
   const [ready, setReady] = React.useState(false)
+  const [headlineHeight, setHeadlineHeight] = React.useState(0)
   const headRef = React.useRef<HTMLDivElement>(null)
   const wrapper = React.useRef<HTMLDivElement>(null)
   const opener = React.useRef<HTMLElement | null>(null)
@@ -262,6 +258,22 @@ function Viewer({ model }: { model: Model }) {
   )
   // The flow to frame when its module opens.
   const aim = React.useRef<string | undefined>(undefined)
+
+  // Opening details can wrap or compact the headline without resizing the window.
+  React.useLayoutEffect(() => {
+    const head = headRef.current
+    if (!head) return
+    const measure = () => {
+      const measured = head.getBoundingClientRect().height
+      // A hidden tab or a hot-reloaded subtree can briefly report zero. Keep the last
+      // visible size, and measure synchronously whenever the reading layout changes.
+      if (measured > 0) setHeadlineHeight(measured)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(head)
+    return () => observer.disconnect()
+  }, [narrow, width, selected])
 
   // Names on the map keep their size on screen as the reader zooms out.
   React.useEffect(() => {
@@ -372,9 +384,9 @@ function Viewer({ model }: { model: Model }) {
   /** The part of the screen left once the headline, the panel and the margins are set aside. */
   const area = React.useCallback(
     (withPanel: boolean) => {
-      const head = headRef.current?.getBoundingClientRect()
-      const top = Math.max(head ? head.bottom + 16 : 0, 24)
-      const left = narrow ? 12 : 24
+      const inset = narrow ? 12 : 16
+      const top = inset + headlineHeight + (narrow ? 16 : 24)
+      const left = inset
       // The zoom controls stand at the right edge, under the panel when it is open.
       const right = narrow ? 12 : withPanel ? PANEL_W + 40 : 60
       const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 28
@@ -382,10 +394,10 @@ function Viewer({ model }: { model: Model }) {
         x: left,
         y: top,
         w: Math.max(width - left - right, 80),
-        h: Math.max(height - top - bottom, 80),
+        h: Math.max(height - top - bottom, 1),
       }
     },
-    [narrow, width, height]
+    [narrow, width, height, headlineHeight]
   )
   const glide = reducedMotion ? 0 : GLIDE_MS
   const motionOf = (duration: number) => ({
@@ -432,7 +444,7 @@ function Viewer({ model }: { model: Model }) {
   /**
    * Bring a part of the map into the free area, never smaller than `min`. When that is
    * wider or taller than the area, start from its top left, where the flows begin; with
-   * `fromTop` it starts at the top even when it fits, so nothing blank stands over it.
+   * `fromTop` it starts at the headline's left edge and just below it, even when it fits.
    */
   const frame = React.useCallback(
     (
@@ -440,7 +452,7 @@ function Viewer({ model }: { model: Model }) {
       withPanel: boolean,
       duration: number,
       min: number,
-      max = 1,
+      max = AUTO_MAX_ZOOM,
       fromTop = false
     ) => {
       const box = area(withPanel)
@@ -448,7 +460,7 @@ function Viewer({ model }: { model: Model }) {
         max,
         Math.max(min, Math.min(box.w / bounds.width, box.h / bounds.height))
       )
-      const across = bounds.width * zoom <= box.w
+      const across = !fromTop && bounds.width * zoom <= box.w
       const down = !fromTop && bounds.height * zoom <= box.h
       void flow.setViewport(
         {
@@ -468,7 +480,8 @@ function Viewer({ model }: { model: Model }) {
   const fitAll = React.useCallback(
     (duration: number, withPanel = false) => {
       const bounds = boundsOf(nodeById.keys())
-      if (bounds) frame(bounds, withPanel, duration, READ_ZOOM)
+      if (bounds)
+        frame(bounds, withPanel, duration, READ_ZOOM, AUTO_MAX_ZOOM, true)
     },
     [boundsOf, nodeById, frame]
   )
@@ -476,37 +489,30 @@ function Viewer({ model }: { model: Model }) {
     const bounds = boundsOf(ids)
     if (bounds) frame(bounds, withPanel, duration, 0.5)
   }
-  /** Put a node in the middle of the free area, at least this close. */
-  const centerOn = (
-    id: string,
-    zoom: number,
-    duration: number,
-    withPanel: boolean
-  ) => {
-    const node = boxOf(id)
-    if (!node) return
-    const box = area(withPanel)
-    void flow.setCenter(
-      node.x + node.width / 2 + (width / 2 - (box.x + box.w / 2)) / zoom,
-      node.y + node.height / 2 + (height / 2 - (box.y + box.h / 2)) / zoom,
-      { zoom, ...motionOf(duration) }
-    )
-  }
-  const inView = (id: string, withPanel: boolean) => {
-    const node = boxOf(id)
-    if (!node) return true
-    const { x: vx, y: vy, zoom } = flow.getViewport()
-    const box = area(withPanel)
-    const left = node.x * zoom + vx
-    const top = node.y * zoom + vy
-    return (
-      zoom >= 0.55 &&
-      left >= box.x &&
-      top >= box.y &&
-      left + node.width * zoom <= box.x + box.w &&
-      top + node.height * zoom <= box.y + box.h
-    )
-  }
+  /** Center a step in the reading area beside the panel; keep its title clear on phones. */
+  const centerOn = React.useCallback(
+    (id: string, zoom: number, duration: number, withPanel: boolean) => {
+      const node = boxOf(id)
+      if (!node) return
+      const box = area(withPanel)
+      const readingHeight = narrow ? Math.min(box.h, 560) : box.h
+      void flow.setViewport(
+        {
+          x:
+            box.x +
+            Math.max(0, (box.w - node.width * zoom) / 2) -
+            node.x * zoom,
+          y:
+            box.y +
+            Math.max(0, (readingHeight - node.height * zoom) / 2) -
+            node.y * zoom,
+          zoom,
+        },
+        { duration, ease: easeOut, interpolate: "linear" }
+      )
+    },
+    [area, boxOf, flow, narrow]
+  )
 
   // The whole map, framed before its first paint.
   const framed = React.useRef(false)
@@ -540,9 +546,14 @@ function Viewer({ model }: { model: Model }) {
   React.useEffect(() => {
     const before = size.current
     size.current = { width, height }
-    if (!ready || (before.width === width && before.height === height)) return
+    if (
+      !ready ||
+      showPanel ||
+      (before.width === width && before.height === height)
+    )
+      return
     const bounds = focused ? boundsOf([focused]) : undefined
-    if (bounds) frame(bounds, false, 0, 0.5)
+    if (bounds) frame(bounds, false, 0, READ_ZOOM, AUTO_MAX_ZOOM, true)
     else fitAll(0)
     // Only the size matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -584,45 +595,7 @@ function Viewer({ model }: { model: Model }) {
       node.data.coupons[0]
     const run = play.run + 1
     setCurrent({ node: node.id, no: shown.no })
-    if (inView(node.id, true)) {
-      setPlay({ run, armed: true, settled: false, delay: 0 })
-      return
-    }
-    // Frame the change with the steps it leads to and the results it may reach while they
-    // stay readable; else the change and its next steps; else the change alone.
-    const flowId = flowOfNode(node.id) ?? ""
-    const placed = atlas.flows.get(flowId)
-    const local = node.id.slice(flowId.length + SEP.length)
-    const reach =
-      placed && !local.startsWith("removed-")
-        ? reachOf(placed.view, local)
-        : { next: [], far: [] }
-    const prefix = (id: string) => `${flowId}${SEP}${id}`
-    const box = area(true)
-    const fits = (ids: string[]) => {
-      const bounds = boundsOf(ids)
-      return (
-        bounds &&
-        Math.min(
-          box.w / Math.max(bounds.width, 1),
-          box.h / Math.max(bounds.height, 1)
-        ) >= 0.6 &&
-        bounds
-      )
-    }
-    const bounds =
-      fits([node.id, ...reach.next.map(prefix), ...reach.far.map(prefix)]) ||
-      fits([node.id, ...reach.next.map(prefix)])
-    // Stepping between changes moves the map, it does not zoom in on each one.
-    if (bounds)
-      frame(
-        bounds,
-        true,
-        glide,
-        0.6,
-        Math.max(flow.getViewport().zoom, READ_ZOOM)
-      )
-    else centerOn(node.id, Math.max(flow.getViewport().zoom, 0.8), glide, true)
+    // The panel effect owns the camera, after the narrower headline has been laid out.
     setPlay({
       run,
       armed: true,
@@ -653,6 +626,9 @@ function Viewer({ model }: { model: Model }) {
     framedFocus.current = focused
     const wanted = aim.current
     aim.current = undefined
+    // Details keep their subject centered when its module expands or collapses.
+    // The panel effect has already positioned the camera using the new node layout.
+    if (showPanel) return
     if (!focused) {
       fitAll(glide, showPanel)
       return
@@ -694,7 +670,7 @@ function Viewer({ model }: { model: Model }) {
       bounds.x = frameBox.x
     }
     // An open module starts right under the headline, the way the whole map does.
-    frame(bounds, showPanel, glide, READ_ZOOM, 1, true)
+    frame(bounds, showPanel, glide, READ_ZOOM, AUTO_MAX_ZOOM, true)
     // Runs when the focus changes; the rest is read fresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused, ready])
@@ -708,6 +684,79 @@ function Viewer({ model }: { model: Model }) {
     setCurrent(undefined)
     setSelected(undefined)
   }
+
+  const panelNode = !showPanel
+    ? undefined
+    : selected?.type === "step"
+      ? selected.node
+      : selected?.type === "offMap"
+        ? `offmap${SEP}${selected.no}`
+        : selected?.type === "removedFlow"
+          ? atlas.flows.get(selected.flowId)?.triggers[0]
+          : undefined
+  /** Keep a small module whole; on a large map, keep the selected step and its neighbors. */
+  const frameDetails = React.useCallback(
+    (id: string, duration: number) => {
+      const node = boxOf(id)
+      if (!node) return
+      const flowId = flowOfNode(id)
+      const moduleId = id.startsWith(`offmap${SEP}`)
+        ? APART
+        : atlas.home.get(flowId ?? "")
+      const placed = atlas.flows.get(flowId ?? "")
+      const neighbors = new Set([id])
+      for (const edge of placed?.edges ?? []) {
+        if (edge.source === id) neighbors.add(edge.target)
+        if (edge.target === id) neighbors.add(edge.source)
+      }
+      const box = area(true)
+      const candidates = [
+        moduleId ? boxOf(moduleId) : undefined,
+        boundsOf(neighbors),
+        node,
+      ]
+      for (const candidate of candidates) {
+        if (!candidate) continue
+        const padded = {
+          x: candidate.x - 12,
+          y: candidate.y - 12,
+          width: candidate.width + 24,
+          height: candidate.height + 24,
+        }
+        const fit = Math.min(box.w / padded.width, box.h / padded.height)
+        if (fit < READ_ZOOM && candidate !== node) continue
+        frame(padded, true, duration, 0.05, AUTO_MAX_ZOOM, true)
+        return
+      }
+    },
+    [area, atlas, boxOf, boundsOf, frame]
+  )
+  const previousPanel = React.useRef<Selected | undefined>(undefined)
+  React.useLayoutEffect(() => {
+    if (!ready) return
+    const before = previousPanel.current
+    previousPanel.current = selected
+    if (panelNode) {
+      frameDetails(panelNode, before === selected ? 0 : glide)
+    } else if (before && !selected) {
+      const bounds = focused ? boundsOf([focused]) : undefined
+      if (bounds) frame(bounds, false, glide, READ_ZOOM, AUTO_MAX_ZOOM, true)
+      else fitAll(glide)
+    } else if (!selected && !focused) {
+      // Also handles the first measurement of a wrapped headline.
+      fitAll(0)
+    }
+  }, [
+    selected,
+    panelNode,
+    ready,
+    frameDetails,
+    glide,
+    focused,
+    boundsOf,
+    frame,
+    fitAll,
+  ])
 
   /** A change picked in the list: the map flies to it and its details open. */
   const pickStop = (no: number) => {
@@ -725,28 +774,11 @@ function Viewer({ model }: { model: Model }) {
     if (stop.kind === "off_map") {
       setCurrent(undefined)
       openPanel({ type: "offMap", no })
-      const id = `offmap${SEP}${no}`
-      if (!inView(id, true))
-        centerOn(id, Math.max(flow.getViewport().zoom, READ_ZOOM), glide, true)
       return
     }
     if (stop.kind === "removed_flow" && stop.flowId) {
       setCurrent(undefined)
       openPanel({ type: "removedFlow", flowId: stop.flowId })
-      const placed = atlas.flows.get(stop.flowId)
-      if (placed?.nodes.length)
-        fitTo(
-          placed.nodes.map((item) => item.id),
-          glide,
-          true
-        )
-      else if (placed && !inView(placed.triggers[0], true))
-        centerOn(
-          placed.triggers[0],
-          Math.max(flow.getViewport().zoom, READ_ZOOM),
-          glide,
-          true
-        )
       return
     }
     if (!stop.flowId || !stop.nodeId) return
@@ -919,8 +951,6 @@ function Viewer({ model }: { model: Model }) {
     }
     openPanel({ type: "step", node: step.id })
     if (step.data.coupons.length && !step.data.removedFlow) pick(step)
-    else if (!inView(step.id, true))
-      centerOn(step.id, Math.max(flow.getViewport().zoom, 0.8), glide, true)
   }
 
   // Keys: Esc steps back (the walk, the panel, the picked change, the focused module).
@@ -1023,8 +1053,6 @@ function Viewer({ model }: { model: Model }) {
           ? `row${SEP}${selected.flowId}`
           : undefined,
     knownRisks: !model.hasReport,
-    filter,
-    reviewed,
     run: play.run,
     armed: play.armed,
     pending: Boolean(current) && !play.armed && !reducedMotion,
@@ -1100,6 +1128,7 @@ function Viewer({ model }: { model: Model }) {
     }
   }, [pickedNo, ready])
 
+  const visibleCanvas = area(showPanel)
   return (
     <CanvasContext.Provider value={canvas}>
       <AtlasContext.Provider value={handlers}>
@@ -1137,7 +1166,18 @@ function Viewer({ model }: { model: Model }) {
               ))}
             </defs>
           </svg>
-          <div ref={wrapper} className="absolute inset-0">
+          <div
+            ref={wrapper}
+            className="absolute inset-0"
+            style={
+              narrow
+                ? undefined
+                : {
+                    // Panning and zooming must never put graph content under the floating UI.
+                    clipPath: `inset(${Math.max(0, visibleCanvas.y - 12)}px ${Math.max(0, width - visibleCanvas.x - visibleCanvas.w - 12)}px 0 0)`,
+                  }
+            }
+          >
             {atlas.nodes.length ? (
               <ReactFlow
                 defaultNodes={atlas.nodes}
@@ -1158,7 +1198,7 @@ function Viewer({ model }: { model: Model }) {
                 zoomOnScroll={false}
                 zoomOnDoubleClick={false}
                 minZoom={0.05}
-                maxZoom={1.6}
+                maxZoom={AUTO_MAX_ZOOM}
                 className={cn(!ready && "opacity-0")}
               />
             ) : (
@@ -1170,7 +1210,7 @@ function Viewer({ model }: { model: Model }) {
 
           <div
             ref={headRef}
-            className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col items-start gap-2"
+            className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col items-start gap-2 md:top-4 md:left-4"
           >
             {model.hasReport && (
               <div
@@ -1178,21 +1218,16 @@ function Viewer({ model }: { model: Model }) {
                   narrow
                     ? "w-[calc(100vw-24px)]"
                     : showPanel
-                      ? "w-[min(600px,calc(100vw-432px))] min-w-[340px]"
-                      : "w-[min(600px,calc(100vw-24px))]"
+                      ? "max-w-[calc(100vw-432px)]"
+                      : "max-w-[calc(100vw-32px)]"
                 }
               >
                 <Headline
                   model={model}
                   t={t}
-                  narrow={narrow}
                   compact={narrow && showPanel}
                   picked={pickedNo}
                   walk={walkable}
-                  filter={filter}
-                  reviewed={reviewed}
-                  onFilter={setFilter}
-                  onToggleReviewed={(no) => toggleReviewed([no])}
                   onPick={focus ? pickStop : undefined}
                   onStep={focus ? stepBy : undefined}
                 />
@@ -1299,7 +1334,7 @@ function Viewer({ model }: { model: Model }) {
                   // it covers the controls under it.
                   narrow
                     ? "inset-x-2 bottom-2 h-[52dvh]"
-                    : "top-3 right-3 max-h-[calc(100dvh-180px)] w-[384px]"
+                    : "top-4 right-4 max-h-[calc(100dvh-180px)] w-[384px]"
                 )}
               >
                 <DetailPanel
@@ -1319,15 +1354,9 @@ function Viewer({ model }: { model: Model }) {
                       ? () => walk(subject.view!.flow.flow_id)
                       : undefined
                   }
-                  review={
-                    focus && panelStops.length
-                      ? {
-                          seen: panelStops.every((no) => reviewed.has(no)),
-                          reviewed,
-                          onToggle: () => toggleReviewed(panelStops),
-                          onNext:
-                            walkable.length > 1 ? () => stepBy(1) : undefined,
-                        }
+                  onNext={
+                    focus && panelStops.length > 0 && walkable.length > 1
+                      ? () => stepBy(1)
                       : undefined
                   }
                   onClose={closePanel}

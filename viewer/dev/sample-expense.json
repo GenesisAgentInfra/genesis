@@ -65,9 +65,15 @@
        "fp_b1a57d59111caa78d0142aa9"
       ],
       "evidence_ids": [
-       "ev_27ab739514bebed877e2201f"
+       "ev_27ab739514bebed877e2201f",
+       "ev_297adc472903254de1351406"
       ],
-      "finding_ids": []
+      "finding_ids": [],
+      "contract": {
+       "input": "报销金额 amount，读取自 report[\"amount\"]。",
+       "output": "金额 > 100 进入模型审核；金额 ≤ 100 直接批准。",
+       "constraints": "门槛 THRESHOLD = 100；这里未校验金额类型和取值范围。"
+      }
      },
      {
       "step_id": "step_89bfa42ed91ce6b6",
@@ -83,11 +89,17 @@
       "evidence_ids": [
        "ev_c508f9dad8de858381427c3f",
        "ev_71260961e40457f8b321f059",
-       "ev_e3833282c1443c47fbfd7287"
+       "ev_e3833282c1443c47fbfd7287",
+       "ev_6c05f7cc2d600a85bef654fa"
       ],
       "finding_ids": [
        "find_f001e035a5df"
-      ]
+      ],
+      "contract": {
+       "input": "报销单 report，转换为字符串后发送给模型。",
+       "output": "非空的审核文本 response.output_text。",
+       "constraints": "空输出会持续重试，没有次数上限；接口异常向上抛出。"
+      }
      },
      {
       "step_id": "step_866123399eb0bc48",
@@ -166,7 +178,7 @@
       "target": "step_89bfa42ed91ce6b6",
       "relation": "branch",
       "condition": {
-       "label": "金额超过门槛",
+       "label": "金额 > 100",
        "branch": "true",
        "anchor": "fp_b1a57d59111caa78d0142aa9"
       },
@@ -182,7 +194,7 @@
       "target": "step_caac23259a5ba013",
       "relation": "branch",
       "condition": {
-       "label": "金额不超过门槛",
+       "label": "金额 ≤ 100",
        "branch": "false",
        "anchor": "fp_b1a57d59111caa78d0142aa9"
       },
@@ -461,7 +473,8 @@
     "anchors": [],
     "evidence_ids": [
      "ev_71260961e40457f8b321f059"
-    ]
+    ],
+    "category": "reliability"
    }
   ],
   "unassigned_finding_ids": [],
@@ -689,6 +702,34 @@
     },
     "snippet_digest": "sha256:6a1bd8864959c744f1eaea55e13c49d17bb504bdc92a03bf5c8b9906937099b9",
     "kind": "code"
+   },
+   {
+    "evidence_id": "ev_297adc472903254de1351406",
+    "snapshot_id": "sha256:8f96d208d5b55fd4eab1be2f3527a72630d4d16d38092d961034e9a3d5ab0941",
+    "side": "head",
+    "path": "src/expense/api.py",
+    "range": {
+     "start_line": 7,
+     "end_line": 19,
+     "start_column": null,
+     "end_column": null
+    },
+    "snippet_digest": "sha256:c441593d1d76ef10de7538a1937e1833227b9674451ea8f68424e214489008fc",
+    "kind": "code"
+   },
+   {
+    "evidence_id": "ev_6c05f7cc2d600a85bef654fa",
+    "snapshot_id": "sha256:8f96d208d5b55fd4eab1be2f3527a72630d4d16d38092d961034e9a3d5ab0941",
+    "side": "head",
+    "path": "src/expense/review.py",
+    "range": {
+     "start_line": 6,
+     "end_line": 10,
+     "start_column": null,
+     "end_column": null
+    },
+    "snippet_digest": "sha256:1fd4a8078c8e314aab9dfa6797559fdc7cd401082af5b25d33dc31f88338e1a2",
+    "kind": "code"
    }
   ]
  },
@@ -729,7 +770,8 @@
     "explanation": {
      "support": "agent_synthesis",
      "summary": "进入模型审核的门槛从“达到门槛金额”改成了“超过门槛金额”。",
-     "effect": "金额正好等于门槛（100）的报销单不再交给模型审核，而是直接自动批准。"
+     "effect": "金额正好等于门槛（100）的报销单不再交给模型审核，而是直接自动批准。",
+     "short_summary": "100 元改为直接通过"
     },
     "tests": {
      "verdict": "reached_only",
@@ -775,7 +817,8 @@
     "explanation": {
      "support": "agent_synthesis",
      "summary": "模型审核改成了“一直重试，直到模型给出结论”。",
-     "effect": "模型一直不返回结论时，提交报销单的请求会一直卡住，不会进入待审批，也不会报错。"
+     "effect": "模型持续返回空输出时，请求会一直重试，无法进入待审批；调用抛出异常时仍可能退出。",
+     "short_summary": "空输出时持续重试"
     },
     "tests": {
      "verdict": "reached_only",
@@ -817,7 +860,8 @@
      "anchors": [],
      "evidence_ids": [
       "ev_71260961e40457f8b321f059"
-     ]
+     ],
+     "category": "reliability"
     },
     "flow_id": "flow_ba6d4948fa62",
     "step_id": "step_89bfa42ed91ce6b6"
@@ -920,6 +964,8 @@
   "ev_cb1df53f16ee5b1327d9f493": "return {\"status\": \"approved\"}",
   "ev_cef70a0999c303b02d0245ab": "save_status(report_id, \"approved\")",
   "ev_e3833282c1443c47fbfd7287": "client.responses.create(model=\"gpt-5\", input=str(report))",
-  "ev_f356513531a58361e41df877": "    while True:\n        response = await client.responses.create(model=\"gpt-5\", input=str(report))\n        if response.output_text:\n            return response.output_text"
+  "ev_f356513531a58361e41df877": "    while True:\n        response = await client.responses.create(model=\"gpt-5\", input=str(report))\n        if response.output_text:\n            return response.output_text",
+  "ev_297adc472903254de1351406": "THRESHOLD = 100\n\n\n@router.post(\"/reports\")\nasync def submit_report(report):\n    amount = report[\"amount\"]\n    logger.info(\"report received\")\n    if amount > THRESHOLD:\n        verdict = await review_with_model(report)\n        save_status(report[\"id\"], \"pending_approval\")\n        return {\"status\": \"pending_approval\", \"review\": verdict}\n    save_status(report[\"id\"], \"approved\")\n    return {\"status\": \"approved\"}",
+  "ev_6c05f7cc2d600a85bef654fa": "async def review_with_model(report):\n    while True:\n        response = await client.responses.create(model=\"gpt-5\", input=str(report))\n        if response.output_text:\n            return response.output_text"
  }
 }

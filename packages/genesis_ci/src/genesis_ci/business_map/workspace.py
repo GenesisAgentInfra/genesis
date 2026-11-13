@@ -950,7 +950,11 @@ class Workspace:
                         ),
                     )
                 )
-            if step.key not in broken and step.resolution != "unknown" and not evidence:
+            if (
+                step.key not in broken
+                and (step.resolution != "unknown" or step.contract is not None)
+                and not evidence
+            ):
                 problems.append(
                     _problem(where + ".evidence", "evidence_required", "Cite the code.")
                 )
@@ -978,6 +982,8 @@ class Workspace:
             }
             if step.reason:
                 item["reason"] = step.reason
+            if step.contract:
+                item["contract"] = step.contract.model_dump(mode="json", exclude_none=True)
             steps.append(item)
             by_key[step.key] = item
         edges = []
@@ -1217,6 +1223,8 @@ class Workspace:
                 }
                 if item.gap:
                     finding["gap"] = item.gap
+                if item.category is not None:
+                    finding["category"] = item.category.value
                 findings.append(finding)
                 by_key[item.step]["finding_ids"].append(finding_id)
         flow = {
