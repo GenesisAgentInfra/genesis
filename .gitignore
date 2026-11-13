@@ -15,6 +15,12 @@ dist/
 # Viewer front end: dependencies and scratch builds (the shipped build lives in the package)
 viewer/node_modules/
 viewer/dist/
+# Graphical's paid editor package, and the guide and skills that come with it, stay with
+# whoever holds the licence (see viewer/README.md)
+viewer/graphical/packages/
+viewer/.agents/
+viewer/GUI.md
+viewer/gui/
 
-# Local desktop review screenshots
-/.impeccable/review/
+# Local design-review tool state (screenshots, briefs, caches)
+/.impeccable/

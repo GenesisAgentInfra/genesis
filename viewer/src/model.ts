@@ -1,11 +1,12 @@
 import { detectLang, type Lang } from "./i18n"
-import { layoutRoute, type RouteLayout } from "./layout"
+import { after, graphOf, type FlowGraph } from "./flow-graph"
 import { categoryOf, type DisplayCategory } from "./presentation"
 import type {
   ChangeItem,
   CoverageAssessment,
   EvidenceRef,
   FindingChange,
+  MapEdge,
   MapFinding,
   MapFlow,
   MapLink,
@@ -18,6 +19,11 @@ export interface Coupon {
   /** The stop this change is, counted from 1 in the order the page walks through them. */
   no: number
   change: ChangeItem
+  /**
+   * Every change this stop stands for: the agent described them in the same words at the
+   * same place, so they read as one. The first is `change`.
+   */
+  group: ChangeItem[]
   place: Projection
   primary: boolean
   /** The change brings a risk that was not there before. */
@@ -33,9 +39,6 @@ export type TestStatus = "tested" | "untested" | "unsure"
 /** The one thing a card's colour says: a new risk first, else what the tests say. */
 export type Tone = "risk" | TestStatus
 
-/** What the reader may narrow the changes down to. */
-export type Filter = Tone | `category:${DisplayCategory}`
-
 export const TONES: Tone[] = ["risk", "untested", "unsure", "tested"]
 
 export type StopKind = "step" | "removed_step" | "off_map" | "removed_flow"
@@ -46,6 +49,8 @@ export interface Stop {
   kind: StopKind
   /** The change at this stop. A removed flow carries the change that removed its entry, if any. */
   change?: ChangeItem
+  /** Every change the stop stands for, `change` first. */
+  group: ChangeItem[]
   coupon?: Coupon
   /** The flow the stop belongs to; none for a change off the map. */
   flowId?: string
@@ -65,7 +70,8 @@ export interface Stop {
 export interface FlowView {
   flow: MapFlow
   removed: boolean
-  layout: RouteLayout
+  /** The flow as a graph, in the ids of its steps. */
+  graph: FlowGraph<MapEdge>
   coupons: Coupon[]
   byStep: Map<string, Coupon[]>
   removedSteps: Coupon[]
@@ -127,7 +133,7 @@ const ADDED = new Set([
 ])
 
 /** A change to test code is not product logic; the page only counts it. */
-export function isTestChange(change: ChangeItem): boolean {
+function isTestChange(change: ChangeItem): boolean {
   return change.kind.startsWith("test_")
 }
 
@@ -160,7 +166,7 @@ function tierOf(change: ChangeItem, introduced: Set<string>): number {
   return 3
 }
 
-export interface Reach {
+interface Reach {
   /** Steps one edge after the step. */
   next: string[]
   /** End results it can reach further on. */
@@ -177,55 +183,17 @@ export function reachOf(view: FlowView, stepId: string): Reach {
   const kind = new Map(
     (view.flow.steps ?? []).map((step) => [step.step_id, step.kind])
   )
-  const out = new Map<string, string[]>()
-  for (const edge of view.layout.forward) {
-    if (edge.source === edge.target) continue
-    out.set(edge.source, [...(out.get(edge.source) ?? []), edge.target])
-  }
-  const next = [...new Set(out.get(stepId) ?? [])]
-  const seen = new Set([stepId])
-  const queue = [stepId]
-  const reached: string[] = []
-  while (queue.length) {
-    const id = queue.shift()!
-    for (const target of out.get(id) ?? []) {
-      if (seen.has(target)) continue
-      seen.add(target)
-      reached.push(target)
-      queue.push(target)
-    }
-  }
+  const { next, reached } = after(view.graph, stepId)
   const isEnd = kind.get(stepId) === "result"
   let ends = reached.filter((id) => kind.get(id) === "result")
   if (!ends.length && !isEnd)
-    ends = reached.filter((id) => !out.get(id)?.length)
+    ends = reached.filter((id) => !view.graph.out.get(id)?.length)
   const nearby = new Set(next)
   return {
     next,
     far: ends.filter((id) => !nearby.has(id)),
     ends: ends.length + (isEnd ? 1 : 0),
   }
-}
-
-/** Whether a change is one the reader asked to see. */
-export function matches(
-  item: { risky: boolean; status?: TestStatus; categories?: DisplayCategory[] },
-  filter?: Filter
-): boolean {
-  if (!filter) return true
-  if (filter.startsWith("category:"))
-    return (
-      item.risky &&
-      (item.categories?.length ? item.categories : ["unclassified"]).includes(
-        filter.slice(9) as DisplayCategory
-      )
-    )
-  return filter === "risk" ? item.risky : item.status === filter
-}
-
-/** What identifies a stop from one opening of the page to the next. */
-export function stopKey(stop: Stop): string {
-  return stop.change?.change_id ?? `flow:${stop.flowId ?? stop.no}`
 }
 
 export function removedNodeId(stepId: string, no: number): string {
@@ -291,7 +259,7 @@ export function buildModel(payload: Payload): Model {
     return {
       flow,
       removed,
-      layout: layoutRoute(steps, flow.edges ?? []),
+      graph: graphOf(steps, flow.edges ?? []),
       coupons: [],
       byStep: new Map(),
       removedSteps: [],
@@ -352,12 +320,37 @@ export function buildModel(payload: Payload): Model {
   // the most urgent first; then the one that reaches more end results; then reading order.
   const rowOf = new Map<string, number>()
   for (const item of flows)
-    item.layout.rows.forEach((row, index) => rowOf.set(row.step.step_id, index))
+    item.graph.order.forEach((id, index) => rowOf.set(id, index))
   const flowIndex = new Map(
     flows.map((item, index) => [item.flow.flow_id, index])
   )
-  const keyed = product
-    .filter((change) => !merged.has(change.change_id))
+  // Changes the agent described in the same words at the same place read as one stop,
+  // led by the most urgent of them.
+  const placeOf = (change: ChangeItem) => {
+    const place = change.projection
+    if (place.status === "projected") return `${place.flow_id}/${place.step_id}`
+    if (place.status === "removed_step")
+      return `removed/${place.removed_step?.step_id}`
+    return "off"
+  }
+  const groups = new Map<string, ChangeItem[]>()
+  for (const change of product) {
+    if (merged.has(change.change_id)) continue
+    const words =
+      change.explanation?.short_summary ?? change.explanation?.summary
+    const key = words ? `${placeOf(change)}|${words}` : change.change_id
+    groups.set(key, [...(groups.get(key) ?? []), change])
+  }
+  const groupOf = new Map<string, ChangeItem[]>()
+  const leads = [...groups.values()].map((members) => {
+    const ordered = [...members].sort(
+      (a, b) => tierOf(a, introduced) - tierOf(b, introduced)
+    )
+    groupOf.set(ordered[0].change_id, ordered)
+    return ordered[0]
+  })
+
+  const keyed = leads
     .map((change, index) => {
       const place = change.projection
       const home =
@@ -391,6 +384,7 @@ export function buildModel(payload: Payload): Model {
   const stops: Stop[] = []
   for (const { change } of keyed) {
     const no = stops.length + 1
+    const group = groupOf.get(change.change_id) ?? [change]
     const places = [change.projection, ...(change.other_projections ?? [])]
     let primary: Coupon | undefined
     const status = statusOf(change.tests)
@@ -409,6 +403,7 @@ export function buildModel(payload: Payload): Model {
       const coupon: Coupon = {
         no,
         change,
+        group,
         place,
         primary: order === 0,
         risky,
@@ -468,6 +463,7 @@ export function buildModel(payload: Payload): Model {
       no,
       kind,
       change,
+      group,
       coupon: primary,
       flowId: home,
       nodeId: nodeOf(change.projection, no),
@@ -487,10 +483,12 @@ export function buildModel(payload: Payload): Model {
       no,
       kind: "removed_flow",
       change,
+      group: change ? [change] : [],
       coupon: change
         ? {
             no,
             change,
+            group: [change],
             place: change.projection,
             primary: true,
             risky,

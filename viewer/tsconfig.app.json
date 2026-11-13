@@ -26,5 +26,11 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "graphical"],
+  /* The two files that mount Graphical's editor need its package, which not every
+     checkout has; Vite loads them only where it is installed. */
+  "exclude": [
+    "graphical/development-editor.tsx",
+    "graphical/installed-editor.tsx"
+  ]
 }

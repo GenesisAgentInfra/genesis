@@ -6,6 +6,7 @@ import {
   ListChecks,
 } from "lucide-react"
 
+import { CommitRange } from "@/components/commit-range"
 import { ReviewBadge } from "@/components/review-badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -87,16 +88,22 @@ export function Headline({
         }
       }}
     >
-      <div className="flex w-fit items-center gap-2">
+      <div className="flex w-fit items-center gap-m">
         {total > 0 && onPick ? (
-          <div className="inline-flex items-center gap-1 rounded-full bg-card p-1 shadow-[var(--shadow-node)] ring-1 ring-line">
+          <div className="inline-flex items-center gap-xs corner-full bg-card p-xs shadow-[var(--shadow-node)] ring-1 ring-line">
             <button
               ref={trigger}
               type="button"
               aria-expanded={listOpen}
               aria-label={t.openChanges}
               onClick={() => setListOpen((open) => !open)}
-              className="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-ink-2 hover:bg-field hover:text-ink"
+              className={cn(
+                "inline-flex h-7 items-center gap-s",
+                "corner-full px-l",
+                "text-body-m",
+                "text-ink-2",
+                "hover:bg-field hover:text-ink"
+              )}
             >
               <ListChecks aria-hidden className="size-3.5" />
               <span>{t.openChanges}</span>
@@ -110,7 +117,14 @@ export function Headline({
               />
             </button>
             {onStep && !compact && (
-              <div className="flex items-center gap-0.5 border-l border-line pl-1 text-[12px] text-ink-2">
+              <div
+                className={cn(
+                  "flex items-center gap-xxs",
+                  "edge-l-m pl-xs",
+                  "text-body-s",
+                  "border-line text-ink-2"
+                )}
+              >
                 <StepButton
                   label={t.prevChange}
                   keys="←"
@@ -143,20 +157,20 @@ export function Headline({
             )}
           </div>
         ) : (
-          <span className="rounded-full bg-card px-3 py-2 text-[13px] text-ink-2 ring-1 ring-line">
+          <span className="corner-full bg-card px-l py-m text-body-m text-ink-2 ring-1 ring-line">
             {counts.files ? t.filesOnly : t.summaryNoChange}
           </span>
         )}
-
+        {!compact && <CommitRange model={model} t={t} />}
       </div>
 
       {listOpen && !compact && onPick && (
         // Over the map, under the headline: it takes no room from the canvas and folds
         // away as soon as a change is picked.
-        <div className="absolute top-full left-0 z-20 mt-2 w-[360px] max-w-[calc(100vw-32px)] rounded-[14px] bg-card p-1.5 shadow-[var(--shadow-float)] ring-1 ring-line fade-in">
+        <div className="fade-in absolute top-full left-0 z-20 mt-m w-[360px] max-w-[calc(100vw-32px)] corner-l bg-card p-s shadow-[var(--shadow-float)] ring-1 ring-line">
           <ol
             aria-label={t.listTitle}
-            className="flex max-h-[min(52dvh,440px)] [scrollbar-width:thin] flex-col gap-0.5 overflow-y-auto"
+            className="flex max-h-[min(52dvh,440px)] [scrollbar-width:thin] flex-col gap-xxs overflow-y-auto"
           >
             {model.stops.map((stop) => (
               <li key={stop.no} data-tone={stop.tone ?? "unsure"}>
@@ -169,12 +183,16 @@ export function Headline({
                     onPick(stop.no)
                   }}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-left transition-colors duration-160 hover:bg-field",
+                    "flex w-full items-center gap-l",
+                    "corner-m px-l py-l",
+                    "text-left",
+                    "transition-colors duration-160",
+                    "hover:bg-field",
                     picked === stop.no && "bg-field"
                   )}
                 >
                   <NumberDisc no={stop.no} />
-                  <span className="min-w-0 flex-1 text-[14px] leading-5 text-ink">
+                  <span className="min-w-0 flex-1 text-body-m text-ink">
                     {stopTitle(stop, model, t)}
                   </span>
                   <ReviewBadge risky={stop.risky} status={stop.status} t={t} />
@@ -202,22 +220,24 @@ function StepButton({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={label}
-          aria-keyshortcuts={keys === "←" ? "ArrowLeft" : "ArrowRight"}
-          onClick={onClick}
-        >
-          {children}
-        </Button>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={label}
+            aria-keyshortcuts={keys === "←" ? "ArrowLeft" : "ArrowRight"}
+            onClick={onClick}
+          />
+        }
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent side="bottom" sideOffset={6}>
         {label}
         <kbd
           data-slot="kbd"
-          className="rounded-sm bg-background/20 px-1 font-sans"
+          className="corner-xs bg-background/20 px-xs font-body"
         >
           {keys}
         </kbd>

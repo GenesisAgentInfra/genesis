@@ -10,10 +10,10 @@ const server = await createServer({
 after(() => server.close())
 const { categoryOf, coverageKind, shortSummary, sortAlerts } =
   await server.ssrLoadModule("/src/presentation.ts")
-const { buildModel, matches } = await server.ssrLoadModule("/src/model.ts")
+const { buildModel } = await server.ssrLoadModule("/src/model.ts")
 const { buildGraph } = await server.ssrLoadModule("/src/canvas/graph.ts")
 const { cutFlow } = await server.ssrLoadModule("/src/canvas/focus.ts")
-const { layoutRoute } = await server.ssrLoadModule("/src/layout.ts")
+const { graphOf } = await server.ssrLoadModule("/src/flow-graph.ts")
 const expense = JSON.parse(
   await readFile(new URL("../dev/sample-expense.json", import.meta.url))
 )
@@ -25,7 +25,6 @@ test("an uncategorized observation stays unclassified regardless of its wording"
   )
   assert.equal(categoryOf({ category: "future_category" }), "unclassified")
   assert.equal(categoryOf({ category: "reliability" }), "reliability")
-  assert.equal(matches({ risky: true }, "category:unclassified"), true)
 })
 
 test("test evidence distinguishes missing behavior checks from unknown coverage", () => {
@@ -87,11 +86,13 @@ test("the expense overview exposes both outcomes without opening the module", ()
     false
   )
   assert.equal(
-    model.stops.filter((stop) => matches(stop, "category:reliability")).length,
+    model.stops.filter(
+      (stop) => stop.risky && stop.categories?.includes("reliability")
+    ).length,
     1
   )
   assert.equal(
-    model.stops.filter((stop) => matches(stop, "untested")).length,
+    model.stops.filter((stop) => stop.status === "untested").length,
     2
   )
 })
@@ -124,7 +125,7 @@ test("long affected branches preserve decisions, error outcomes and retry endpoi
     target,
     relation,
   }))
-  const cut = cutFlow(steps, layoutRoute(steps, edges), new Set(["changed"]))
+  const cut = cutFlow(steps, graphOf(steps, edges), new Set(["changed"]))
   for (const id of ["check", "retry", "work", "success", "failure"])
     assert.ok(cut.keep.has(id), id)
   assert.equal(cut.keep.has("otherResult"), false)
@@ -138,8 +139,7 @@ test("both submission and unchanged approval are diagrams in the overview", asyn
   for (const flow of model.flows) {
     assert.ok(
       atlas.nodes.some(
-        (node) =>
-          node.type === "label" && node.data.flowId === flow.flow.flow_id
+        (node) => node.type === "flow" && node.data.flowId === flow.flow.flow_id
       )
     )
     assert.equal(

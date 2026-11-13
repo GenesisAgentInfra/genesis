@@ -2,10 +2,12 @@ import type { Node } from "@xyflow/react"
 
 import {
   buildGraph,
+  graphOfDrawing,
   type CutWords,
   type FlowEdge,
   type StepNode,
 } from "@/canvas/graph"
+import type { FlowGraph } from "@/flow-graph"
 import type { Strings } from "@/i18n"
 import type { Coupon, FlowView, Model, Tone } from "@/model"
 import { TONES } from "@/model"
@@ -19,11 +21,15 @@ import type { EntryKind } from "@/types"
 
 export const SEP = "::"
 const P = 0
-const HEAD_H = 48
-const LABEL_H = 44
-const FLOW_GAP = 36
+/** The room a module's heading takes over its first flow. */
+export const HEAD_H = 60
+/** A drawn flow sits on a card of its own: its name in the head, its steps inset below. */
+export const CARD_HEAD = 52
+const CARD_X = 20
+const CARD_B = 20
+const FLOW_GAP = 20
 const MODULE_GAP = 64
-export const OFFMAP_W = 252
+const OFFMAP_W = 252
 const OFFMAP_H = 112
 const OFFMAP_GAP = 20
 /** The least a frame holds across: one row, or one change outside the flows. */
@@ -44,6 +50,10 @@ export function flowOfNode(id: string): string | undefined {
   const index = id.indexOf(SEP)
   return index > 0 ? id.slice(0, index) : undefined
 }
+/** What the changes on no flow go by, where a flow's id is asked for. */
+export const OFF_MAP = "__offmap"
+/** The frame that holds them, with the flows that are gone. */
+export const APART = moduleNodeId("__apart")
 
 export interface ModuleData extends Record<string, unknown> {
   title: string
@@ -57,12 +67,15 @@ export interface ModuleData extends Record<string, unknown> {
   /** The most pressing colour among the changes in it. */
   tone?: Tone
 }
-export interface LabelData extends Record<string, unknown> {
+/** The card a drawn flow sits on, with its name at the head. */
+export interface FlowCardData extends Record<string, unknown> {
   flowId: string
   name: string
   code: boolean
   struck: boolean
   changes: number
+  /** The most pressing colour among the changes on it. */
+  tone?: Tone
 }
 /** A flow as one row: not described yet, or gone after it. */
 export interface RowData extends Record<string, unknown> {
@@ -90,26 +103,44 @@ export interface MoreData extends Record<string, unknown> {
 export interface OffMapData extends Record<string, unknown> {
   coupon: Coupon
 }
+/** The dashed box a flow's error path runs in. */
+export interface BoxData extends Record<string, unknown> {
+  flowId: string
+}
 /** The most pressing of some colours: a new risk before no test, and so on down. */
 function worst(tones: (Tone | undefined)[]): Tone | undefined {
   return TONES.find((tone) => tones.includes(tone))
 }
 export type ModuleNode = Node<ModuleData, "module">
-export type LabelNode = Node<LabelData, "label">
+export type FlowCardNode = Node<FlowCardData, "flow">
 export type OffMapNode = Node<OffMapData, "offmap">
 export type RowNode = Node<RowData, "row">
 export type MoreNode = Node<MoreData, "more">
+export type BoxNode = Node<BoxData, "box">
 export type AtlasNode =
-  StepNode | ModuleNode | LabelNode | OffMapNode | RowNode | MoreNode
-export type AtlasEdge = FlowEdge
+  | StepNode
+  | ModuleNode
+  | FlowCardNode
+  | OffMapNode
+  | RowNode
+  | MoreNode
+  | BoxNode
+type AtlasEdge = FlowEdge
 
-/** A flow placed on the atlas: what is drawn of it and where its steps begin. */
+/**
+ * A flow placed on the atlas: what is drawn of it and where its steps begin. Its nodes and
+ * lines keep the flow's own coordinates; the atlas holds the copies set down on the canvas.
+ */
 export interface PlacedFlow {
   view: FlowView
   /** One row, the steps a change touches with the way into them, or every step. */
   mode: "row" | "focus" | "full"
   nodes: StepNode[]
   edges: FlowEdge[]
+  /** What is drawn of it, as a graph to travel, in the ids of the canvas. */
+  graph: FlowGraph<FlowEdge>
+  /** The boxes its error path runs in, drawn under its steps. */
+  boxes: BoxNode[]
   triggers: string[]
   w: number
   h: number
@@ -123,12 +154,75 @@ export interface Atlas {
   home: Map<string, string>
 }
 
+/** The map with each module open, or with none: each drawn once, when first asked for. */
+export function atlasDrawer(
+  model: Model,
+  t: Strings,
+  span?: number
+): (open?: string) => Atlas {
+  const drawn = new Map<string | undefined, Atlas>()
+  return (open) => {
+    if (!drawn.has(open)) drawn.set(open, buildAtlas(model, t, open, span))
+    return drawn.get(open)!
+  }
+}
+
+/** The flow something on the map belongs to (`OFF_MAP` for a change on no flow). */
+export function flowIdOf(node: AtlasNode): string | undefined {
+  if (node.type === "step") return flowOfNode(node.id)
+  if (node.type === "offmap") return OFF_MAP
+  if (node.type === "flow" || node.type === "row")
+    return node.data.flowId || undefined
+  return undefined
+}
+/** The module frame something on the map sits in. */
+export function homeOf(atlas: Atlas, node: AtlasNode): string | undefined {
+  if (node.type === "more") return node.data.moduleId
+  const flowId = flowIdOf(node)
+  return flowId === OFF_MAP ? APART : atlas.home.get(flowId ?? "")
+}
+/** The flows that sit in a module frame. */
+export function flowsIn(atlas: Atlas, module: string): Set<string> {
+  const inside = new Set(module === APART ? [OFF_MAP] : [])
+  for (const [flowId, home] of atlas.home)
+    if (home === module) inside.add(flowId)
+  return inside
+}
+
 const FIXED = {
   draggable: false,
   connectable: false,
   selectable: false,
   focusable: false,
 } as const
+/** A node set down further on, as a copy: what it was built from keeps its own place. */
+const movedNode = <N extends AtlasNode>(
+  node: N,
+  dx: number,
+  dy: number
+): N => ({
+  ...node,
+  position: { x: node.position.x + dx, y: node.position.y + dy },
+})
+/** A line set down further on with everything the layout drew of it. */
+const movedEdge = (edge: AtlasEdge, dx: number, dy: number): AtlasEdge =>
+  edge.data
+    ? {
+        ...edge,
+        data: {
+          ...edge.data,
+          points: edge.data.points?.map((point) => ({
+            x: point.x + dx,
+            y: point.y + dy,
+          })),
+          labelAt: edge.data.labelAt && {
+            x: edge.data.labelAt.x + dx,
+            y: edge.data.labelAt.y + dy,
+          },
+        },
+      }
+    : edge
+
 /** A node whose size the layout already knows, so it needs no measuring before it shows. */
 const sized = (width: number, height: number) => ({
   width,
@@ -156,7 +250,7 @@ function drawFlow(
   const triggerIds = steps
     .filter((step) => step.kind === "trigger")
     .map((step) => step.step_id)
-  const firstRow = view.layout.rows[0]?.step.step_id
+  const firstRow = view.graph.order[0]
   const triggers = (
     triggerIds.length ? triggerIds : firstRow ? [firstRow] : []
   ).map((id) => stepNodeId(flowId, id))
@@ -170,11 +264,31 @@ function drawFlow(
     source: stepNodeId(flowId, edge.source),
     target: stepNodeId(flowId, edge.target),
   }))
+  const boxes: BoxNode[] = graph.boxes.map((box, index) => ({
+    id: `box${SEP}${flowId}${SEP}${index}`,
+    type: "box",
+    position: { x: box.x, y: box.y },
+    ...sized(box.w, box.h),
+    zIndex: -1,
+    style: { pointerEvents: "none" },
+    ...FIXED,
+    data: { flowId },
+  }))
+  // The drawn steps in the flow's own reading order, then what stands for steps left out.
+  const reading = new Map(view.graph.order.map((id, at) => [id, at]))
+  const inOrder = [...graph.nodes]
+    .sort(
+      (a, b) =>
+        (reading.get(a.id) ?? Infinity) - (reading.get(b.id) ?? Infinity)
+    )
+    .map((node) => ({ ...node, id: stepNodeId(flowId, node.id) }))
   return {
     view,
     mode: graph.cut ? "focus" : "full",
     nodes,
     edges,
+    graph: graphOfDrawing(inOrder, edges),
+    boxes,
     triggers,
     w: graph.w,
     h: graph.h,
@@ -212,6 +326,8 @@ function placeFlow(
     mode: "row",
     nodes: [],
     edges: [],
+    graph: graphOfDrawing([], []),
+    boxes: [],
     triggers: [`row${SEP}${flowId}`],
     w: ROW_W,
     h: planned(view) && view.flow.summary ? ROW_TALL : ROW_H,
@@ -299,7 +415,7 @@ export function buildAtlas(
     const cards = Math.min(offMap.length, 3)
     const need = Math.max(
       ROW_W,
-      ...drawn.map((flow) => flow.w),
+      ...drawn.map((flow) => flow.w + 2 * CARD_X),
       cards * (OFFMAP_W + OFFMAP_GAP) - OFFMAP_GAP
     )
     const rowOf = (
@@ -378,11 +494,15 @@ export function buildAtlas(
       for (const flow of drawn) {
         y += gap
         const view = flow.view
+        const height = CARD_HEAD + flow.h + CARD_B
         nodes.push({
-          id: `label${SEP}${view.flow.flow_id}`,
-          type: "label",
+          id: `flow${SEP}${view.flow.flow_id}`,
+          type: "flow",
           position: { x: P, y },
-          ...sized(inner, LABEL_H),
+          ...sized(inner, height),
+          // Under the lines and the steps; only its head takes a click.
+          zIndex: -1,
+          style: { pointerEvents: "none" },
           ...FIXED,
           data: {
             flowId: view.flow.flow_id,
@@ -390,17 +510,16 @@ export function buildAtlas(
             code: codeNamed(view),
             struck: view.removed,
             changes: model.stopsOn.get(view.flow.flow_id)?.length ?? 0,
+            tone: worst(view.coupons.map((coupon) => coupon.tone)),
           },
         })
-        for (const node of flow.nodes) {
-          node.position = {
-            x: node.position.x + P,
-            y: node.position.y + y + LABEL_H,
-          }
-          nodes.push(node)
-        }
-        edges.push(...flow.edges)
-        y += LABEL_H + flow.h
+        // The flow keeps its drawing in its own coordinates; the card gets a copy in place.
+        const dx = P + CARD_X
+        const dy = y + CARD_HEAD
+        for (const node of [...flow.boxes, ...flow.nodes])
+          nodes.push(movedNode(node, dx, dy))
+        for (const edge of flow.edges) edges.push(movedEdge(edge, dx, dy))
+        y += height
         gap = FLOW_GAP
       }
       if (offMap.length) {
@@ -482,9 +601,7 @@ export function buildAtlas(
     .filter((stop) => stop.kind === "off_map" && stop.coupon)
     .map((stop) => stop.coupon!)
   if (removed.length || offMap.length)
-    blocks.push(
-      measure(moduleNodeId("__apart"), t.offMapCard, true, removed, offMap)
-    )
+    blocks.push(measure(APART, t.offMapCard, true, removed, offMap))
   // What this change touches comes first, so the first look lands on it.
   blocks.sort((a, b) => Number(b.changes > 0) - Number(a.changes > 0))
   const wide = blocks.filter((block) => block.drawn)
@@ -523,11 +640,8 @@ export function buildAtlas(
         tone: block.tone,
       },
     })
-    for (const node of inside.nodes) {
-      node.position = { x: node.position.x + x, y: node.position.y + y }
-      nodes.push(node)
-    }
-    edges.push(...inside.edges)
+    for (const node of inside.nodes) nodes.push(movedNode(node, x, y))
+    for (const edge of inside.edges) edges.push(movedEdge(edge, x, y))
     return height
   }
   let y = 0
@@ -579,72 +693,4 @@ export function buildAtlas(
   flush()
 
   return { nodes, edges, flows, home }
-}
-
-/**
- * The way through a flow worth watching: from its trigger, at each decision the branch that
- * passes the most changes, then the one off the error path, then the longer one.
- */
-export function mainPath(
-  flow: Pick<PlacedFlow, "nodes" | "edges" | "triggers">
-): {
-  steps: string[]
-  edges: string[]
-} {
-  const start = flow.triggers[0]
-  if (!start) return { steps: [], edges: [] }
-  const changed = new Set(
-    flow.nodes.filter((node) => node.data.coupons.length).map((node) => node.id)
-  )
-  const out = new Map<string, FlowEdge[]>()
-  for (const edge of flow.edges)
-    if (!edge.data?.back)
-      out.set(edge.source, [...(out.get(edge.source) ?? []), edge])
-  interface Best {
-    changes: number
-    errors: number
-    length: number
-    edge?: FlowEdge
-  }
-  const memo = new Map<string, Best>()
-  const better = (a: Best, b: Best) =>
-    a.changes !== b.changes
-      ? a.changes > b.changes
-      : a.errors !== b.errors
-        ? a.errors < b.errors
-        : a.length > b.length
-  const best = (id: string, trail: Set<string>): Best => {
-    const known = memo.get(id)
-    if (known) return known
-    let pick: Best = { changes: 0, errors: 0, length: 0 }
-    for (const edge of out.get(id) ?? []) {
-      if (trail.has(edge.target)) continue
-      trail.add(edge.target)
-      const rest = best(edge.target, trail)
-      trail.delete(edge.target)
-      const next: Best = {
-        changes: rest.changes + (changed.has(edge.target) ? 1 : 0),
-        errors: rest.errors + (edge.data?.exception ? 1 : 0),
-        length: rest.length + 1,
-        edge,
-      }
-      if (!pick.edge || better(next, pick)) pick = next
-    }
-    memo.set(id, pick)
-    return pick
-  }
-  best(start, new Set([start]))
-  const steps = [start]
-  const edges: string[] = []
-  const seen = new Set(steps)
-  let at = start
-  for (;;) {
-    const edge = memo.get(at)?.edge
-    if (!edge || seen.has(edge.target)) break
-    edges.push(edge.id)
-    steps.push(edge.target)
-    seen.add(edge.target)
-    at = edge.target
-  }
-  return { steps, edges }
 }

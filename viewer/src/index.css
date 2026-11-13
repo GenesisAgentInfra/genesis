@@ -1,6 +1,7 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+/* Graphical's classes, then its theme: the variables every token below aliases. */
+@import "../graphical/generated/tailwind-theme.css";
+@import "../graphical/generated/theme.css";
 @import "@xyflow/react/dist/style.css";
 
 /* A quiet canvas read at a desk, the way agent builders look. Light and dark are two
@@ -10,42 +11,32 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui,
-    sans-serif;
-  --font-heading: var(--font-sans);
-  --font-mono:
-    ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-data);
 
   --color-canvas: var(--canvas);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-line: var(--line);
-  --color-change: var(--change);
   --color-change-bg: var(--change-bg);
   --color-change-ink: var(--change-ink);
   --color-risk: var(--risk);
-  --color-risk-bg: var(--risk-bg);
   --color-ok: var(--ok);
-  --color-ok-bg: var(--ok-bg);
   --color-select: var(--select);
   --color-field: var(--field);
   --color-risk-ink: var(--risk-ink);
   --color-warn: var(--warn);
   --color-edge-strong: var(--edge-strong);
+  --color-edge-exception: var(--edge-exception);
   /* The colour of the card it is set on: see [data-tone] below. */
   --color-tone: var(--tone);
-  --color-tone-bg: var(--tone-bg);
   --color-tone-ink: var(--tone-ink);
 
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -58,133 +49,132 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 :root {
-  --canvas: #f4f4f5;
-  --ink: #111113;
-  --ink-2: #4d5058;
-  --ink-3: #62656e;
-  --line: #d9dadd;
-  --field: #f4f4f5;
-  --edge: #7d818c;
-  --edge-strong: #3a3b40;
-  --edge-exception: #c57368;
-  --edge-exception-strong: #b5524a;
-  --select: #2f6feb;
-  --change: #e2860b;
-  --change-bg: #fff6e8;
+  --canvas: var(--neutral-3);
+  --ink: var(--neutral-10);
+  --ink-2: var(--neutral-8);
+  --ink-3: var(--neutral-7);
+  --line: var(--neutral-4);
+  --field: var(--neutral-3);
+  --edge: var(--neutral-6);
+  --edge-strong: var(--neutral-9);
+  --edge-exception: var(--error);
+  --edge-exception-strong: var(--error);
+  --select: var(--color-1);
+  --change: var(--warning);
+  --change-bg: var(--warning-transparent);
   --change-ink: #8a4a00;
-  --risk: #d92d20;
-  --risk-bg: #fdf0ef;
+  --risk: var(--error);
   --risk-ink: #b42318;
-  --ok: #17803d;
-  --ok-bg: #ebf7ef;
+  --ok: var(--success);
   /* Amber dark enough for a small glyph on white. */
-  --warn: #c26d00;
-  --handle: #ffffff;
-  --handle-rim: #c9cace;
-  --scrollbar: #c9cace;
-  --selection-bg: #d6e4fd;
-  --selection-ink: #0b2a66;
-  --tile-trigger-bg: #e6f5ec;
-  --tile-trigger-ink: #1a7f45;
-  --tile-action-bg: #efeafd;
-  --tile-action-ink: #6a3fd4;
-  --tile-decision-bg: #ffeee1;
-  --tile-decision-ink: #c9530a;
-  --tile-external-bg: #fff4d1;
-  --tile-external-ink: #9a6200;
-  --tile-result-bg: #efeff1;
-  --tile-result-ink: #4f5057;
+  --warn: var(--warning);
+  --handle: var(--neutral-1);
+  --handle-rim: var(--neutral-5);
+  --scrollbar: var(--neutral-5);
+  --selection-bg: var(--color-1-transparent);
+  --selection-ink: var(--neutral-10);
+  --tile-trigger-bg: var(--color-3-transparent);
+  --tile-trigger-ink: var(--color-3);
+  --tile-action-bg: var(--color-2-transparent);
+  --tile-action-ink: var(--color-2);
+  --tile-decision-bg: var(--color-4-transparent);
+  --tile-decision-ink: var(--color-4);
+  --tile-external-bg: var(--color-5-transparent);
+  --tile-external-ink: var(--color-5);
+  --tile-result-bg: var(--neutral-3);
+  --tile-result-ink: var(--neutral-8);
 
-  --background: var(--canvas);
-  --foreground: var(--ink);
-  --card: #ffffff;
-  --card-foreground: var(--ink);
-  --popover: #ffffff;
-  --popover-foreground: var(--ink);
-  --primary: var(--ink);
-  --primary-foreground: #ffffff;
-  --secondary: #f1f1f3;
-  --secondary-foreground: var(--ink);
-  --muted: #f1f1f3;
-  --muted-foreground: var(--ink-2);
-  --accent: #f1f1f3;
-  --accent-foreground: var(--ink);
-  --destructive: var(--risk);
-  --border: var(--line);
-  --input: var(--line);
-  --ring: var(--select);
-  --radius: 0.75rem;
+  --background: var(--neutral-3);
+  --foreground: var(--neutral-10);
+  --card: var(--neutral-1);
+  --card-foreground: var(--neutral-10);
+  --popover: var(--neutral-1);
+  --popover-foreground: var(--neutral-10);
+  --primary: var(--neutral-10);
+  --primary-foreground: var(--on-neutral-10);
+  --secondary: var(--neutral-3);
+  --secondary-foreground: var(--neutral-10);
+  --muted: var(--neutral-3);
+  --muted-foreground: var(--neutral-8);
+  --destructive: var(--error);
+  --border: var(--neutral-4);
+  --input: var(--neutral-4);
+  --ring: var(--color-1);
+  --radius: var(--radius-l);
 
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --shadow-node:
-    0 1px 2px rgb(17 17 19 / 0.04), 0 4px 14px rgb(17 17 19 / 0.05);
-  --shadow-node-hover:
-    0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08);
-  --shadow-float:
-    0 1px 2px rgb(17 17 19 / 0.05), 0 12px 32px rgb(17 17 19 / 0.1);
+  --ease-out: var(--motion-easing);
+  --shadow-node: var(--shadow-s);
+  --shadow-node-hover: var(--shadow-m);
+  --shadow-float: var(--shadow-l);
+  /* The card a flow sits on: a half step between the canvas and a step card, lit from
+     above, so the white steps still stand off it. */
+  --flow-top: var(--neutral-1);
+  --flow-bottom: var(--neutral-2);
+  --flow-rim: var(--neutral-10-transparent);
+  --shadow-flow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(17 17 19 / 0.03),
+    0 22px 44px -30px rgb(17 17 19 / 0.2);
   color-scheme: light;
 }
 
 /* The same tokens after dark: the canvas is the darkest surface, cards sit a step above
    it, and the four signal hues are lifted so they keep their contrast. */
 :root[data-theme="dark"] {
-  --canvas: #101012;
-  --ink: #f1f1f3;
-  --ink-2: #b6b7bd;
-  --ink-3: #8e9097;
-  --line: #3b3d44;
-  --field: #26262b;
-  --edge: #90939d;
-  --edge-strong: #d3d4d9;
-  --edge-exception: #a35a52;
-  --edge-exception-strong: #f09a90;
-  --select: #6ea0ff;
-  --change: #f0a030;
-  --change-bg: #33260f;
+  --canvas: var(--neutral-1);
+  --ink: var(--neutral-10);
+  --ink-2: var(--neutral-8);
+  --ink-3: var(--neutral-7);
+  --line: var(--neutral-5);
+  --field: var(--neutral-4);
+  --edge: var(--neutral-7);
+  --edge-strong: var(--neutral-9);
+  --edge-exception: var(--error);
+  --edge-exception-strong: var(--error);
+  --select: var(--color-1);
+  --change: var(--warning);
+  --change-bg: var(--warning-transparent);
   --change-ink: #ffcb80;
-  --risk: #ff6b5e;
-  --risk-bg: #3b1a17;
+  --risk: var(--error);
   --risk-ink: #ffa39a;
-  --ok: #4cc27a;
-  --ok-bg: #14301f;
-  --warn: #f0a030;
-  --handle: #1c1c20;
-  --handle-rim: #55565d;
-  --scrollbar: #55565d;
-  --selection-bg: #24427a;
-  --selection-ink: #eaf1ff;
-  --tile-trigger-bg: #173524;
-  --tile-trigger-ink: #6fd39a;
-  --tile-action-bg: #2a2247;
-  --tile-action-ink: #b49cff;
-  --tile-decision-bg: #3d2413;
-  --tile-decision-ink: #ffa066;
-  --tile-external-bg: #382c0c;
-  --tile-external-ink: #f2c14e;
-  --tile-result-bg: #2a2a2f;
-  --tile-result-ink: #b6b7bd;
+  --ok: var(--success);
+  --warn: var(--warning);
+  --handle: var(--neutral-3);
+  --handle-rim: var(--neutral-6);
+  --scrollbar: var(--neutral-6);
+  --selection-bg: var(--color-1-transparent);
+  --selection-ink: var(--neutral-10);
+  --tile-trigger-bg: var(--color-3-transparent);
+  --tile-trigger-ink: var(--color-3);
+  --tile-action-bg: var(--color-2-transparent);
+  --tile-action-ink: var(--color-2);
+  --tile-decision-bg: var(--color-4-transparent);
+  --tile-decision-ink: var(--color-4);
+  --tile-external-bg: var(--color-5-transparent);
+  --tile-external-ink: var(--color-5);
+  --tile-result-bg: var(--neutral-4);
+  --tile-result-ink: var(--neutral-8);
 
-  --card: #1c1c20;
-  --popover: #1c1c20;
-  --primary-foreground: #101012;
-  --secondary: #26262b;
-  --muted: #26262b;
-  --accent: #26262b;
+  --card: var(--neutral-3);
+  --popover: var(--neutral-3);
+  --primary-foreground: var(--on-neutral-10);
+  --secondary: var(--neutral-4);
+  --muted: var(--neutral-4);
 
-  --shadow-node: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 14px rgb(0 0 0 / 0.25);
-  --shadow-node-hover:
-    0 2px 4px rgb(0 0 0 / 0.35), 0 10px 26px rgb(0 0 0 / 0.35);
-  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.45);
+  --shadow-node: var(--shadow-s);
+  --shadow-node-hover: var(--shadow-m);
+  --shadow-float: var(--shadow-l);
+  --flow-top: var(--neutral-2);
+  --flow-bottom: var(--neutral-2);
+  --flow-rim: var(--neutral-10-transparent);
+  --shadow-flow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.3),
+    0 22px 44px -30px rgb(0 0 0 / 0.6);
   color-scheme: dark;
 }
 
@@ -192,22 +182,18 @@
    nobody can give, or a test that checks it. Set on the card; everything inside follows. */
 [data-tone="risk"] {
   --tone: var(--risk);
-  --tone-bg: var(--risk-bg);
   --tone-ink: var(--risk-ink);
 }
 [data-tone="untested"] {
   --tone: var(--change);
-  --tone-bg: var(--change-bg);
   --tone-ink: var(--change-ink);
 }
 [data-tone="unsure"] {
   --tone: var(--ink-3);
-  --tone-bg: var(--field);
   --tone-ink: var(--ink-2);
 }
 [data-tone="tested"] {
   --tone: var(--ok);
-  --tone-bg: var(--ok-bg);
   --tone-ink: var(--ok);
 }
 /* The card on show: a solid border of its colour and a halo. */
@@ -239,9 +225,14 @@
   }
   body {
     @apply bg-background text-foreground;
-    margin: 0;
-    font-size: 14px;
+    margin: var(--space-zero);
+    font-size: var(--size-m);
     line-height: 1.5;
+  }
+  /* Base UI: the page is its own stacking context, so popups in portals always stand
+     above it whatever z-index the canvas uses. */
+  #root {
+    isolation: isolate;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -257,7 +248,7 @@
   }
   code,
   pre {
-    font-family: var(--font-mono);
+    font-family: var(--font-data);
   }
 }
 
@@ -271,7 +262,9 @@
   --xy-attribution-background-color: transparent;
 }
 .react-flow__attribution {
-  font-size: 10px;
+  font-size: var(--size-xs);
+  line-height: var(--line-xs);
+  letter-spacing: var(--letter-spacing-xs);
   color: var(--ink-3);
   opacity: 0.6;
 }
@@ -281,7 +274,7 @@
 .react-flow__handle {
   width: 9px;
   height: 9px;
-  border-width: 1.25px;
+  border-width: var(--border-m);
 }
 /* A line ends in an arrowhead, so the port it lands on is not drawn. */
 .react-flow__handle.target {
@@ -310,8 +303,7 @@
 }
 .edge-draw {
   stroke-dasharray: 1;
-  animation: edge-draw var(--edge-duration, 300ms)
-    cubic-bezier(0.45, 0, 0.55, 1) both;
+  animation: edge-draw var(--edge-duration) cubic-bezier(0.45, 0, 0.55, 1) both;
   animation-delay: var(--edge-delay, 0ms);
 }
 
@@ -322,7 +314,7 @@
   }
 }
 .edge-fade {
-  animation: edge-fade var(--edge-duration, 300ms) ease-out both;
+  animation: edge-fade var(--edge-duration) ease-out both;
   animation-delay: var(--edge-delay, 0ms);
 }
 
@@ -338,7 +330,7 @@
   }
 }
 .arrive {
-  animation: arrive var(--arrive-duration, 240ms) var(--ease-out) both;
+  animation: arrive var(--arrive-duration) var(--ease-out) both;
   animation-delay: var(--arrive-delay, 0ms);
 }
 
@@ -350,7 +342,7 @@
   }
 }
 .tag-in {
-  animation: tag-in var(--tag-duration, 180ms) var(--ease-out) both;
+  animation: tag-in var(--tag-duration) var(--ease-out) both;
   animation-delay: var(--tag-delay, 0ms);
 }
 
@@ -363,13 +355,37 @@
   animation: fade-in 160ms ease-out both;
 }
 
+/* The detail panel slides in from where it goes back to (--panel-from, set beside its
+   place); on its way out it no longer takes the pointer. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    translate: var(--panel-from);
+  }
+}
+@keyframes panel-out {
+  to {
+    opacity: 0;
+    translate: var(--panel-from);
+  }
+}
+.panel-in {
+  animation: panel-in 260ms var(--ease-out) both;
+}
+.panel-out {
+  animation: panel-out 260ms var(--ease-out) both;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .edge-draw,
   .edge-fade,
   .arrive,
   .tag-in,
   .fade-in,
-  [data-slot="tooltip-content"] {
+  [data-slot="tooltip-content"],
+  .panel-in,
+  .panel-out {
     animation: none;
   }
   *,
@@ -384,7 +400,7 @@
   animation: fade-in 220ms var(--ease-out) both;
 }
 .is-morphing .react-flow__node {
-  transition: transform 320ms var(--ease-out);
+  transition: transform var(--morph) var(--ease-out);
 }
 .react-flow__edges,
 .react-flow__edgelabel-renderer {
@@ -404,4 +420,106 @@
 /* Names on lines stay readable where a line passes a card. */
 .react-flow__edgelabel-renderer {
   z-index: 7;
+}
+
+/* The commit tree (commit-graph), restyled to the page: its own font, blues and borders
+   give way to the ink scale; the message leads each row and the line under it says when
+   and who. Its classes are hashed CSS modules, so they are matched by their stable stem. */
+.commit-tree [class*="index-module_container"] {
+  width: 100%;
+  max-width: none;
+  font-family: var(--font-body);
+  font-size: var(--size-s);
+  line-height: var(--line-s);
+  letter-spacing: var(--letter-spacing-s);
+}
+/* The graph reserves a row's height under its last commit; the list ends with the row. */
+.commit-tree > [class*="index-module_container"] {
+  margin-bottom: calc(var(--space-xxl) * -1.5);
+}
+.commit-tree [class*="index-module_commitInfoContainer"] {
+  left: calc(var(--graph, 28px) + 10px) !important;
+  width: calc(100% - var(--graph, 28px) - 10px) !important;
+}
+.commit-tree [class*="index-module_details"] > div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding-right: var(--space-xs);
+}
+.commit-tree [class*="index-module_msg"] {
+  margin-top: var(--space-zero);
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--size-m);
+  letter-spacing: var(--letter-spacing-m);
+  line-height: var(--line-m);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commit-tree [class*="index-module_labelAndLink"] {
+  gap: var(--space-m);
+  min-width: 0;
+  color: var(--ink-3) !important;
+}
+.commit-tree [class*="index-module_labelAndLink"] > div:first-child {
+  min-width: 0;
+  overflow: hidden;
+}
+.commit-tree [class*="index-module_bold"] {
+  display: block;
+  width: auto;
+  overflow: hidden;
+  color: var(--ink-3) !important;
+  font-size: var(--size-s);
+  letter-spacing: var(--letter-spacing-s);
+  font-weight: var(--weight-body-regular);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--line-s);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.commit-tree a[class*="index-module_bold"]:hover {
+  color: var(--ink) !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.commit-tree [class*="index-module_outer"],
+.commit-tree [class*="index-module_number"] {
+  height: 20px;
+  border: 0 !important;
+  border-radius: var(--radius-s);
+  background: var(--field);
+  padding: var(--space-zero) var(--space-m);
+  color: var(--ink-2) !important;
+  font-size: var(--size-s);
+  letter-spacing: var(--letter-spacing-s);
+  font-weight: var(--weight-body-medium);
+  line-height: var(--line-s);
+}
+.commit-tree [class*="index-module_outer"] a {
+  color: inherit;
+  text-decoration: none;
+}
+.commit-tree [class*="index-module_block"] {
+  border-radius: var(--radius-l);
+}
+.commit-tree [class*="index-module_hovered"] {
+  background-color: var(--ink);
+  opacity: 0.04;
+}
+.commit-tree [class*="index-module_clicked"] {
+  background-color: var(--ink);
+  opacity: 0.06;
+}
+.commit-tree [class*="styles-module_tooltip"] {
+  border-radius: var(--radius-m);
+  background: var(--ink);
+  color: var(--canvas);
+  font-size: var(--size-s);
+  letter-spacing: var(--letter-spacing-s);
+  line-height: var(--line-s);
 }

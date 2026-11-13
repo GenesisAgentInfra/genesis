@@ -6,7 +6,7 @@ export function BaseNode({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "relative rounded-md border bg-card text-card-foreground",
+        "relative corner-s edge-m bg-card text-card-foreground",
         "hover:ring-1",
         // React Flow displays node elements inside of a `NodeWrapper`
         // component, which compiles down to a div with the class

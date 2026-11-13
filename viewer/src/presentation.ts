@@ -6,7 +6,7 @@ import type {
   RiskCategory,
 } from "./types"
 
-export const RISK_CATEGORIES = [
+const RISK_CATEGORIES = [
   "reliability",
   "correctness",
   "data_integrity",

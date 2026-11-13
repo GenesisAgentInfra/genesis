@@ -1,7 +1,10 @@
 import type { Point } from "./graph"
 
-/** A path through points at right angles, its corners rounded. */
-export function orthogonal(points: Point[], radius = 10): string {
+/**
+ * A path through points at right angles, its corners rounded. A corner gives way on a run
+ * too short for it, unless `full` keeps every corner at the whole radius.
+ */
+export function orthogonal(points: Point[], radius = 10, full = false): string {
   // Points on one line with their neighbours add nothing but a kink.
   const kept = points.filter((point, index) => {
     const before = points[index - 1]
@@ -18,7 +21,7 @@ export function orthogonal(points: Point[], radius = 10): string {
     const [a, b, c] = [kept[i - 1], kept[i], kept[i + 1]]
     const before = Math.hypot(b.x - a.x, b.y - a.y)
     const after = Math.hypot(c.x - b.x, c.y - b.y)
-    const r = Math.min(radius, before / 2, after / 2)
+    const r = full ? radius : Math.min(radius, before / 2, after / 2)
     if (!r) {
       parts.push(`L${b.x},${b.y}`)
       continue
