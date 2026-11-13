@@ -24,7 +24,7 @@ from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, S
 from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet, Language
 from genesis_contracts.fingerprint import fact_fingerprint
-from genesis_contracts.map_tasks import EvidenceCite, FlowSubmission, MapPlan
+from genesis_contracts.map_tasks import EvidenceCite, FlowSubmission, MapPlan, place
 from genesis_contracts.models import EvidenceRef, EvidenceSide, ReferenceRange
 from pydantic import ValidationError
 
@@ -35,6 +35,7 @@ from .changes import CHANGE_TASK, ChangeAnalysis
 from .python_entries import entry_id
 from .session import evidence_bundle, session_root, write_json
 from .skeleton import (
+    _JUMPS,
     _entry_label,
     _evaluation_order,
     control_edges,
@@ -142,16 +143,23 @@ def _digest(text: str, length: int = 12) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:length]
 
 
+def _jump_advice(fact: CodeFact) -> str:
+    """Why a `break` or `continue` cannot be an anchor, and how to draw it instead."""
+    onward = "the step that follows the loop" if fact.kind == FactKind.breaks else "the loop's step"
+    return (
+        f"`{fact.text}` on line {fact.range.start_line} is not a step: it only says where its "
+        "loop goes next. Leave it out and point the edge that led to it, usually a branch of "
+        f"the condition around it, at {onward}."
+    )
+
+
 def _problem(path: str, code: str, message: str) -> dict:
     return {"path": path, "code": code, "message": message}
 
 
 def _location(parts) -> str:
     """`steps[1].evidence[0]`, the same form the CLI's own checks report."""
-    text = ""
-    for part in parts:
-        text += f"[{part}]" if isinstance(part, int) else ("." if text else "") + str(part)
-    return text or "(document)"
+    return place(parts) or "(document)"
 
 
 def pydantic_problems(error: ValidationError) -> list[dict]:
@@ -662,7 +670,7 @@ class Workspace:
                 found += [
                     fact.fingerprint
                     for fact in facts
-                    if fact.kind not in {FactKind.breaks, FactKind.continues}
+                    if fact.kind not in _JUMPS
                     and fact.boundary != CallBoundary.builtin
                     # A fact belongs to the range it starts in. A call written over many
                     # lines is cited by its first lines, not by all of them.
@@ -764,7 +772,7 @@ class Workspace:
                 for symbol in symbols
                 for fact in self.by_symbol.get(symbol, ())
                 if fact.fingerprint not in listed
-                and fact.kind not in {FactKind.breaks, FactKind.continues}
+                and fact.kind not in _JUMPS
                 and fact.boundary != CallBoundary.builtin
             ][:OTHER_FACT_LIMIT],
             "callees": self._callees(symbols),
@@ -790,7 +798,13 @@ class Workspace:
         return {
             "source": self._source(symbol_id),
             "inside": {**self._inside(symbol_id), "reaches": self._reaches(symbol_id)},
-            "facts": [self._fact_view(fact) for fact in self.by_symbol.get(symbol_id, ())],
+            # Without `break` and `continue`: they are in the source above, and a fact
+            # listed here is one a step can be anchored on.
+            "facts": [
+                self._fact_view(fact)
+                for fact in self.by_symbol.get(symbol_id, ())
+                if fact.kind not in _JUMPS
+            ],
             "callers": callers,
             "callees": self._callees([symbol_id]),
         }
@@ -923,10 +937,27 @@ class Workspace:
             unknown = [fp for fp in step.anchors if fp not in anchor_symbols]
             if unknown:
                 problems.append(_problem(where + ".anchors", "unknown_anchor", ", ".join(unknown)))
+            # A `break` or `continue` is no node of the control structure. Edges to and
+            # from a step on one would be refused as unreachable, which says nothing
+            # about the cause, so the anchor is refused here and the edges are not checked.
+            jumps = [
+                fp
+                for fp in step.anchors
+                if fp in self.by_fingerprint and self.by_fingerprint[fp].kind in _JUMPS
+            ]
+            if jumps:
+                problems.append(
+                    _problem(
+                        where + ".anchors",
+                        "anchor_not_a_step",
+                        " ".join(_jump_advice(self.by_fingerprint[fp]) for fp in jumps),
+                    )
+                )
+                broken.add(step.key)
             anchors = list(
                 dict.fromkeys(
                     [
-                        *(fp for fp in step.anchors if fp in anchor_symbols),
+                        *(fp for fp in step.anchors if fp in anchor_symbols and fp not in jumps),
                         *self._facts_in(evidence),
                     ]
                 )

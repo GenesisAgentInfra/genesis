@@ -206,8 +206,9 @@ genesis map query --repo /absolute/app --session SESSION_ID --search "text"
 genesis map read  --repo /absolute/app --session SESSION_ID --evidence EVIDENCE_ID
 ```
 
-`query --symbol` lists every fact of that function. You may also read files with your
-own tools; the CLI still checks every citation against the frozen snapshot.
+`query --symbol` lists the facts of that function a step can be anchored on. You may
+also read files with your own tools; the CLI still checks every citation against the
+frozen snapshot.
 
 Then write the flow and submit it. This example leaves nothing unaccounted:
 
@@ -299,6 +300,10 @@ Rules the CLI enforces:
 - **Branches.** A `branch` edge leaves a `decision` step, names a branch its condition
   really has (see `branches`), and must point at a step that branch leads to. `label`
   is your wording for it.
+- **Loops.** A loop has the branches `loop`, into its body, and `exit`. `break` and
+  `continue` are not facts a step can stand on, and no fact list shows them. Draw the
+  edge that leads to one, usually a branch of the condition around it, to the step
+  that follows the loop for `break`, and back to the loop's step for `continue`.
 - **Other edges.** `relation` is `sequence`, `branch`, `loop`, `exception` or `call`,
   and any edge may carry a `label`. The CLI checks an edge against the control
   structure of the code. A `return` or `raise` ends a path, and the two sides of a

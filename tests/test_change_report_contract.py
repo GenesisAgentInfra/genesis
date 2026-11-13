@@ -367,8 +367,9 @@ def test_change_submissions_explain_every_verdict():
     ):
         with pytest.raises(ValidationError, match=message):
             ChangeSubmission.model_validate({"changes": [bad]})
-    with pytest.raises(ValidationError, match="assessed change ids"):
+    with pytest.raises(ValidationError, match="'chg_a' is already used at changes") as twice:
         ChangeSubmission.model_validate({"changes": [entry, entry]})
+    assert twice.value.errors()[0]["loc"] == ("changes", 1, "change_id")
     with pytest.raises(ValidationError):
         ChangeSubmission.model_validate({"changes": []})
     assert "change-submission.schema.json" in map_schemas()
