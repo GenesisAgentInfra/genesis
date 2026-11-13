@@ -14,7 +14,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from .business_map import (
     Anchor,
@@ -30,13 +31,55 @@ from .business_map import (
     StepKind,
     SymbolId,
     Text,
-    _unique,
 )
 from .models import ContractModel, EvidenceSide, Severity, validate_repo_path
 
 MAX_STEPS = 60
 MAX_EDGES = 150
 MAX_OBSERVATIONS = 8
+
+
+def place(parts) -> str:
+    """Where in a submitted document something is, as problems name it: `steps[1].key`."""
+    text = ""
+    for part in parts:
+        text += f"[{part}]" if isinstance(part, int) else ("." if text else "") + str(part)
+    return text
+
+
+def _missing(at: tuple, key: str, what: str) -> InitErrorDetails:
+    """A reference to a key that nothing in the document has."""
+    said = PydanticCustomError(
+        "reference", "No {what} has the key '{key}'.", {"what": what, "key": key}
+    )
+    return InitErrorDetails(type=said, loc=at, input=key)
+
+
+def _repeated(items) -> list[InitErrorDetails]:
+    """One problem for each value that repeats an earlier one. `items` are (place, value)."""
+    first: dict = {}
+    found = []
+    for at, value in items:
+        if value in first:
+            said = PydanticCustomError(
+                "duplicate",
+                "'{value}' is already used at {first}.",
+                {"value": value, "first": place(first[value])},
+            )
+            found.append(InitErrorDetails(type=said, loc=at, input=value))
+        else:
+            first[value] = at
+    return found
+
+
+def _refuse(found: list[InitErrorDetails]) -> None:
+    """Report problems between items at the items themselves.
+
+    A `ValueError` raised by a model validator is placed at the model: it would say that
+    some edge of the document is wrong without saying which one.
+    """
+    if found:
+        raise ValidationError.from_exception_data("submission", found)
 
 
 class SkipReason(StrEnum):
@@ -117,17 +160,39 @@ class MapPlan(ContractModel):
 
     @model_validator(mode="after")
     def plan_is_consistent(self) -> MapPlan:
-        _unique((item.key for item in self.domains), "domain keys")
-        _unique((item.key for item in self.flows), "flow keys")
-        _unique((item.symbol_id for item in self.proposed_entries), "proposed entry symbols")
         domains = {item.key for item in self.domains}
-        if any(item.domain is not None and item.domain not in domains for item in self.flows):
-            raise ValueError("a flow refers to an unknown domain key")
+        # An entry starts one flow, or is skipped once.
         assigned = [
-            *(entry for flow in self.flows for entry in flow.entry_ids),
-            *(item.entry_id for item in self.skipped),
+            *(
+                (("flows", index, "entry_ids", position), entry)
+                for index, flow in enumerate(self.flows)
+                for position, entry in enumerate(flow.entry_ids)
+            ),
+            *(
+                (("skipped", index, "entry_id"), item.entry_id)
+                for index, item in enumerate(self.skipped)
+            ),
         ]
-        _unique(assigned, "the flow or skip decision of an entry")
+        _refuse(
+            [
+                *_repeated(
+                    (("domains", index, "key"), item.key) for index, item in enumerate(self.domains)
+                ),
+                *_repeated(
+                    (("flows", index, "key"), item.key) for index, item in enumerate(self.flows)
+                ),
+                *_repeated(
+                    (("proposed_entries", index, "symbol_id"), item.symbol_id)
+                    for index, item in enumerate(self.proposed_entries)
+                ),
+                *(
+                    _missing(("flows", index, "domain"), item.domain, "domain in this plan")
+                    for index, item in enumerate(self.flows)
+                    if item.domain is not None and item.domain not in domains
+                ),
+                *_repeated(assigned),
+            ]
+        )
         return self
 
 
@@ -196,7 +261,7 @@ class ChangeAssessment(ContractModel):
 
     @model_validator(mode="after")
     def verdict_is_explained(self) -> ChangeAssessment:
-        _unique(self.test_ids, "test ids")
+        _refuse(_repeated((("test_ids", index), item) for index, item in enumerate(self.test_ids)))
         if self.verdict is not None and not self.note:
             raise ValueError("a coverage verdict needs a note explaining it")
         if self.verdict is None and self.test_ids:
@@ -210,7 +275,12 @@ class ChangeSubmission(ContractModel):
 
     @model_validator(mode="after")
     def one_assessment_per_change(self) -> ChangeSubmission:
-        _unique((item.change_id for item in self.changes), "assessed change ids")
+        _refuse(
+            _repeated(
+                (("changes", index, "change_id"), item.change_id)
+                for index, item in enumerate(self.changes)
+            )
+        )
         return self
 
 
@@ -226,10 +296,27 @@ class FlowSubmission(ContractModel):
     @model_validator(mode="after")
     def references_resolve(self) -> FlowSubmission:
         keys = {step.key for step in self.steps}
-        _unique((step.key for step in self.steps), "step keys")
-        _unique((item.anchor for item in self.omitted), "omitted anchors")
-        if any(edge.source not in keys or edge.target not in keys for edge in self.edges):
-            raise ValueError("an edge refers to an unknown step key")
-        if any(item.step not in keys for item in self.observations):
-            raise ValueError("an observation refers to an unknown step key")
+        step = "step in this submission"
+        _refuse(
+            [
+                *_repeated(
+                    (("steps", index, "key"), item.key) for index, item in enumerate(self.steps)
+                ),
+                *_repeated(
+                    (("omitted", index, "anchor"), item.anchor)
+                    for index, item in enumerate(self.omitted)
+                ),
+                *(
+                    _missing(("edges", index, end), key, step)
+                    for index, edge in enumerate(self.edges)
+                    for end, key in (("source", edge.source), ("target", edge.target))
+                    if key not in keys
+                ),
+                *(
+                    _missing(("observations", index, "step"), item.step, step)
+                    for index, item in enumerate(self.observations)
+                    if item.step not in keys
+                ),
+            ]
+        )
         return self
