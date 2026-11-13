@@ -2,6 +2,7 @@ import type {
   ChangeItem,
   CoverageAssessment,
   MapFinding,
+  Payload,
   RiskCategory,
 } from "./types"
 
@@ -46,4 +47,26 @@ export function sortAlerts(findings: MapFinding[]): MapFinding[] {
       findings.map((finding) => [finding.finding_id, finding])
     ).values(),
   ].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity])
+}
+
+/** Accept only immutable GitHub blob links supplied by the renderer. */
+export function sourceLinkOf(payload: Payload, ids: string[]) {
+  for (const id of ids) {
+    const link = payload.source_links?.[id]
+    if (!link) continue
+    try {
+      const url = new URL(link.url)
+      if (
+        url.protocol === "https:" &&
+        url.hostname === "github.com" &&
+        !url.username &&
+        !url.password &&
+        /^\/[^/]+\/[^/]+\/blob\/[a-f0-9]{40,64}\//i.test(url.pathname)
+      )
+        return link
+    } catch {
+      /* Older reports and invalid links keep their local source evidence. */
+    }
+  }
+  return undefined
 }

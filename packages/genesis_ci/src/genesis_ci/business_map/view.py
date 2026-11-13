@@ -32,6 +32,8 @@ def view_payload(
     business_map: BusinessMap,
     bundle: EvidenceBundle | None = None,
     report: ChangeReport | None = None,
+    *,
+    source_links: dict[str, dict] | None = None,
 ) -> dict:
     """What the viewer reads: the map, the change report and any source excerpts."""
     return {
@@ -40,6 +42,7 @@ def view_payload(
         "map": business_map.model_dump(mode="json", exclude_none=True),
         "report": None if report is None else report.model_dump(mode="json", exclude_none=True),
         "excerpts": {item.evidence_id: item.text for item in (bundle.excerpts if bundle else ())},
+        "source_links": source_links or {},
     }
 
 
@@ -56,9 +59,13 @@ def render_view(
     business_map: BusinessMap,
     bundle: EvidenceBundle | None = None,
     report: ChangeReport | None = None,
+    *,
+    source_links: dict[str, dict] | None = None,
 ) -> str:
     template = viewer_template()
     if template.count(DATA_SLOT) != 1:
         raise ValueError("the viewer template has no single data slot; rebuild viewer/")
-    filled = DATA_SLOT.replace("null", _embed(view_payload(business_map, bundle, report)))
+    filled = DATA_SLOT.replace(
+        "null", _embed(view_payload(business_map, bundle, report, source_links=source_links))
+    )
     return template.replace(DATA_SLOT, filled)

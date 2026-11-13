@@ -206,19 +206,29 @@ def map_render(
     belongs to; `change-report.json` holds the same changes as data.
     """
     from .business_map.render import render_html, render_summary
-    from .business_map.session import load, load_report, publish
+    from .business_map.session import load, load_report, publish, session_root
+    from .business_map.source_links import github_source_links
     from .business_map.view import render_view
+    from .snapshot_store import load_snapshot
 
     try:
         stored, business_map, bundle = load(repo, session)
         report = load_report(repo, session)
+        snapshot = load_snapshot(session_root(repo, session) / "snapshot")
+        source_links = github_source_links(
+            repo,
+            snapshot.capture,
+            (*business_map.evidence, *(report.evidence if report else ())),
+        )
         # The share page sits beside the private one and never replaces it.
         name = "graph.share.html" if share else "graph.html"
         # The interactive viewer is written beside the outline; --open shows the viewer.
         view_name = "view.share.html" if share else "view.html"
         files = {
             name: render_html(business_map, None if share else bundle, report),
-            view_name: render_view(business_map, None if share else bundle, report),
+            view_name: render_view(
+                business_map, None if share else bundle, report, source_links=source_links
+            ),
             "summary.md": render_summary(business_map, report),
             "business-map.json": business_map.model_dump_json(indent=2, exclude_none=True) + "\n",
         }

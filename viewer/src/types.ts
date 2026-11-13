@@ -48,8 +48,8 @@ export interface MapEntry {
 }
 
 export interface StepContract {
-  input: string
-  output: string
+  input: Record<string, unknown> | string
+  output: Record<string, unknown> | string
   constraints?: string
 }
 
@@ -278,4 +278,5 @@ export interface Payload {
   map: BusinessMap
   report: ChangeReport | null
   excerpts: Record<string, string>
+  source_links?: Record<string, { url: string; exact: boolean }>
 }

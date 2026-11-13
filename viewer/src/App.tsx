@@ -81,7 +81,7 @@ const ARROWS = [
   ["arrow-exception", "var(--edge-exception)"],
   ["arrow-exception-strong", "var(--edge-exception-strong)"],
 ] as const
-const PANEL_W = 384
+const PANEL_W = 420
 // Small maps grow to use the desktop canvas without making cards oversized.
 const AUTO_MAX_ZOOM = 1.6
 /** The first look is never smaller than this: a map nobody can read is no overview. */
@@ -389,7 +389,7 @@ function Viewer({ model }: { model: Model }) {
       const left = inset
       // The zoom controls stand at the right edge, under the panel when it is open.
       const right = narrow ? 12 : withPanel ? PANEL_W + 40 : 60
-      const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 28
+      const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 96
       return {
         x: left,
         y: top,
@@ -1218,7 +1218,7 @@ function Viewer({ model }: { model: Model }) {
                   narrow
                     ? "w-[calc(100vw-24px)]"
                     : showPanel
-                      ? "max-w-[calc(100vw-432px)]"
+                      ? "max-w-[calc(100vw-468px)]"
                       : "max-w-[calc(100vw-32px)]"
                 }
               >
@@ -1241,7 +1241,7 @@ function Viewer({ model }: { model: Model }) {
             <div
               className={cn(
                 "pointer-events-none absolute bottom-8 left-3 z-10 flex justify-center",
-                showPanel && !narrow ? "right-[420px]" : "right-16"
+                showPanel && !narrow ? "right-[456px]" : "right-16"
               )}
             >
               <WalkBar
@@ -1329,12 +1329,11 @@ function Viewer({ model }: { model: Model }) {
                 }
                 transition={panelMotion(reducedMotion)}
                 className={cn(
-                  "absolute z-20 overflow-hidden rounded-[20px] bg-card shadow-[var(--shadow-float)] ring-1 ring-line",
-                  // On a desk the panel is as tall as what it says, and never so tall that
-                  // it covers the controls under it.
+                  "absolute z-20 overflow-hidden rounded-2xl",
+                  // A stable desktop inspector fits both tabs and leaves controls below it.
                   narrow
                     ? "inset-x-2 bottom-2 h-[52dvh]"
-                    : "top-4 right-4 max-h-[calc(100dvh-180px)] w-[384px]"
+                    : "top-4 right-4 h-[min(720px,calc(100dvh-112px))] w-[420px]"
                 )}
               >
                 <DetailPanel

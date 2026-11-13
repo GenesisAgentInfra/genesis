@@ -70,20 +70,14 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
       className={cn(
         "group @container h-full w-full rounded-[24px] border-[1.5px] bg-card/45 transition-[opacity,border-color] duration-160",
         !data.open && "cursor-zoom-in",
-        // A frame holding changes takes the colour of the most pressing one.
-        data.changes && data.tone && !data.apart
-          ? "border-tone/45"
-          : "border-line",
-        !data.open &&
-          (data.changes && data.tone && !data.apart
-            ? "hover:border-tone/80"
-            : "hover:border-ink-3/50"),
+        "border-line",
+        !data.open && "hover:border-ink-3/50",
         data.apart && "border-dashed",
         trailActive && "opacity-80",
         away && "opacity-35"
       )}
     >
-      <div className="relative flex h-[56px] items-center gap-2.5 px-6">
+      <div className="relative flex h-[56px] items-center gap-2.5 pr-[168px] pl-6">
         <span
           className="truncate leading-[1.2] font-medium text-ink"
           style={steady(16, 34)}
@@ -393,12 +387,9 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
             : data.pending
               ? // The tile already shows what starts it; the room goes to its name.
                 t.notDescribed
-              : [
-                  data.entry && t.entryKind[data.entry],
-                  data.code ? t.skeletonTag : t.stepsCount(data.steps),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+              : data.code
+                ? t.skeletonTag
+                : null}
       </span>
     </div>
   )

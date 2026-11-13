@@ -70,9 +70,21 @@
       ],
       "finding_ids": [],
       "contract": {
-       "input": "报销金额 amount，读取自 report[\"amount\"]。",
-       "output": "金额 > 100 进入模型审核；金额 ≤ 100 直接批准。",
-       "constraints": "门槛 THRESHOLD = 100；这里未校验金额类型和取值范围。"
+       "input": {
+        "type": "object",
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "amount"
+        ]
+       },
+       "output": {
+        "type": "boolean",
+        "description": "amount > 100"
+       }
       }
      },
      {
@@ -96,9 +108,13 @@
        "find_f001e035a5df"
       ],
       "contract": {
-       "input": "报销单 report，转换为字符串后发送给模型。",
-       "output": "非空的审核文本 response.output_text。",
-       "constraints": "空输出会持续重试，没有次数上限；接口异常向上抛出。"
+       "input": {
+        "type": "object"
+       },
+       "output": {
+        "type": "string",
+        "minLength": 1
+       }
       }
      },
      {
@@ -329,7 +345,24 @@
       "evidence_ids": [
        "ev_69b58696ac53bfca08e609ec"
       ],
-      "finding_ids": []
+      "finding_ids": [],
+      "contract": {
+       "input": {
+        "type": "object",
+        "properties": {
+         "status": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "status"
+        ]
+       },
+       "output": {
+        "type": "boolean",
+        "description": "status != \"pending_approval\""
+       }
+      }
      },
      {
       "step_id": "step_18c50e04b1e1ef83",
@@ -967,5 +1000,87 @@
   "ev_f356513531a58361e41df877": "    while True:\n        response = await client.responses.create(model=\"gpt-5\", input=str(report))\n        if response.output_text:\n            return response.output_text",
   "ev_297adc472903254de1351406": "THRESHOLD = 100\n\n\n@router.post(\"/reports\")\nasync def submit_report(report):\n    amount = report[\"amount\"]\n    logger.info(\"report received\")\n    if amount > THRESHOLD:\n        verdict = await review_with_model(report)\n        save_status(report[\"id\"], \"pending_approval\")\n        return {\"status\": \"pending_approval\", \"review\": verdict}\n    save_status(report[\"id\"], \"approved\")\n    return {\"status\": \"approved\"}",
   "ev_6c05f7cc2d600a85bef654fa": "async def review_with_model(report):\n    while True:\n        response = await client.responses.create(model=\"gpt-5\", input=str(report))\n        if response.output_text:\n            return response.output_text"
+ },
+ "source_links": {
+  "ev_0cd4dba36aa2ccd8b30bb707": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L22",
+   "exact": true
+  },
+  "ev_0e97c65620c2cb4e241f3609": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L24",
+   "exact": true
+  },
+  "ev_27ab739514bebed877e2201f": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L14",
+   "exact": true
+  },
+  "ev_2d227a950a3159474b9b6ef1": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L26",
+   "exact": true
+  },
+  "ev_3a3c5f6f744b324fa4dced1b": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L10",
+   "exact": true
+  },
+  "ev_4862627c6c3f1fd4cc104578": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L16",
+   "exact": true
+  },
+  "ev_69b58696ac53bfca08e609ec": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L25",
+   "exact": true
+  },
+  "ev_71260961e40457f8b321f059": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/review.py#L7",
+   "exact": true
+  },
+  "ev_949ca4731dde1f1209603971": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L18",
+   "exact": true
+  },
+  "ev_9842c88bb717d91b4af3f744": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L28",
+   "exact": true
+  },
+  "ev_985f0daed8a9e90610999cbc": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L17",
+   "exact": true
+  },
+  "ev_c508f9dad8de858381427c3f": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L15",
+   "exact": true
+  },
+  "ev_cb1df53f16ee5b1327d9f493": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L19",
+   "exact": true
+  },
+  "ev_cef70a0999c303b02d0245ab": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L27",
+   "exact": true
+  },
+  "ev_e3833282c1443c47fbfd7287": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/review.py#L8",
+   "exact": true
+  },
+  "ev_297adc472903254de1351406": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/api.py#L7-L19",
+   "exact": true
+  },
+  "ev_6c05f7cc2d600a85bef654fa": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/review.py#L6-L10",
+   "exact": true
+  },
+  "ev_060b12c0208e74541c9309cf": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/base/src/expense/api.py#L14",
+   "exact": true
+  },
+  "ev_502f7f36452934a1cc846126": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/tests/test_submit.py#L7-L9",
+   "exact": true
+  },
+  "ev_f356513531a58361e41df877": {
+   "url": "https://github.com/GenesisAgentInfra/genesis/blob/87ae1c7ff9c7427bf5140b6d9e030ec9519661a3/fixtures/business-map/change/head/src/expense/review.py#L7-L10",
+   "exact": true
+  }
  }
 }

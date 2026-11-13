@@ -386,9 +386,8 @@ def test_step_contract_survives_submission_and_viewer_payload(workspace):
     task = planned(workspace)["提交报销"]
     submission = submit_flow(workspace, task)
     contract = {
-        "input": '报销金额 amount，读取自 report["amount"]。',
-        "output": "金额达到门槛进入模型审核；否则直接批准。",
-        "constraints": "THRESHOLD = 100。",
+        "input": {"type": "object", "properties": {"amount": {"type": "number"}}},
+        "output": {"type": "boolean", "description": "amount >= THRESHOLD"},
     }
     submission["steps"][1]["contract"] = contract
     submission["steps"][1]["evidence"] += [

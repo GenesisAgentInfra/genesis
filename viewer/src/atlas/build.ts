@@ -12,16 +12,9 @@ import { TONES } from "@/model"
 import type { EntryKind } from "@/types"
 
 /**
- * The whole product on one canvas, at a size that reads. Each module is a frame holding its
- * flows. A flow the change touches is drawn cut down to the change: the steps it touches as
- * cards, the step each is reached from as a pill, and a dotted line for whatever lies
- * between. A flow it leaves alone is one row, which says so when changed code is on its
- * way. Opening a module draws every step of its flows. Every frame keeps to one grid: a
- * touched module runs the full width, the others share rows of equal cells under it.
- *
- * A row reads as what the product does: the business processes of a module come first, each
- * under the name and the one sentence the plan gave it, and its lookups and upkeep fold
- * into one line until the module is opened.
+ * One canvas with a consistent diagram for every synthesized live flow. Changed flows
+ * may fold intermediate steps while preserving decisions and outcomes. Only removed or
+ * undescribed flows use compact rows. Opening a module reveals every intermediate step.
  */
 
 export const SEP = "::"
@@ -71,7 +64,7 @@ export interface LabelData extends Record<string, unknown> {
   struck: boolean
   changes: number
 }
-/** A flow as one row: untouched by the change, or gone after it. */
+/** A flow as one row: not described yet, or gone after it. */
 export interface RowData extends Record<string, unknown> {
   flowId: string
   name: string
@@ -214,12 +207,14 @@ function placeFlow(
   const undescribed =
     view.flow.stage === "skeleton" && !view.removed && !touched
   // Until its module is opened, a flow shows of itself what the change is about.
-  if (!undescribed && (open || (touched && !view.removed)))
+  if (!undescribed && !view.removed)
     return drawFlow(
       model,
       view,
       max,
-      open ? undefined : { between: t.stepsBetween, more: t.stepsMore }
+      open || !touched
+        ? undefined
+        : { between: t.stepsBetween, more: t.stepsMore }
     )
   return {
     view,

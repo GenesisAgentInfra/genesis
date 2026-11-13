@@ -129,3 +129,42 @@ test("long affected branches preserve decisions, error outcomes and retry endpoi
     assert.ok(cut.keep.has(id), id)
   assert.equal(cut.keep.has("otherResult"), false)
 })
+
+test("both submission and unchanged approval are diagrams in the overview", async () => {
+  const { buildAtlas } = await server.ssrLoadModule("/src/atlas/build.ts")
+  const { STRINGS } = await server.ssrLoadModule("/src/i18n.ts")
+  const model = buildModel(expense)
+  const atlas = buildAtlas(model, STRINGS.zh)
+  for (const flow of model.flows) {
+    assert.ok(
+      atlas.nodes.some(
+        (node) =>
+          node.type === "label" && node.data.flowId === flow.flow.flow_id
+      )
+    )
+    assert.equal(
+      atlas.nodes.some(
+        (node) => node.type === "row" && node.data.flowId === flow.flow.flow_id
+      ),
+      false
+    )
+  }
+})
+
+test("only immutable GitHub URLs become source actions", async () => {
+  const { sourceLinkOf } = await server.ssrLoadModule("/src/presentation.ts")
+  const link = Object.values(expense.source_links)[0]
+  assert.equal(sourceLinkOf({ source_links: { a: link } }, ["a"]), link)
+  assert.equal(sourceLinkOf({}, ["a"]), undefined)
+  for (const url of [
+    "javascript:alert(1)",
+    "https://github.com.evil.test/o/r/blob/" + "a".repeat(40) + "/x",
+    "https://github.com/o/r/blob/main/x",
+    "https://user:secret@github.com/o/r/blob/" + "a".repeat(40) + "/x",
+  ]) {
+    assert.equal(
+      sourceLinkOf({ source_links: { a: { url, exact: true } } }, ["a"]),
+      undefined
+    )
+  }
+})
