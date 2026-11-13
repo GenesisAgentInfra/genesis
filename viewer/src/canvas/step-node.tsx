@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import {
+  ArrowUpRight,
   CircleCheck,
   CircleHelp,
   CircleX,
@@ -16,6 +17,7 @@ import {
   Workflow,
 } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ReviewBadge } from "@/components/review-badge"
 import { BaseNode } from "@/components/base-node"
@@ -531,6 +533,28 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
               </div>
             </div>
           )}
+
+          {data.links?.map((link) => (
+            <Button
+              key={link.link_id}
+              variant="ghost"
+              size="sm"
+              className="nodrag nopan mt-2 w-full justify-between gap-2 px-1 text-ink-2"
+              title={link.name}
+              onClick={(event) => {
+                event.stopPropagation()
+                canvas.inspectRelations?.([link.link_id])
+              }}
+            >
+              <span className="truncate">
+                {canvas.relationTarget?.(link.target.flow_id) ?? link.name}
+              </span>
+              {link.resolution === "candidate" && (
+                <Badge variant="outline">{canvas.t.unconfirmedRelation}</Badge>
+              )}
+              <ArrowUpRight />
+            </Button>
+          ))}
 
           {loops.map((loop, index) => (
             <div

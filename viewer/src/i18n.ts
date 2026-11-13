@@ -30,6 +30,7 @@ export function detectLang(samples: string[]): Lang {
 }
 
 const zh = {
+  unconfirmedRelation: "待确认",
   flowGone: "这条流程在改动后不存在了。",
   mayAffect: "可能影响",
   andMore: (n: number) => `等 ${n} 个`,
@@ -276,6 +277,7 @@ const zh = {
 export type Strings = typeof zh
 
 const en: Strings = {
+  unconfirmedRelation: "Unconfirmed",
   flowGone: "This flow no longer exists after the change.",
   mayAffect: "May affect",
   andMore: (n) => `and ${n} more`,
@@ -595,6 +597,17 @@ const REACHED_NOTE =
 export function localizeNote(text: string, lang: Lang): string {
   if (lang !== "zh") return text
   if (NOTES_ZH[text]) return NOTES_ZH[text]
+  const dynamicCall =
+    "Multiple, conditional, decorated, or partially resolved name bindings"
+  if (text.startsWith(dynamicCall))
+    return (
+      "调用目标受条件、装饰器或动态绑定影响，尚未完全确认。" +
+      (text.slice(dynamicCall.length).trim()
+        ? ` 触发条件：${text.slice(dynamicCall.length).trim()}`
+        : "")
+    )
+  if (text === "The call has multiple possible targets.")
+    return "这个调用有多个可能的目标，尚未确认具体目标。"
   if (text.startsWith(REACHED_NOTE)) {
     const more = /(\d+) more tests are not listed/.exec(text)?.[1]
     return (

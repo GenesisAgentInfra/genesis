@@ -9,8 +9,21 @@ import {
   type NodeMouseHandler,
 } from "@xyflow/react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { Maximize, Minus, Moon, Play, Plus, Sun } from "lucide-react"
+import {
+  ArrowLeft,
+  Network,
+  Maximize,
+  Minus,
+  Moon,
+  Play,
+  Plus,
+  Sun,
+} from "lucide-react"
 
+import { RelationsOverview } from "@/components/relations-overview"
+import { RelationPanel } from "@/components/relation-panel"
+import { relationWords } from "@/relations"
+import type { MapLink } from "@/types"
 import { Button } from "@/components/ui/button"
 import { DetailPanel, type PanelSubject } from "@/components/detail-panel"
 import { Headline } from "@/components/headline"
@@ -52,7 +65,6 @@ import {
   LabelView,
   ModuleView,
   OffMapView,
-  RelationView,
   MoreView,
   RowView,
 } from "@/atlas/nodes"
@@ -72,7 +84,6 @@ const NODE_TYPES = {
 }
 const EDGE_TYPES = {
   flow: FlowEdge,
-  relation: RelationView,
 }
 /** Arrowheads for the lines, one per line colour. */
 const ARROWS = [
@@ -223,6 +234,26 @@ function Viewer({ model }: { model: Model }) {
   const focus = model.stops.length > 0
 
   const [selected, setSelected] = React.useState<Selected>()
+  const [relationships, setRelationships] = React.useState(
+    () => new URLSearchParams(location.search).get("view") === "relations"
+  )
+  const [relationSelection, setRelationSelection] = React.useState<MapLink[]>()
+  const [destination, setDestination] = React.useState<string>()
+  const [navigationHistory, setHistory] = React.useState<
+    {
+      relationships: boolean
+      focused?: string
+      selected?: Selected
+      relations?: MapLink[]
+      viewport: { x: number; y: number; zoom: number }
+    }[]
+  >([])
+  const [restore, setRestore] = React.useState<{
+    x: number
+    y: number
+    zoom: number
+  }>()
+  const relationText = relationWords[model.lang]
   const { theme, toggle: toggleTheme } = useTheme()
   const walkable = React.useMemo(
     () => model.stops.map((stop) => stop.no),
@@ -357,7 +388,7 @@ function Viewer({ model }: { model: Model }) {
       coupons: step.data.coupons,
     }
   }, [selected, nodeById, atlas, model])
-  const showPanel = Boolean(subject)
+  const showPanel = Boolean(subject || relationSelection?.length)
   const focusedTitle = focused
     ? (nodeById.get(focused)?.data as ModuleData | undefined)?.title
     : undefined
@@ -456,6 +487,11 @@ function Viewer({ model }: { model: Model }) {
       fromTop = false
     ) => {
       const box = area(withPanel)
+      // A jump can add the change-list row before ResizeObserver reports its height.
+      const headerBottom = headRef.current?.getBoundingClientRect().bottom ?? 0
+      const top = Math.max(box.y, headerBottom + (narrow ? 16 : 24))
+      box.h -= top - box.y
+      box.y = top
       const zoom = Math.min(
         max,
         Math.max(min, Math.min(box.w / bounds.width, box.h / bounds.height))
@@ -475,7 +511,7 @@ function Viewer({ model }: { model: Model }) {
         { duration, ease: easeOut, interpolate: "linear" }
       )
     },
-    [area, flow]
+    [area, flow, narrow]
   )
   const fitAll = React.useCallback(
     (duration: number, withPanel = false) => {
@@ -576,6 +612,7 @@ function Viewer({ model }: { model: Model }) {
   }, [])
 
   const openPanel = (next: Selected) => {
+    setRelationSelection(undefined)
     if (!showPanel)
       opener.current =
         document.activeElement instanceof HTMLElement
@@ -584,6 +621,7 @@ function Viewer({ model }: { model: Model }) {
     setSelected(next)
   }
   const closePanel = () => {
+    setRelationSelection(undefined)
     if (document.activeElement?.closest("[data-panel]")) opener.current?.focus()
     setSelected(undefined)
   }
@@ -628,7 +666,7 @@ function Viewer({ model }: { model: Model }) {
     aim.current = undefined
     // Details keep their subject centered when its module expands or collapses.
     // The panel effect has already positioned the camera using the new node layout.
-    if (showPanel) return
+    if (showPanel || destination || restore) return
     if (!focused) {
       fitAll(glide, showPanel)
       return
@@ -679,11 +717,77 @@ function Viewer({ model }: { model: Model }) {
     setFocused(id)
   }
   const toOverview = () => {
+    setRelationSelection(undefined)
     stopWalk()
     setFocused(undefined)
     setCurrent(undefined)
     setSelected(undefined)
   }
+
+  const inspectRelations = (links: MapLink[]) => {
+    stopWalk()
+    setSelected(undefined)
+    setCurrent(undefined)
+    setRelationSelection(links)
+  }
+  const navigateFlow = (flowId: string) => {
+    if (!model.flowById.has(flowId)) return
+    setHistory((items) => [
+      ...items,
+      {
+        relationships,
+        focused,
+        selected,
+        relations: relationSelection,
+        viewport: flow.getViewport(),
+      },
+    ])
+    stopWalk()
+    setRelationships(false)
+    setRelationSelection(undefined)
+    setSelected(undefined)
+    setCurrent(undefined)
+    setFocused(atlas.home.get(flowId))
+    setDestination(flowId)
+  }
+  const navigateBack = () => {
+    const previous = navigationHistory.at(-1)
+    if (!previous) return
+    setHistory((items) => items.slice(0, -1))
+    setRelationships(previous.relationships)
+    setFocused(previous.focused)
+    setSelected(previous.selected)
+    setRelationSelection(previous.relations)
+    setCurrent(undefined)
+    setRestore(previous.viewport)
+  }
+  React.useEffect(() => {
+    if (!destination || !ready) return
+    const placed = atlas.flows.get(destination)
+    const bounds = boundsOf(placed?.nodes.map((node) => node.id) ?? [])
+    const label = boxOf(`label${SEP}${destination}`)
+    if (bounds && label) {
+      bounds.height += bounds.y - label.y
+      bounds.y = label.y
+      const left = Math.min(bounds.x, label.x)
+      bounds.width += bounds.x - left
+      bounds.x = left
+    }
+    if (bounds) frame(bounds, false, 0, READ_ZOOM, 1.15, true)
+    // This effect synchronizes a completed camera jump with its pending request.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDestination(undefined)
+    // A jump targets the new layout, including a flow in the already-open module.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destination, atlas, ready])
+  React.useEffect(() => {
+    if (!restore) return
+    const handle = requestAnimationFrame(() => {
+      void flow.setViewport(restore, { duration: 0 })
+      setRestore(undefined)
+    })
+    return () => cancelAnimationFrame(handle)
+  }, [restore, atlas, flow])
 
   const panelNode = !showPanel
     ? undefined
@@ -736,6 +840,7 @@ function Viewer({ model }: { model: Model }) {
     if (!ready) return
     const before = previousPanel.current
     previousPanel.current = selected
+    if (destination || restore || relationships) return
     if (panelNode) {
       frameDetails(panelNode, before === selected ? 0 : glide)
     } else if (before && !selected) {
@@ -748,6 +853,9 @@ function Viewer({ model }: { model: Model }) {
     }
   }, [
     selected,
+    destination,
+    restore,
+    relationships,
     panelNode,
     ready,
     frameDetails,
@@ -1033,6 +1141,11 @@ function Viewer({ model }: { model: Model }) {
     [t]
   )
   const canvas: CanvasState = {
+    inspectRelations: (ids) =>
+      inspectRelations(
+        model.links.filter((link) => ids.includes(link.link_id))
+      ),
+    relationTarget: (flowId) => model.flowById.get(flowId)?.flow.name ?? "",
     t,
     focus,
     stopNo: current?.no,
@@ -1168,7 +1281,12 @@ function Viewer({ model }: { model: Model }) {
           </svg>
           <div
             ref={wrapper}
-            className="absolute inset-0"
+            aria-hidden={relationships}
+            inert={relationships}
+            className={cn(
+              "absolute inset-0",
+              relationships && "pointer-events-none invisible"
+            )}
             style={
               narrow
                 ? undefined
@@ -1208,11 +1326,42 @@ function Viewer({ model }: { model: Model }) {
             )}
           </div>
 
+          <RelationsOverview
+            model={model}
+            active={relationships}
+            panel={showPanel}
+            onNavigate={navigateFlow}
+            onInspect={inspectRelations}
+          />
+
           <div
             ref={headRef}
             className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col items-start gap-2 md:top-4 md:left-4"
           >
-            {model.hasReport && (
+            <div className="pointer-events-auto flex items-center gap-2">
+              {navigationHistory.length > 0 && (
+                <Button variant="outline" size="sm" onClick={navigateBack}>
+                  <ArrowLeft />
+                  {relationText.back}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                aria-pressed={relationships}
+                onClick={() => {
+                  setRelationships(!relationships)
+                  setSelected(undefined)
+                  setRelationSelection(undefined)
+                  setCurrent(undefined)
+                  stopWalk()
+                }}
+              >
+                <Network />
+                {relationships ? relationText.flows : relationText.overview}
+              </Button>
+            </div>
+            {!relationships && model.hasReport && (
               <div
                 className={
                   narrow
@@ -1233,7 +1382,9 @@ function Viewer({ model }: { model: Model }) {
                 />
               </div>
             )}
-            {!model.hasReport && <MapMark model={model} t={t} />}
+            {!relationships && !model.hasReport && (
+              <MapMark model={model} t={t} />
+            )}
           </div>
 
           {/* The walk says what it walks, where it is, and how to stop it. */}
@@ -1259,7 +1410,7 @@ function Viewer({ model }: { model: Model }) {
 
           {/* The light or dark rendition; under it zoom, for readers without a trackpad, and
               the way back to the whole map. */}
-          {!(narrow && showPanel) && (
+          {!relationships && !(narrow && showPanel) && (
             <div className="absolute right-3 bottom-8 z-10 flex flex-col gap-2">
               <Button
                 variant="ghost"
@@ -1308,7 +1459,7 @@ function Viewer({ model }: { model: Model }) {
           )}
 
           <AnimatePresence>
-            {subject && (
+            {(subject || relationSelection?.length) && (
               <motion.aside
                 key="panel"
                 data-panel
@@ -1336,30 +1487,46 @@ function Viewer({ model }: { model: Model }) {
                     : "top-4 right-4 h-[min(720px,calc(100dvh-112px))] w-[420px]"
                 )}
               >
-                <DetailPanel
-                  // Each new subject starts at the top with its code folded.
-                  key={JSON.stringify(selected)}
-                  model={model}
-                  t={t}
-                  subject={subject}
-                  focus={current?.no}
-                  onWalk={
-                    // With a change to read, the page steps through the changes instead.
-                    !focus &&
-                    subject?.type === "step" &&
-                    subject.view &&
-                    !subject.view.removed &&
-                    !subject.ghost
-                      ? () => walk(subject.view!.flow.flow_id)
-                      : undefined
-                  }
-                  onNext={
-                    focus && panelStops.length > 0 && walkable.length > 1
-                      ? () => stepBy(1)
-                      : undefined
-                  }
-                  onClose={closePanel}
-                />
+                {relationSelection?.length ? (
+                  <RelationPanel
+                    key={relationSelection
+                      .map((link) => link.link_id)
+                      .join(",")}
+                    model={model}
+                    links={relationSelection}
+                    onNavigate={navigateFlow}
+                    onClose={closePanel}
+                  />
+                ) : (
+                  subject && (
+                    <DetailPanel
+                      // Each new subject starts at the top with its code folded.
+                      key={JSON.stringify(selected)}
+                      model={model}
+                      t={t}
+                      subject={subject}
+                      focus={current?.no}
+                      onWalk={
+                        // With a change to read, the page steps through the changes instead.
+                        !focus &&
+                        subject?.type === "step" &&
+                        subject.view &&
+                        !subject.view.removed &&
+                        !subject.ghost
+                          ? () => walk(subject.view!.flow.flow_id)
+                          : undefined
+                      }
+                      onNext={
+                        focus && panelStops.length > 0 && walkable.length > 1
+                          ? () => stepBy(1)
+                          : undefined
+                      }
+                      onClose={closePanel}
+                      onNavigate={navigateFlow}
+                      onRelation={inspectRelations}
+                    />
+                  )
+                )}
               </motion.aside>
             )}
           </AnimatePresence>

@@ -17,7 +17,8 @@ import { ReviewBadge } from "@/components/review-badge"
 import { KindTile, NumberDisc, StatusMark } from "@/canvas/step-node"
 import { localizeNote, type Strings } from "@/i18n"
 import { statusOf, type Coupon, type FlowView, type Model } from "@/model"
-import type { MapFinding, MapStep, StepContract } from "@/types"
+import { relationWords } from "@/relations"
+import type { MapLink, MapFinding, MapStep, StepContract } from "@/types"
 import { categoryOf, coverageKind, sourceLinkOf } from "@/presentation"
 
 export type PanelSubject =
@@ -38,6 +39,8 @@ interface PanelProps {
   focus?: number
   onWalk?: () => void
   onNext?: () => void
+  onNavigate?: (flowId: string) => void
+  onRelation?: (links: MapLink[]) => void
   onClose: () => void
 }
 
@@ -50,6 +53,8 @@ export function DetailPanel({
   onWalk,
   onNext,
   onClose,
+  onNavigate,
+  onRelation,
 }: PanelProps) {
   const coupons = subject.coupons
   const step = subject.type === "step" ? subject.step : undefined
@@ -180,6 +185,16 @@ export function DetailPanel({
                   )}
                 </>
               )}
+              {subject.type === "step" && subject.view && (
+                <StepRelations
+                  model={model}
+                  flowId={subject.view.flow.flow_id}
+                  stepId={subject.step.step_id}
+                  coupons={coupons}
+                  onNavigate={onNavigate}
+                  onRelation={onRelation}
+                />
+              )}
             </TabsContent>
             {step && !removed && (
               <TabsContent value="contract" className="min-w-0">
@@ -217,7 +232,7 @@ function FindingDetail({ finding, t }: { finding: MapFinding; t: Strings }) {
   )
 }
 
-function ContractDetail({
+export function ContractDetail({
   contract,
   t,
 }: {
@@ -401,5 +416,93 @@ function ChangeDetail({
         </Collapsible>
       )}
     </section>
+  )
+}
+
+function StepRelations({
+  model,
+  flowId,
+  stepId,
+  coupons,
+  onNavigate,
+  onRelation,
+}: {
+  model: Model
+  flowId: string
+  stepId: string
+  coupons: Coupon[]
+  onNavigate?: (id: string) => void
+  onRelation?: (links: MapLink[]) => void
+}) {
+  const words = relationWords[model.lang]
+  const outgoing = model.links.filter(
+    (link) =>
+      link.source.flow_id === flowId &&
+      (!link.source.step_id || link.source.step_id === stepId)
+  )
+  const incoming = model.links.filter(
+    (link) =>
+      link.target.flow_id === flowId &&
+      (!link.target.step_id || link.target.step_id === stepId)
+  )
+  const related = [
+    ...new Set(
+      coupons
+        .flatMap((coupon) => {
+          const stop = model.stops[coupon.no - 1]
+          return [
+            stop?.flowId,
+            ...(stop?.also ?? []).map((item) => item.flowId),
+          ]
+        })
+        .filter((id): id is string => Boolean(id && id !== flowId))
+    ),
+  ]
+  if (!outgoing.length && !incoming.length && !related.length) return null
+  return (
+    <div className="space-y-5">
+      <Separator />
+      {[
+        [words.outgoing, outgoing],
+        [words.incoming, incoming],
+      ].map(
+        ([title, links]) =>
+          (links as MapLink[]).length > 0 && (
+            <section key={title as string} className="space-y-2">
+              <h3 className="text-sm font-medium">{title as string}</h3>
+              {(links as MapLink[]).map((link) => (
+                <Button
+                  key={link.link_id}
+                  variant="ghost"
+                  className="-ml-2 h-auto min-h-8 max-w-full justify-start px-2 text-left text-[13px] whitespace-normal"
+                  onClick={() => onRelation?.([link])}
+                >
+                  {link.name}
+                  {link.resolution === "candidate" && (
+                    <Badge variant="outline">{words.pending}</Badge>
+                  )}
+                  <ArrowUpRight />
+                </Button>
+              ))}
+            </section>
+          )
+      )}
+      {related.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-sm font-medium">{words.related}</h3>
+          {related.map((id) => (
+            <Button
+              key={id}
+              variant="ghost"
+              className="-ml-2 h-auto min-h-8 max-w-full justify-start px-2 text-left text-[13px] whitespace-normal"
+              onClick={() => onNavigate?.(id)}
+            >
+              {model.flowById.get(id)?.flow.name}
+              <ArrowUpRight />
+            </Button>
+          ))}
+        </section>
+      )}
+    </div>
   )
 }

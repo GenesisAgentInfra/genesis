@@ -1,4 +1,4 @@
-import type { Edge, Node } from "@xyflow/react"
+import type { Node } from "@xyflow/react"
 
 import {
   buildGraph,
@@ -94,14 +94,6 @@ export interface OffMapData extends Record<string, unknown> {
 function worst(tones: (Tone | undefined)[]): Tone | undefined {
   return TONES.find((tone) => tones.includes(tone))
 }
-export interface RelationData extends Record<string, unknown> {
-  label?: string
-  /** The change the line belongs to; it shows only while that change is picked. */
-  no?: number
-  change: boolean
-  candidate: boolean
-}
-
 export type ModuleNode = Node<ModuleData, "module">
 export type LabelNode = Node<LabelData, "label">
 export type OffMapNode = Node<OffMapData, "offmap">
@@ -109,8 +101,7 @@ export type RowNode = Node<RowData, "row">
 export type MoreNode = Node<MoreData, "more">
 export type AtlasNode =
   StepNode | ModuleNode | LabelNode | OffMapNode | RowNode | MoreNode
-export type RelationEdge = Edge<RelationData, "relation">
-export type AtlasEdge = FlowEdge | RelationEdge
+export type AtlasEdge = FlowEdge
 
 /** A flow placed on the atlas: what is drawn of it and where its steps begin. */
 export interface PlacedFlow {
@@ -159,7 +150,8 @@ function drawFlow(
     model.findingStatus,
     !model.hasReport,
     max,
-    words
+    words,
+    model.links.filter((link) => link.source.flow_id === flowId)
   )
   const steps = view.flow.steps ?? []
   const triggerIds = steps
@@ -586,80 +578,7 @@ export function buildAtlas(
   }
   flush()
 
-  // Where else a change sits. A flow that only reaches the changed code says so on its row.
-  const has = new Set(nodes.map((node) => node.id))
-  const named = (label: string, flowId: string) => {
-    const name = model.flowById.get(flowId)?.flow.name ?? ""
-    const chars = [...name]
-    const short = chars.length > 16 ? chars.slice(0, 15).join("") + "…" : name
-    return short ? `${label} · ${short}` : label
-  }
-  for (const stop of model.stops) {
-    if (stop.kind !== "step" || !stop.flowId || !stop.nodeId) continue
-    const from = stepNodeId(stop.flowId, stop.nodeId)
-    if (!has.has(from)) continue
-    for (const item of stop.also) {
-      const to = stepNodeId(item.flowId, item.nodeId)
-      if (has.has(to))
-        edges.push(
-          relation(
-            `also${SEP}${stop.no}${SEP}${to}`,
-            from,
-            to,
-            named(t.sameChange, item.flowId),
-            true,
-            false,
-            stop.no
-          )
-        )
-    }
-  }
-  for (const link of model.links) {
-    const source = flows.get(link.source.flow_id)
-    const target = flows.get(link.target.flow_id)
-    if (!source || !target) continue
-    const from = link.source.step_id
-      ? stepNodeId(link.source.flow_id, link.source.step_id)
-      : source.triggers[0]
-    const to = link.target.step_id
-      ? stepNodeId(link.target.flow_id, link.target.step_id)
-      : target.triggers[0]
-    if (from && to && has.has(from) && has.has(to))
-      edges.push(
-        relation(
-          `link${SEP}${link.link_id}`,
-          from,
-          to,
-          link.name,
-          false,
-          link.resolution === "candidate"
-        )
-      )
-  }
   return { nodes, edges, flows, home }
-}
-
-function relation(
-  id: string,
-  source: string,
-  target: string,
-  label: string,
-  change: boolean,
-  candidate = false,
-  no?: number
-): RelationEdge {
-  return {
-    id,
-    type: "relation",
-    source,
-    target,
-    sourceHandle: "rel-out",
-    targetHandle: "rel-in",
-    focusable: false,
-    // Over the cards: it shows only while its change is picked, and must not hide then.
-    zIndex: change ? 6 : undefined,
-    data: { label, change, candidate, no },
-  }
 }
 
 /**

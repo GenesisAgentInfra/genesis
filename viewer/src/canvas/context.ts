@@ -8,6 +8,8 @@ import type { Filter } from "@/model"
  * loud they are and what they animate.
  */
 export interface CanvasState {
+  inspectRelations?: (ids: string[]) => void
+  relationTarget?: (flowId: string) => string
   t: Strings
   /** A report with stops: the canvas is about one change at a time. */
   focus: boolean

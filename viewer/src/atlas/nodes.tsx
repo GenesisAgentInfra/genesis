@@ -1,12 +1,5 @@
 import * as React from "react"
-import {
-  Handle,
-  Position,
-  getBezierPath,
-  EdgeLabelRenderer,
-  type EdgeProps,
-  type NodeProps,
-} from "@xyflow/react"
+import { Handle, Position, type NodeProps } from "@xyflow/react"
 import {
   Bot,
   ChevronDown,
@@ -34,7 +27,6 @@ import type {
   ModuleNode,
   MoreNode,
   OffMapNode,
-  RelationEdge,
   RowNode,
 } from "./build"
 
@@ -245,62 +237,6 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
         className="text-[12px] leading-4 text-ink-2"
       />
     </div>
-  )
-}
-
-/** What else a change touches: the same change on another flow, or a flow that may reach it. */
-export function RelationView({
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  data,
-}: EdgeProps<RelationEdge>) {
-  const { trailActive, stopNo } = useCanvas()
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-    curvature: 0.4,
-  })
-  // What a change also touches is drawn while that change is picked, not all the time.
-  const hidden = Boolean(data?.change) && data?.no !== stopNo
-  const tone = "var(--edge-strong)"
-  return (
-    <>
-      <path
-        d={path}
-        fill="none"
-        className="react-flow__edge-path transition-opacity duration-160"
-        style={{
-          stroke: tone,
-          strokeWidth: 1.4,
-          strokeDasharray: data?.change || data?.candidate ? "5 5" : undefined,
-          opacity: hidden ? 0 : trailActive ? 0.2 : data?.change ? 0.8 : 0.5,
-        }}
-      />
-      {data?.label && (
-        <EdgeLabelRenderer>
-          <div
-            className={cn(
-              "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 font-medium shadow-[var(--shadow-node)] ring-1 transition-opacity duration-160",
-              data.change
-                ? "text-ink ring-edge-strong/40"
-                : "text-ink-2 ring-line"
-            )}
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              opacity: hidden ? 0 : trailActive ? 0.3 : 1,
-            }}
-          >
-            {data.label}
-          </div>
-        </EdgeLabelRenderer>
-      )}
-    </>
   )
 }
 
