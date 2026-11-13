@@ -725,6 +725,11 @@ function Viewer({ model }: { model: Model }) {
   }
 
   const inspectRelations = (links: MapLink[]) => {
+    if (!showPanel)
+      opener.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null
     stopWalk()
     setSelected(undefined)
     setCurrent(undefined)
@@ -1073,7 +1078,8 @@ function Viewer({ model }: { model: Model }) {
       escape: () => {
         settle()
         if (trail) stopWalk()
-        else if (selected) closePanel()
+        else if (selected || relationSelection) closePanel()
+        else if (relationships) setRelationships(false)
         else if (current) setCurrent(undefined)
         else if (focused) toOverview()
       },
@@ -1085,7 +1091,9 @@ function Viewer({ model }: { model: Model }) {
         const node = nodeById.get(id)
         if (node) onNodeClick({} as React.MouseEvent, node)
       },
-      step: stepBy,
+      step: (by) => {
+        if (!relationships) stepBy(by)
+      },
     }
   })
   React.useEffect(() => {
@@ -1304,7 +1312,7 @@ function Viewer({ model }: { model: Model }) {
                 edgeTypes={EDGE_TYPES}
                 onNodeClick={onNodeClick}
                 onPaneClick={() => {
-                  setSelected(undefined)
+                  closePanel()
                   setCurrent(undefined)
                 }}
                 nodesDraggable={false}
@@ -1330,8 +1338,10 @@ function Viewer({ model }: { model: Model }) {
             model={model}
             active={relationships}
             panel={showPanel}
+            width={width}
             onNavigate={navigateFlow}
             onInspect={inspectRelations}
+            onDismiss={closePanel}
           />
 
           <div

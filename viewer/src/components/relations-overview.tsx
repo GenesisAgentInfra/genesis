@@ -147,7 +147,7 @@ function Relation({
         <Button
           variant="outline"
           size="sm"
-          className="nodrag nopan pointer-events-auto absolute max-w-[240px] gap-2 bg-card text-xs shadow-none"
+          className="nodrag nopan pointer-events-auto absolute top-0 left-0 max-w-[240px] gap-2 bg-card text-xs shadow-none"
           style={{
             transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
           }}
@@ -169,13 +169,17 @@ export function RelationsOverview({
   model,
   active,
   panel,
+  width,
   onNavigate,
   onInspect,
+  onDismiss,
 }: {
   model: Model
   active: boolean
   panel: boolean
+  width: number
   onNavigate: (flowId: string) => void
+  onDismiss: () => void
   onInspect: (links: MapLink[]) => void
 }) {
   const words = relationWords[model.lang]
@@ -211,7 +215,7 @@ export function RelationsOverview({
       const right =
         Math.max(...nodes.map((node) => node.position.x + node.width!)) +
         (graph.edges.some((edge) => edge.data?.internal) ? 240 : 0)
-      const available = window.innerWidth - (panel ? 448 : 0) - 100
+      const available = width - (panel ? 448 : 0) - 100
       const zoom = Math.max(0.65, Math.min(1.15, available / (right - left)))
       void instance.setViewport(
         {
@@ -223,7 +227,7 @@ export function RelationsOverview({
       )
     })
     return () => cancelAnimationFrame(handle)
-  }, [graph, instance, panel, fit, active])
+  }, [graph, instance, panel, fit, active, width])
   return (
     <Context.Provider
       value={{
@@ -250,6 +254,7 @@ export function RelationsOverview({
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onInit={setInstance}
+            onPaneClick={onDismiss}
             fitView
             fitViewOptions={{ maxZoom: 1.15, padding: 0.25 }}
             minZoom={0.35}

@@ -15,3 +15,6 @@ dist/
 # Viewer front end: dependencies and scratch builds (the shipped build lives in the package)
 viewer/node_modules/
 viewer/dist/
+
+# Local desktop review screenshots
+/.impeccable/review/
