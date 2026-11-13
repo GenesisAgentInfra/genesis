@@ -80,7 +80,14 @@ genesis map status --repo /absolute/app --session SESSION_ID
 ```
 
 `entries` lists the entry points the analyzers recognised. `root_candidates` lists
-public functions nothing was seen to call; most are not real entries.
+public functions no code outside the tests was seen to call; most are not real entries.
+
+An entry of kind `handler` was found by how it is registered, not by a framework: its
+class sits in a list (`attributes.registry`) with others that share a base class
+(`attributes.base`), and a dispatcher runs the same method on whichever it picks. It
+is a real entry when the outside decides which one runs, as with a chat command or an
+event handler. When the list is the program's own choice among implementations, such
+as data sources or middleware, skip it as `out_of_scope`.
 
 Write a plan. The plan is the outline a reader sees first: before any flow is
 described, the page shows the domains, each flow's name and summary, and nothing of
@@ -132,7 +139,10 @@ genesis map plan --repo /absolute/app --session SESSION_ID --input /absolute/pla
 - An entry you put in neither `flows` nor `skipped` is accepted and counted as not handled.
 - If the analyzers missed a real entry, add it under `proposed_entries` with
   `symbol_id`, `kind`, `reason` and `evidence`. `kind` is one of `http_route`,
-  `cli_command`, `task`, `scheduled`, `public_api`, `agent_tool`, `main`. This takes two
+  `cli_command`, `task`, `scheduled`, `public_api`, `agent_tool`, `handler`, `main`;
+  `handler` is for anything registered with a dispatcher by hand, such as a chat
+  command or a message handler. A function among the root candidates can be proposed
+  as well, which gives it a kind; one the analyzers recognised cannot. This takes two
   submissions: the result of the first lists the new entry under `entries` with its id
   and `"detection": "agent_proposed"`; then submit the plan again with that id in a
   flow. Do not propose it a second time: it stays available as long as a plan uses or
@@ -386,15 +396,23 @@ same list on the static structure.
 - `possibly_affected` lists flows that can reach changed code without a step on it;
   `removed_flows` the entries that no longer exist; `unanalyzed_changes` the changed
   files Genesis did not analyze, such as other languages. Mention all three.
+- `possible_entries` lists functions no code calls that lead to the changed code and
+  start no flow. They are checked below, not reported as they are.
 
 Bring the changes onto the map before you report them as off it. A change listed under
 `possibly_affected` for a flow sits in a function that flow calls, or hands to a thread
 or a task runner, with no step on it yet. When you describe that flow, expand the
 functions on the way to the changed code by anchoring steps inside them; `status` shows
-`changes_placed` going up as they land. When a change is still `unassigned` and no flow
-is listed for it, look for a missing entry point first (a command registry, a scheduler,
-a message handler) and propose it as in section 2. Report a change as off the map only
-after that.
+`changes_placed` going up as they land.
+
+The map only has the entries it knows, so a change can also be reached from a way in
+that has no flow. `status` lists the candidates under `change.possible_entries`, each
+with the changes it leads to. Check every one, also when flows are already listed for
+the change. When it is a real way in (a command registered by hand, a scheduled job,
+a message handler), propose it as in section 2, give it a flow and describe that flow
+too; when it is a helper or code nothing uses, leave it. When a change is still
+`unassigned`, no flow is listed for it and nothing is offered, look for a missing
+entry point yourself before you report the change as off the map.
 
 Reformatting, comments and code that only moved are not changes.
 

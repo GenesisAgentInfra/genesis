@@ -10,6 +10,7 @@ import {
   Play,
   Workflow,
   SquareTerminal,
+  Zap,
   Maximize2,
   Minimize2,
   type LucideIcon,
@@ -189,6 +190,7 @@ const ENTRY_ICON: Record<EntryKind, LucideIcon> = {
   scheduled: Clock,
   public_api: Code,
   agent_tool: Bot,
+  handler: Zap,
   main: Play,
   root: Play,
 }

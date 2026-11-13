@@ -386,6 +386,51 @@ class ChangeAnalysis:
         return graph
 
     @cached_property
+    def _called_by(self) -> dict[str, set[str]]:
+        """The head call graph the other way round: a definition to those that call it."""
+        found: dict[str, set[str]] = {}
+        for caller, callees in self.calls[HEAD].items():
+            for callee in callees:
+                found.setdefault(callee, set()).add(caller)
+        return found
+
+    def _possible_entries(self, business_map: BusinessMap, placement: _Placement) -> list[dict]:
+        """Functions no code calls that lead to changed code and start no flow.
+
+        The map is drawn from the entries it knows. A way in that nothing registers in a
+        form the analyzers read leaves no flow for a change to land on, so the change
+        looks covered by the flows that happen to exist. These are the places to check.
+        """
+        workspace = self.workspace
+        mapped = {entry.symbol_id for flow in business_map.flows for entry in flow.entries}
+        changed: dict[str, list[str]] = {}
+        for change in self.diff.changes:
+            if not change.is_test:
+                for symbol in placement._symbols(change):
+                    changed.setdefault(symbol, []).append(change.change_id)
+        leading = _closure(changed, self._called_by, REACH_DEPTH)
+        found = []
+        for entry in sorted(workspace.entries().values(), key=lambda item: item.symbol_id):
+            if (
+                entry.detection != "root_heuristic"
+                or entry.symbol_id in mapped
+                or entry.symbol_id not in leading
+            ):
+                continue
+            reach = _closure([entry.symbol_id], self.calls[HEAD], REACH_DEPTH)
+            ids = {item for symbol in reach & changed.keys() for item in changed[symbol]}
+            found.append(
+                {
+                    "entry_id": entry.entry_id,
+                    "symbol_id": entry.symbol_id,
+                    "change_ids": [
+                        change.change_id for change in self.diff.changes if change.change_id in ids
+                    ],
+                }
+            )
+        return found
+
+    @cached_property
     def callers(self) -> dict:
         """Call facts of one side by the definition they lead to."""
         found = {BASE: {}, HEAD: {}}
@@ -840,6 +885,7 @@ class ChangeAnalysis:
                 }
                 for flow_id, change_ids in sorted(affected.items())
             ],
+            "possible_entries": self._possible_entries(business_map, placement),
             "unanalyzed_changes": unanalyzed,
             "finding_changes": finding_changes,
             "limitations": limitations,
@@ -965,6 +1011,8 @@ class ChangeAnalysis:
                 {"flow": flows[item.flow_id], "changes": list(item.change_ids)}
                 for item in report.possibly_affected
             ],
+            # Uncalled functions that lead to the changes and have no flow.
+            "possible_entries": [item.symbol_id for item in report.possible_entries],
             "removed_flows": [flow.name for flow in report.removed_flows],
             # Observations an agent recorded on the map, as far as this change touches them.
             "risk_findings": [

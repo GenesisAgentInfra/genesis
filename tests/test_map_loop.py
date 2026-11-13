@@ -289,7 +289,12 @@ def test_agent_plan_groups_skips_and_can_propose_entries(workspace):
     )
     with pytest.raises(LoopError) as refused:
         workspace.save_plan(plan)
-    assert [item["code"] for item in refused.value.errors] == ["already_an_entry", "unknown_entry"]
+    # The candidate may be proposed; the flow names an entry that does not exist.
+    assert [item["code"] for item in refused.value.errors] == ["unknown_entry"]
+    known = {**proposal, "symbol_id": "expense/api.py#submit_report"}
+    with pytest.raises(LoopError) as refused:
+        workspace.save_plan(MapPlan.model_validate({"proposed_entries": [known]}))
+    assert refused.value.errors[0]["code"] == "already_an_entry"
     hidden = {**proposal, "symbol_id": "expense/store.py#missing"}
     with pytest.raises(LoopError) as refused:
         workspace.save_plan(MapPlan.model_validate({"proposed_entries": [hidden]}))

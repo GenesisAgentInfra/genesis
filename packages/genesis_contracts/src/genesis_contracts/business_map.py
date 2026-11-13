@@ -56,6 +56,9 @@ class EntryKind(StrEnum):
     scheduled = "scheduled"
     public_api = "public_api"
     agent_tool = "agent_tool"
+    # Registered with a dispatcher that runs it: a chat command, an event or message
+    # handler, a plugin hook.
+    handler = "handler"
     main = "main"
     root = "root"
 
