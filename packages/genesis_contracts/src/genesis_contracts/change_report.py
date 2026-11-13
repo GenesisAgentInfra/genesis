@@ -136,6 +136,7 @@ class ChangeExplanation(ContractModel):
 
     support: Literal["agent_synthesis"] = "agent_synthesis"
     summary: Text
+    short_summary: str | None = Field(default=None, min_length=1, max_length=120)
     effect: Text | None = None
 
 

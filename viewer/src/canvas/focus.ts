@@ -19,9 +19,19 @@ export interface Skip {
   exception: boolean
 }
 
+/** Steps left out after a drawn one, with nothing drawn further on to lead to. */
+export interface Tail {
+  source: string
+  steps: number
+  /** The branch taken out of the source, when every way into the tail is the same one. */
+  label?: string
+  exception: boolean
+}
+
 export interface Cut {
   keep: Set<string>
   skips: Skip[]
+  tails: Tail[]
 }
 
 /** A gap of one step is cheaper to draw than to announce. */
@@ -68,6 +78,33 @@ export function cutFlow(
       continue
     keep.add(before.get(id) ?? sources[0])
   }
+
+  // Keep the meaning of each affected branch: its first step, decisions and outcomes.
+  // Only intermediate work may fold. The original edges still own labels and uncertainty.
+  const byId = new Map(steps.map((step) => [step.step_id, step]))
+  const affected = new Set(marked)
+  const ahead = [...marked]
+  for (const id of marked)
+    for (const edge of out.get(id) ?? []) keep.add(edge.target)
+  while (ahead.length) {
+    const id = ahead.pop()!
+    const step = byId.get(id)
+    if (step?.kind === "decision" || step?.kind === "result" || !out.has(id))
+      keep.add(id)
+    for (const edge of out.get(id) ?? []) {
+      if (edge.relation === "exception") keep.add(edge.target)
+      if (affected.has(edge.target)) continue
+      affected.add(edge.target)
+      ahead.push(edge.target)
+    }
+  }
+  // A retry must remain a real loop, never disappear into an unrelated dotted tail.
+  for (const row of layout.rows)
+    for (const { edge } of row.loops)
+      if (affected.has(edge.source) || affected.has(edge.target)) {
+        keep.add(edge.source)
+        keep.add(edge.target)
+      }
 
   /** The hidden steps one end of `edges` away from a kept step, and on from those. */
   const spread = (
@@ -147,11 +184,51 @@ export function cutFlow(
     )
   }
 
+  /**
+   * What is left out and stands on no dotted line: each such step goes to the first drawn
+   * step that leads to it, so the reader sees where the flow goes on and by how much.
+   */
+  const trail = (
+    skips: { inside: string[] }[]
+  ): (Tail & { inside: string[] })[] => {
+    const told = new Set(skips.flatMap((skip) => skip.inside))
+    const owner = new Map<string, string>()
+    for (const row of layout.rows) {
+      const id = row.step.step_id
+      if (!keep.has(id)) continue
+      for (const hidden of spread(id, out, "target"))
+        if (!told.has(hidden) && !owner.has(hidden)) owner.set(hidden, id)
+    }
+    const inside = new Map<string, string[]>()
+    for (const [hidden, id] of owner)
+      inside.set(id, [...(inside.get(id) ?? []), hidden])
+    return [...inside].map(([source, steps]) => {
+      const among = new Set(steps)
+      const ways = (out.get(source) ?? []).filter((edge) =>
+        among.has(edge.target)
+      )
+      const labels = new Set(ways.map((edge) => edgeLabel(edge) ?? ""))
+      return {
+        source,
+        steps: steps.length,
+        inside: steps,
+        label: labels.size === 1 ? [...labels][0] || undefined : undefined,
+        exception:
+          ways.length > 0 &&
+          ways.every((edge) => edge.relation === "exception"),
+      }
+    })
+  }
+
   for (let round = 0; round < ROUNDS; round++) {
     const skips = contract()
-    const short = skips.filter((skip) => skip.steps < WORTH_FOLDING)
-    if (!short.length) return { keep, skips }
-    for (const skip of short) for (const id of skip.inside) keep.add(id)
+    const tails = trail(skips)
+    const short = [...skips, ...tails].filter(
+      (item) => item.steps < WORTH_FOLDING
+    )
+    if (!short.length) return { keep, skips, tails }
+    for (const item of short) for (const id of item.inside) keep.add(id)
   }
-  return { keep, skips: contract() }
+  const skips = contract()
+  return { keep, skips, tails: trail(skips) }
 }

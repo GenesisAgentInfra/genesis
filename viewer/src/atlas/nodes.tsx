@@ -18,14 +18,17 @@ import {
   Workflow,
   SquareTerminal,
   Zap,
-  ZoomIn,
+  Maximize2,
+  Minimize2,
   type LucideIcon,
 } from "lucide-react"
 
-import { StatusMark } from "@/canvas/step-node"
+import { NumberDisc, StatusMark } from "@/canvas/step-node"
+import { ReviewBadge } from "@/components/review-badge"
 import { outOfFocus, useCanvas } from "@/canvas/context"
 import { cn } from "@/lib/utils"
-import { statusOf } from "@/model"
+import { coverageKind, shortSummary } from "@/presentation"
+import { matches, statusOf } from "@/model"
 import type { EntryKind } from "@/types"
 import type {
   LabelNode,
@@ -41,12 +44,13 @@ const steady = (px: number, max: number) => ({
   fontSize: `clamp(${px}px, calc(${px}px / var(--zoom, 1)), ${max}px)`,
 })
 
-/** The card whose details are open, ringed the way a picked change is. */
-const PICKED =
-  "border-solid border-change shadow-[0_0_0_3px_rgb(226_134_11_/_0.12),var(--shadow-node-hover)]"
+/** The card whose details are open, ringed in its own colour the way a picked change is. */
+const PICKED = "border-solid ring-tone"
 
 interface AtlasHandlers {
   onRun: (flowId: string) => void
+  /** Close the module in focus: back to the whole map. */
+  onOverview: () => void
 }
 export const AtlasContext = React.createContext<AtlasHandlers | null>(null)
 function useAtlas(): AtlasHandlers {
@@ -58,16 +62,21 @@ function useAtlas(): AtlasHandlers {
 /** A module: a frame around its flows. Clicking it draws every step of them. */
 export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
   const { t, trailActive, focusedModule } = useCanvas()
+  const { onOverview } = useAtlas()
   const away = Boolean(focusedModule && focusedModule !== id)
   return (
     <div
+      data-tone={data.changes ? data.tone : undefined}
       className={cn(
-        "group h-full w-full rounded-[24px] border-[1.5px] bg-white/45 transition-[opacity,border-color] duration-160",
+        "group @container h-full w-full rounded-[24px] border-[1.5px] bg-card/45 transition-[opacity,border-color] duration-160",
         !data.open && "cursor-zoom-in",
-        data.changes && !data.apart ? "border-change/45" : "border-line",
+        // A frame holding changes takes the colour of the most pressing one.
+        data.changes && data.tone && !data.apart
+          ? "border-tone/45"
+          : "border-line",
         !data.open &&
-          (data.changes && !data.apart
-            ? "hover:border-change/80"
+          (data.changes && data.tone && !data.apart
+            ? "hover:border-tone/80"
             : "hover:border-ink-3/50"),
         data.apart && "border-dashed",
         trailActive && "opacity-80",
@@ -77,14 +86,14 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
       <div className="relative flex h-[56px] items-center gap-2.5 px-6">
         <span
           className="truncate leading-[1.2] font-medium text-ink"
-          style={steady(15, 34)}
+          style={steady(16, 34)}
         >
           {data.title}
         </span>
         <span
           className={cn(
             "shrink-0 leading-[1.2]",
-            data.changes ? "text-change-ink" : "text-ink-3"
+            data.changes ? "font-medium text-ink-2" : "text-ink-3"
           )}
           style={steady(12, 26)}
         >
@@ -92,28 +101,60 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
             ? t.moduleChanges(data.changes)
             : t.moduleFlows(data.flows)}
         </span>
-        {!data.open && (
-          // Laid over the header, so a module's name never gives up room to a hint.
-          <span className="pointer-events-none absolute top-1/2 right-4 inline-flex -translate-y-1/2 items-center gap-1 rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 text-ink-3 opacity-0 shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160 group-hover:opacity-100">
-            <ZoomIn aria-hidden className="size-3.5" />
-            {t.openModule}
+        {/* One button in one place opens the module and closes it again, so the way in and
+            the way back are never a guess. It says so in words wherever the frame has the
+            room, and with its glyph alone on a narrow cell until it is pointed at. Laid over
+            the header, so a module's name never gives up room to it. */}
+        <button
+          type="button"
+          aria-expanded={data.open}
+          title={data.open ? t.closeModuleHint : t.openModule}
+          // Closed, the click falls through to the frame, which opens.
+          onClick={
+            data.open
+              ? (event) => {
+                  event.stopPropagation()
+                  onOverview()
+                }
+              : undefined
+          }
+          className={cn(
+            "nodrag nopan absolute top-1/2 right-4 inline-flex h-7 -translate-y-1/2 items-center gap-1 rounded-full bg-card px-2.5 text-[12px] leading-4 font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line transition-colors duration-160 hover:text-ink hover:ring-ink-3/50",
+            data.open
+              ? "cursor-pointer"
+              : "cursor-zoom-in group-hover:text-ink group-hover:ring-ink-3/50"
+          )}
+        >
+          {data.open ? (
+            <Minimize2 aria-hidden className="size-3.5" />
+          ) : (
+            <Maximize2 aria-hidden className="size-3.5" />
+          )}
+          <span
+            className={cn(
+              !data.open &&
+                !data.wide &&
+                "hidden group-hover:inline @min-[300px]:inline"
+            )}
+          >
+            {data.open ? t.closeModule : data.wide ? t.openModule : t.openShort}
           </span>
-        )}
+        </button>
       </div>
     </div>
   )
 }
 
 /**
- * The name of a flow over its steps. Cut down to a change it says how much of the flow is
- * on show; with no change to read, it offers a walk through the flow.
+ * The name of a flow over its steps, and nothing beside it: what starts the flow is its
+ * first card, and what is left out is said where it is left out. With no change to read,
+ * it offers a walk through the flow.
  */
 export function LabelView({ data }: NodeProps<LabelNode>) {
   const canvas = useCanvas()
   const { t } = canvas
   const { onRun } = useAtlas()
   const away = outOfFocus(canvas, data.flowId || "__offmap")
-  const Entry = data.entry ? ENTRY_ICON[data.entry] : undefined
   return (
     <div
       className={cn(
@@ -129,24 +170,13 @@ export function LabelView({ data }: NodeProps<LabelNode>) {
           data.struck &&
             "text-ink-2 line-through decoration-ink decoration-[1.5px]"
         )}
-        style={steady(13, 30)}
+        style={steady(14, 30)}
       >
         {data.name}
       </span>
       {data.code && (
-        <span className="shrink-0 rounded-[5px] bg-field px-1 pb-px text-[11px] leading-4 text-ink-3">
+        <span className="shrink-0 rounded-[5px] bg-field px-1 pb-px text-[12px] leading-4 text-ink-3">
           {t.skeletonTag}
-        </span>
-      )}
-      {Entry && data.entry && (
-        <span className="inline-flex shrink-0 items-center gap-1 pb-px text-[12px] leading-4 text-ink-3">
-          <Entry aria-hidden className="size-3.5" />
-          {t.entryKind[data.entry]}
-        </span>
-      )}
-      {data.shown !== undefined && (
-        <span className="shrink-0 pb-px text-[12px] leading-4 text-ink-3">
-          {t.shownSteps(data.shown, data.steps)}
         </span>
       )}
       {data.flowId && !data.struck && !canvas.focus && (
@@ -156,7 +186,7 @@ export function LabelView({ data }: NodeProps<LabelNode>) {
             event.stopPropagation()
             onRun(data.flowId)
           }}
-          className="nodrag nopan inline-flex shrink-0 items-center gap-1 rounded-full bg-card px-2 py-0.5 text-[11.5px] leading-4 font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line transition-colors duration-160 hover:text-ink"
+          className="nodrag nopan inline-flex shrink-0 items-center gap-1 rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line transition-colors duration-160 hover:text-ink"
         >
           <Play aria-hidden className="size-3" />
           {t.runFlow}
@@ -186,11 +216,20 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
   const away = outOfFocus(canvas, "__offmap")
   const change = data.coupon.change
   const status = statusOf(change.tests)
+  const picked = canvas.apart === id
+  const out =
+    !picked &&
+    !matches(
+      { risky: data.coupon.risky, status, categories: data.coupon.categories },
+      canvas.filter
+    )
   return (
     <div
+      data-tone={data.coupon.tone}
       className={cn(
-        "relative flex h-full w-full cursor-pointer flex-col justify-between rounded-[18px] border border-dashed border-change/60 bg-card p-3 shadow-[var(--shadow-node)] transition-[opacity,box-shadow,border-color] duration-160 hover:shadow-[var(--shadow-node-hover)]",
-        canvas.apart === id && PICKED,
+        "relative flex h-full w-full cursor-pointer flex-col justify-between rounded-[18px] border-[1.5px] border-dashed border-tone/60 bg-card p-3 shadow-[var(--shadow-node)] transition-[opacity,box-shadow,border-color] duration-160 hover:shadow-[var(--shadow-node-hover)]",
+        picked && PICKED,
+        out && "opacity-60 shadow-none",
         away && "opacity-35"
       )}
     >
@@ -198,13 +237,20 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
         aria-hidden
         className="far-mark pointer-events-none absolute -inset-px rounded-[18px]"
       />
-      <p className="line-clamp-3 text-[13px] leading-[19px] text-change-ink">
-        {change.explanation?.summary ?? t.changeKind[change.kind]}
+      <NumberDisc
+        no={data.coupon.no}
+        className="absolute -top-2 -left-2 z-[7]"
+      />
+      {(data.coupon.risky || status !== "tested") && (
+        <ReviewBadge risky={data.coupon.risky} status={status} t={t} />
+      )}
+      <p className="line-clamp-2 text-[13px] leading-[19px] text-tone-ink">
+        {shortSummary(change) ?? t.changeKind[change.kind]}
       </p>
       <StatusMark
         status={status}
-        label={t.status[status]}
-        className="text-[11.5px] leading-4 text-ink-2"
+        label={t.coverage[coverageKind(change.tests)]}
+        className="text-[12px] leading-4 text-ink-2"
       />
     </div>
   )
@@ -230,7 +276,7 @@ export function RelationView({
   })
   // What a change also touches is drawn while that change is picked, not all the time.
   const hidden = Boolean(data?.change) && data?.no !== stopNo
-  const tone = data?.change ? "var(--change)" : "var(--edge-strong)"
+  const tone = "var(--edge-strong)"
   return (
     <>
       <path
@@ -248,9 +294,9 @@ export function RelationView({
         <EdgeLabelRenderer>
           <div
             className={cn(
-              "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[11.5px] leading-4 font-medium shadow-[var(--shadow-node)] ring-1 transition-opacity duration-160",
+              "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 font-medium shadow-[var(--shadow-node)] ring-1 transition-opacity duration-160",
               data.change
-                ? "text-change-ink ring-change/45"
+                ? "text-ink ring-edge-strong/40"
                 : "text-ink-2 ring-line"
             )}
             style={{
@@ -274,13 +320,22 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
   const Icon = (data.entry && ENTRY_ICON[data.entry]) || Workflow
   return (
     <div
+      // A flow that is gone carries no verdict: it rings in the plain colour.
+      data-tone={data.struck ? "unsure" : undefined}
       className={cn(
-        "flex h-full w-full cursor-pointer items-center gap-2 rounded-[14px] border border-line bg-card py-1.5 pr-3.5 pl-1.5 shadow-[var(--shadow-node)] transition-[opacity,box-shadow] duration-160 hover:shadow-[var(--shadow-node-hover)]",
+        "relative flex h-full w-full cursor-pointer items-center gap-2 rounded-[14px] border border-line bg-card py-1.5 pr-3.5 pl-1.5 shadow-[var(--shadow-node)] transition-[opacity,box-shadow] duration-160 hover:shadow-[var(--shadow-node-hover)]",
         data.struck && "border-dashed",
         canvas.apart === id && PICKED,
+        data.struck &&
+          canvas.filter &&
+          canvas.apart !== id &&
+          "opacity-60 shadow-none",
         away && "opacity-35"
       )}
     >
+      {data.no !== undefined && (
+        <NumberDisc no={data.no} className="absolute -top-2 -left-2 z-[7]" />
+      )}
       <Handle
         type="target"
         position={Position.Top}
@@ -302,8 +357,8 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
         <span
           title={data.name}
           className={cn(
-            "truncate text-[13.5px] leading-5 text-ink",
-            data.code && "font-mono text-[12.5px] text-ink-2",
+            "truncate text-[14px] leading-5 text-ink",
+            data.code && "font-mono text-[13px] text-ink-2",
             data.struck &&
               "text-ink-2 line-through decoration-ink decoration-[1.5px]"
           )}
@@ -319,10 +374,16 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
           </span>
         )}
       </span>
+      {data.code && data.passing && !data.struck && (
+        // Its name is still code, and the right of the row no longer says why.
+        <span className="shrink-0 rounded-[5px] bg-field px-1 text-[12px] leading-4 text-ink-3">
+          {t.skeletonTag}
+        </span>
+      )}
       <span
         className={cn(
-          "shrink-0 text-[11.5px] leading-4",
-          data.passing && !data.struck ? "text-change-ink" : "text-ink-3"
+          "shrink-0 text-[12px] leading-4",
+          data.passing && !data.struck ? "font-medium text-ink-2" : "text-ink-3"
         )}
       >
         {data.struck
@@ -349,7 +410,7 @@ export function MoreView({ data }: NodeProps<MoreNode>) {
   return (
     <div
       className={cn(
-        "flex h-full w-full cursor-pointer items-center gap-1.5 rounded-[14px] border border-dashed border-line px-3 text-[12.5px] leading-[18px] text-ink-2 transition-[opacity,color,border-color] duration-160 hover:border-ink-3/50 hover:text-ink",
+        "flex h-full w-full cursor-pointer items-center gap-1.5 rounded-[14px] border border-dashed border-line px-3 text-[13px] leading-[18px] text-ink-2 transition-[opacity,color,border-color] duration-160 hover:border-ink-3/50 hover:text-ink",
         focusedModule && "opacity-35"
       )}
     >

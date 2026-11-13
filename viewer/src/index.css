@@ -3,7 +3,11 @@
 @import "shadcn/tailwind.css";
 @import "@xyflow/react/dist/style.css";
 
-/* One light rendition: a quiet canvas read at a desk, the way agent builders look. */
+/* A quiet canvas read at a desk, the way agent builders look. Light and dark are two
+   renditions of the same tokens: the page opens light, and the reader can switch to dark
+   (see theme.ts, which sets data-theme on the root). */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
   --font-sans:
@@ -28,6 +32,13 @@
   --color-ok-bg: var(--ok-bg);
   --color-select: var(--select);
   --color-field: var(--field);
+  --color-risk-ink: var(--risk-ink);
+  --color-warn: var(--warn);
+  --color-edge-strong: var(--edge-strong);
+  /* The colour of the card it is set on: see [data-tone] below. */
+  --color-tone: var(--tone);
+  --color-tone-bg: var(--tone-bg);
+  --color-tone-ink: var(--tone-ink);
 
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -59,13 +70,13 @@
 :root {
   --canvas: #f4f4f5;
   --ink: #111113;
-  --ink-2: #5c5d63;
-  --ink-3: #74757b;
-  --line: #e6e6e9;
+  --ink-2: #4d5058;
+  --ink-3: #62656e;
+  --line: #d9dadd;
   --field: #f4f4f5;
-  --edge: #9496a0;
+  --edge: #7d818c;
   --edge-strong: #3a3b40;
-  --edge-exception: #d98d84;
+  --edge-exception: #c57368;
   --edge-exception-strong: #b5524a;
   --select: #2f6feb;
   --change: #e2860b;
@@ -73,8 +84,26 @@
   --change-ink: #8a4a00;
   --risk: #d92d20;
   --risk-bg: #fdf0ef;
+  --risk-ink: #b42318;
   --ok: #17803d;
   --ok-bg: #ebf7ef;
+  /* Amber dark enough for a small glyph on white. */
+  --warn: #c26d00;
+  --handle: #ffffff;
+  --handle-rim: #c9cace;
+  --scrollbar: #c9cace;
+  --selection-bg: #d6e4fd;
+  --selection-ink: #0b2a66;
+  --tile-trigger-bg: #e6f5ec;
+  --tile-trigger-ink: #1a7f45;
+  --tile-action-bg: #efeafd;
+  --tile-action-ink: #6a3fd4;
+  --tile-decision-bg: #ffeee1;
+  --tile-decision-ink: #c9530a;
+  --tile-external-bg: #fff4d1;
+  --tile-external-ink: #9a6200;
+  --tile-result-bg: #efeff1;
+  --tile-result-ink: #4f5057;
 
   --background: var(--canvas);
   --foreground: var(--ink);
@@ -103,6 +132,96 @@
     0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08);
   --shadow-float:
     0 1px 2px rgb(17 17 19 / 0.05), 0 12px 32px rgb(17 17 19 / 0.1);
+  color-scheme: light;
+}
+
+/* The same tokens after dark: the canvas is the darkest surface, cards sit a step above
+   it, and the four signal hues are lifted so they keep their contrast. */
+:root[data-theme="dark"] {
+  --canvas: #101012;
+  --ink: #f1f1f3;
+  --ink-2: #b6b7bd;
+  --ink-3: #8e9097;
+  --line: #3b3d44;
+  --field: #26262b;
+  --edge: #90939d;
+  --edge-strong: #d3d4d9;
+  --edge-exception: #a35a52;
+  --edge-exception-strong: #f09a90;
+  --select: #6ea0ff;
+  --change: #f0a030;
+  --change-bg: #33260f;
+  --change-ink: #ffcb80;
+  --risk: #ff6b5e;
+  --risk-bg: #3b1a17;
+  --risk-ink: #ffa39a;
+  --ok: #4cc27a;
+  --ok-bg: #14301f;
+  --warn: #f0a030;
+  --handle: #1c1c20;
+  --handle-rim: #55565d;
+  --scrollbar: #55565d;
+  --selection-bg: #24427a;
+  --selection-ink: #eaf1ff;
+  --tile-trigger-bg: #173524;
+  --tile-trigger-ink: #6fd39a;
+  --tile-action-bg: #2a2247;
+  --tile-action-ink: #b49cff;
+  --tile-decision-bg: #3d2413;
+  --tile-decision-ink: #ffa066;
+  --tile-external-bg: #382c0c;
+  --tile-external-ink: #f2c14e;
+  --tile-result-bg: #2a2a2f;
+  --tile-result-ink: #b6b7bd;
+
+  --card: #1c1c20;
+  --popover: #1c1c20;
+  --primary-foreground: #101012;
+  --secondary: #26262b;
+  --muted: #26262b;
+  --accent: #26262b;
+
+  --shadow-node: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 14px rgb(0 0 0 / 0.25);
+  --shadow-node-hover:
+    0 2px 4px rgb(0 0 0 / 0.35), 0 10px 26px rgb(0 0 0 / 0.35);
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.45);
+  color-scheme: dark;
+}
+
+/* What a changed card's colour says: a new risk, no test reaching the change, a verdict
+   nobody can give, or a test that checks it. Set on the card; everything inside follows. */
+[data-tone="risk"] {
+  --tone: var(--risk);
+  --tone-bg: var(--risk-bg);
+  --tone-ink: var(--risk-ink);
+}
+[data-tone="untested"] {
+  --tone: var(--change);
+  --tone-bg: var(--change-bg);
+  --tone-ink: var(--change-ink);
+}
+[data-tone="unsure"] {
+  --tone: var(--ink-3);
+  --tone-bg: var(--field);
+  --tone-ink: var(--ink-2);
+}
+[data-tone="tested"] {
+  --tone: var(--ok);
+  --tone-bg: var(--ok-bg);
+  --tone-ink: var(--ok);
+}
+/* The card on show: a solid border of its colour and a halo. */
+.ring-tone {
+  border-color: var(--tone);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--tone) 20%, transparent),
+    var(--shadow-node-hover);
+}
+.ring-select {
+  border-color: var(--select);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--select) 18%, transparent),
+    var(--shadow-node-hover);
 }
 
 @layer base {
@@ -115,7 +234,7 @@
     color: var(--ink);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    scrollbar-color: #c9cace transparent;
+    scrollbar-color: var(--scrollbar) transparent;
     scrollbar-width: thin;
   }
   body {
@@ -129,8 +248,8 @@
     cursor: pointer;
   }
   ::selection {
-    background: #d6e4fd;
-    color: #0b2a66;
+    background: var(--selection-bg);
+    color: var(--selection-ink);
   }
   :focus-visible {
     outline: 2px solid var(--select);
@@ -147,8 +266,8 @@
   --xy-background-color: var(--canvas);
   --xy-edge-stroke: var(--edge);
   --xy-edge-stroke-width: 1.5;
-  --xy-handle-background-color: #ffffff;
-  --xy-handle-border-color: #c9cace;
+  --xy-handle-background-color: var(--handle);
+  --xy-handle-border-color: var(--handle-rim);
   --xy-attribution-background-color: transparent;
 }
 .react-flow__attribution {
@@ -170,6 +289,10 @@
 }
 .react-flow__node:focus-visible {
   outline: none;
+}
+/* Everything on the map that opens something says so under the pointer. */
+.react-flow__node-step {
+  cursor: pointer;
 }
 .react-flow__node:focus-visible [data-slot="step-card"] {
   outline: 2px solid var(--select);
@@ -206,10 +329,12 @@
 /* The current change starts the ripple with one soft ring. */
 @keyframes arrive {
   0% {
-    box-shadow: 0 0 0 0 rgb(226 134 11 / 0.38);
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--tone, var(--edge-strong)) 38%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 12px rgb(226 134 11 / 0);
+    box-shadow: 0 0 0 12px
+      color-mix(in srgb, var(--tone, var(--edge-strong)) 0%, transparent);
   }
 }
 .arrive {
@@ -254,27 +379,14 @@
   }
 }
 
-/* Zoomed far out, a change is a solid amber block with a status dot; other cards recede. */
-.far-mark,
-.far-dot {
+/* Zoomed far out, a change is a solid block in its own colour; other cards recede. */
+.far-mark {
   opacity: 0;
   transition: opacity 160ms ease-out;
-}
-.far-mark {
   z-index: 5;
-  background: var(--change);
+  background: var(--tone, var(--ink-3));
 }
-.far-dot {
-  z-index: 6;
-  top: calc(-0.5 * clamp(10px, calc(10px / var(--zoom, 1)), 44px));
-  right: calc(-0.5 * clamp(10px, calc(10px / var(--zoom, 1)), 44px));
-  width: clamp(10px, calc(10px / var(--zoom, 1)), 44px);
-  height: clamp(10px, calc(10px / var(--zoom, 1)), 44px);
-  border-radius: 9999px;
-  box-shadow: 0 0 0 calc(2px / var(--zoom, 1)) var(--card);
-}
-.is-far .far-mark,
-.is-far .far-dot {
+.is-far .far-mark {
   opacity: 1;
 }
 .is-far [data-slot="step-card"]:not([data-changed]) {

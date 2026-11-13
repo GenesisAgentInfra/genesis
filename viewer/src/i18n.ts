@@ -1,12 +1,15 @@
-import type { TestStatus } from "./model"
+import type { TestStatus, Tone } from "./model"
 import type {
   ChangeKind,
   EntryKind,
   Limitation,
   Severity,
   StepKind,
-  Verdict,
 } from "./types"
+
+/** What a verdict rests on, said after the one word the page uses for it. */
+export type VerdictDetail =
+  "reached_untested" | "reached_unsure" | "not_reached" | "unknown"
 
 export type Lang = "zh" | "en"
 
@@ -37,9 +40,79 @@ const zh = {
   overview: "总览",
   stepsCount: (n: number) => `${n} 步`,
   stepsBetween: (n: number) => `中间 ${n} 步`,
-  shownSteps: (shown: number, total: number) => `${total} 步中的 ${shown} 步`,
+  stepsMore: (n: number) => `还有 ${n} 步`,
+  verdictLine: (
+    risks: number,
+    untested: number,
+    unsure: number,
+    total: number,
+    allTested: boolean
+  ) => {
+    if (risks && untested)
+      return `这次改动有 ${risks} 个新风险，${untested} 处缺少行为验证。`
+    if (risks) return `这次改动带来 ${risks} 个新风险。`
+    if (untested) return `这次改动没有发现新风险，${untested} 处缺少行为验证。`
+    if (unsure) return `这次改动没有发现新风险，${unsure} 处测试覆盖待确认。`
+    if (allTested) return `这次的 ${total} 处改动有行为验证，没有发现新风险。`
+    return "这次改动没有发现新风险。"
+  },
+  filterAll: "全部",
+  openChanges: "改动清单",
+  filtered: "已筛选",
+  riskLabel: "风险",
+  needsValidation: "待验证",
+  severityLabel: "严重程度",
+  filterBy: "只看这一类改动",
+  riskTypes: "风险类型",
+  testEvidence: "测试依据",
+  ioContract: "输入 / 输出契约",
+  contractInput: "输入",
+  contractOutput: "输出",
+  contractConstraints: "约束",
+  contractMissing: "尚未提供这个步骤的输入 / 输出契约。",
+  category: {
+    reliability: "可靠性",
+    correctness: "逻辑正确性",
+    data_integrity: "数据与副作用",
+    security: "权限与安全",
+    performance: "性能与成本",
+    other: "其他风险",
+    unclassified: "待分类",
+  },
+  coverage: {
+    asserted: "有行为验证",
+    related: "缺少行为验证",
+    uncovered: "未找到覆盖",
+    unknown: "覆盖待确认",
+  },
+  tone: {
+    risk: "新风险",
+    untested: "缺少验证",
+    unsure: "待确认",
+    tested: "有验证",
+  } satisfies Record<Tone, string>,
+  verdictDetail: {
+    reached_untested: "测试涉及这段代码，但没有检查这处改动",
+    reached_unsure: "测试调用了这段代码，看不出有没有检查这处改动",
+    not_reached: "没有找到走到这段代码的测试",
+    unknown: "判断不了有没有测到",
+  } satisfies Record<VerdictDetail, string>,
+  list: "清单",
+  listTitle: "这次的改动",
+  listHint: "← → 切换改动 · Esc 关闭",
+  reviewedOf: (done: number, total: number) => `已看 ${done} / ${total}`,
+  allReviewed: (total: number) => `${total} 处都看过了`,
+  markReviewed: "标记为看过",
+  reviewed: "已看过",
+  unmarkReviewed: "取消看过",
+  changeNo: (n: number) => `第 ${n} 处改动`,
+  removedFlowRow: "流程被删除",
+  openStub: "展开这条流程的全部步骤",
   changesPass: (n: number) => `${n} 处改动会经过这里`,
   openModule: "展开全部步骤",
+  openShort: "展开",
+  closeModule: "收起",
+  closeModuleHint: "收起，回到总览（Esc）",
   stepThrough: "逐个看",
   prevChange: "上一处改动",
   nextChange: "下一处改动",
@@ -49,6 +122,8 @@ const zh = {
   endWalk: "结束",
   zoomIn: "放大",
   zoomOut: "缩小",
+  toDark: "切换到深色",
+  toLight: "切换到浅色",
   sameChange: "同一处改动",
   runFlow: "走一遍",
   skeletonTag: "代码结构",
@@ -79,8 +154,8 @@ const zh = {
     passing: number
   ) => {
     let head: string
-    if (!flows) head = "这次改动都在流程之外"
-    else if (!names.length) head = `这次改动落在 ${flows} 条流程上`
+    if (!flows) head = "改动都在流程之外"
+    else if (!names.length) head = `改动落在 ${flows} 条流程上`
     else {
       const listed = names
         .slice(0, 2)
@@ -92,7 +167,7 @@ const zh = {
           : modules > 1
             ? `${modules} 个模块`
             : "模块"
-      head = `这次改动落在${listed}${many}的 ${flows} 条流程上`
+      head = `改动落在${listed}${many}的 ${flows} 条流程上`
     }
     const more = [
       apart && flows ? `另有 ${apart} 处在流程之外` : "",
@@ -103,9 +178,9 @@ const zh = {
     return `${[head, ...more].join("，")}。`
   },
   status: {
-    tested: "有测试",
-    untested: "没测到",
-    unsure: "不确定",
+    tested: "有行为验证",
+    untested: "缺少行为验证",
+    unsure: "覆盖待确认",
   } satisfies Record<TestStatus, string>,
   filesOnly: "改过的文件都没能分析。",
   partialHint: "这次分析没有全部完成：",
@@ -143,7 +218,7 @@ const zh = {
   unknown: "未知",
   repeats: "重复这一步",
   noFlow: "没有可以显示的流程。",
-  unanalyzed: "这些改过的文件没有被分析",
+  unanalyzed: "这些改过的文件没有被分析，它们的改动不在图上",
   summaryNoChange: "这次对比没有发现产品逻辑上的改动。",
   filesNotAnalyzed: (n: number) => `${n} 个文件没分析`,
   limitations: "说明",
@@ -165,12 +240,6 @@ const zh = {
     external: "外部调用",
     result: "结果",
   } satisfies Record<StepKind, string>,
-  verdict: {
-    covered: "有测试覆盖",
-    reached_only: "测到代码 · 没测到改动",
-    not_reached: "没有测试",
-    unknown: "无法判断",
-  } satisfies Record<Verdict, string>,
   changeKind: {
     condition_added: "新增判断",
     condition_removed: "删除判断",
@@ -210,10 +279,83 @@ const en: Strings = {
   overview: "Overview",
   stepsCount: (n) => `${n} step${n === 1 ? "" : "s"}`,
   stepsBetween: (n) => `${n} step${n === 1 ? "" : "s"} between`,
-  shownSteps: (shown, total) => `${shown} of ${total} steps`,
+  stepsMore: (n) => `${n} more step${n === 1 ? "" : "s"}`,
+  verdictLine: (risks, untested, unsure, total, allTested) => {
+    const risk = `${risks} new risk${risks === 1 ? "" : "s"}`
+    const are = (n: number) => `${n} change${n === 1 ? " is" : "s are"}`
+    if (risks && untested)
+      return `This change brings ${risk}; ${are(untested)} missing behavior checks.`
+    if (risks) return `This change brings ${risk}.`
+    if (untested)
+      return `No new risk was found; ${are(untested)} missing behavior checks.`
+    if (unsure)
+      return `No new risk was found; coverage of ${unsure} changes is unclear.`
+    if (allTested)
+      return total === 1
+        ? "The change has behavior checks, and no new risk was found."
+        : `All ${total} changes have behavior checks, and no new risk was found.`
+    return "No new risk was found in this change."
+  },
+  filterAll: "All",
+  openChanges: "Changes",
+  filtered: "Filtered",
+  riskLabel: "Risk",
+  needsValidation: "Needs validation",
+  severityLabel: "Severity",
+  filterBy: "Show only these changes",
+  riskTypes: "Risk type",
+  testEvidence: "Test evidence",
+  ioContract: "Input / output contract",
+  contractInput: "Input",
+  contractOutput: "Output",
+  contractConstraints: "Rules",
+  contractMissing: "No input / output contract is available for this step yet.",
+  category: {
+    reliability: "Reliability",
+    correctness: "Correctness",
+    data_integrity: "Data & side effects",
+    security: "Permissions & security",
+    performance: "Performance & cost",
+    other: "Other risk",
+    unclassified: "Unclassified",
+  },
+  coverage: {
+    asserted: "Behavior checked",
+    related: "Behavior not checked",
+    uncovered: "No coverage found",
+    unknown: "Coverage unclear",
+  },
+  tone: {
+    risk: "New risk",
+    untested: "Missing checks",
+    unsure: "Unclear",
+    tested: "Has checks",
+  },
+  verdictDetail: {
+    reached_untested: "tests reach this code but do not check the change",
+    reached_unsure:
+      "tests call this code; reading them cannot tell whether they check the change",
+    not_reached: "no test was found that reaches this code",
+    unknown: "cannot tell whether it is tested",
+  },
+  list: "List",
+  listTitle: "Changes in this comparison",
+  listHint: "← → move between changes · Esc closes",
+  reviewedOf: (done, total) => `${done} / ${total} seen`,
+  allReviewed: (total) =>
+    total === 1 ? "The one change is seen" : `All ${total} seen`,
+  markReviewed: "Mark as seen",
+  reviewed: "Seen",
+  unmarkReviewed: "Mark as not seen",
+  changeNo: (n) => `Change ${n}`,
+  removedFlowRow: "Flow removed",
+  openStub: "Show every step of this flow",
   changesPass: (n) =>
     `${n} change${n === 1 ? " passes" : "s pass"} through here`,
   openModule: "Show every step",
+  openShort: "Open",
+  closeModule: "Collapse",
+  closeModuleHint: "Collapse, back to the overview (Esc)",
   stepThrough: "One by one",
   prevChange: "Previous change",
   nextChange: "Next change",
@@ -223,6 +365,8 @@ const en: Strings = {
   endWalk: "Done",
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
+  toDark: "Switch to dark",
+  toLight: "Switch to light",
   sameChange: "Same change",
   runFlow: "Walk through",
   skeletonTag: "Code structure",
@@ -248,14 +392,14 @@ const en: Strings = {
   overviewSentence: (names, modules, flows, apart, passing) => {
     const plural = flows === 1 ? "" : "s"
     let head: string
-    if (!flows) head = "All of this change sits outside the flows"
-    else if (!names.length) head = `This change lands on ${flows} flow${plural}`
+    if (!flows) head = "All of it sits outside the flows"
+    else if (!names.length) head = `It lands on ${flows} flow${plural}`
     else {
       const listed =
         modules > 2
           ? `${names.slice(0, 2).join(", ")} and ${modules - 2} more modules`
           : names.join(" and ")
-      head = `This change lands on ${flows} flow${plural} in ${listed}`
+      head = `It lands on ${flows} flow${plural} in ${listed}`
     }
     const more = [
       apart && flows
@@ -267,7 +411,11 @@ const en: Strings = {
     ].filter(Boolean)
     return `${[head, ...more].join("; ")}.`
   },
-  status: { tested: "Tested", untested: "Untested", unsure: "Unsure" },
+  status: {
+    tested: "Behavior checked",
+    untested: "Behavior not checked",
+    unsure: "Coverage unclear",
+  },
   filesOnly: "None of the changed files could be analyzed.",
   partialHint: "This analysis is not complete:",
   refs: "Comparing",
@@ -306,7 +454,8 @@ const en: Strings = {
   unknown: "Unknown",
   repeats: "Repeats",
   noFlow: "No flow to show.",
-  unanalyzed: "Changed files that were not analyzed",
+  unanalyzed:
+    "Changed files that were not analyzed; their changes are not on the map",
   summaryNoChange: "No change to product logic was found in this comparison.",
   filesNotAnalyzed: (n) => `${n} file${n === 1 ? "" : "s"} not analyzed`,
   limitations: "Notes",
@@ -322,12 +471,6 @@ const en: Strings = {
     decision: "Decision",
     external: "External",
     result: "Result",
-  },
-  verdict: {
-    covered: "Covered",
-    reached_only: "Reached · change untested",
-    not_reached: "No test",
-    unknown: "Can’t tell",
   },
   changeKind: {
     condition_added: "Condition added",
@@ -392,7 +535,9 @@ export function localizeReason(text: string, lang: Lang): string {
     )
   if (refers) return `这一步的代码用到了改动行定义的 \`${refers[1]}\`。`
   const failed = /^Could not be analyzed: (.*)$/.exec(text)
-  return failed ? `无法分析：${failed[1]}` : text
+  if (failed) return `无法分析：${failed[1]}`
+  const language = /^([A-Za-z#+. ]+) is not analyzed\.$/.exec(text)
+  return language ? `还不支持分析 ${language[1]}。` : text
 }
 
 function tail(message: string): string {

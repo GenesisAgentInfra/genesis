@@ -4,7 +4,8 @@ import type { Edge, Node } from "@xyflow/react"
 import { edgeLabel } from "@/layout"
 import { cutFlow } from "./focus"
 import { removedNodeId, type Coupon, type FlowView } from "@/model"
-import type { FindingChange, MapStep } from "@/types"
+import type { FindingChange, MapFinding, MapStep } from "@/types"
+import { sortAlerts } from "@/presentation"
 
 /**
  * A flow drawn left to right: a step the change leaves alone is a small pill, a step it
@@ -24,6 +25,8 @@ const COL_GAP = 40
 /** How far past a column a line runs before it turns, and between two lines turning there. */
 const TURN = 14
 const LANE = 8
+/** Between two lines that each carry a label where they run side by side. */
+const LABEL_LANE = 26
 const BAND_GAP = 48
 const GHOST_GAP = 28
 /** A card for a step the change removed: its name and what was said about it. */
@@ -39,6 +42,7 @@ export interface StepNodeData extends Record<string, unknown> {
   coupons: Coupon[]
   isNew: boolean
   risk?: "new" | "known"
+  alerts?: MapFinding[]
   ghost: boolean
   loops: { label: string }[]
   removedFlow: boolean
@@ -50,6 +54,14 @@ export interface StepNodeData extends Record<string, unknown> {
   hasOut: boolean
   /** The height of its place in the column; the card sits in the middle of it. */
   slot: number
+  /** Not a step: a pill that stands for this many steps left out after the one before it. */
+  stub?: number
+}
+
+/** How the lines and pills that stand for steps left out are worded. */
+export interface CutWords {
+  between: (steps: number) => string
+  more: (steps: number) => string
 }
 
 export interface FlowEdgeData extends Record<string, unknown> {
@@ -68,19 +80,19 @@ export interface FlowEdgeData extends Record<string, unknown> {
 export type StepNode = Node<StepNodeData, "step">
 export type FlowEdge = Edge<FlowEdgeData, "flow">
 
-function textWidth(text: string, cjk = 13.5, latin = 7.4): number {
+function textWidth(text: string, cjk = 14, latin = 7.7): number {
   let width = 0
   for (const char of text)
     width += /[\u3000-\u9fff\uff00-\uffef]/.test(char) ? cjk : latin
   return width
 }
 /** A label on a line: a small pill. */
-const labelWidth = (text: string) => Math.ceil(textWidth(text, 11.5, 6.4)) + 18
+const labelWidth = (text: string) => Math.ceil(textWidth(text, 12, 6.7)) + 18
 
 export function heightOf(data: StepNodeData): number {
   if (data.compact) return PILL_H
   let height = 68
-  if (data.coupons.length) height += 104
+  if (data.coupons.length) height += 80
   if (data.loops.length) height += 24
   return height
 }
@@ -94,9 +106,9 @@ export function buildGraph(
   max = Infinity,
   /**
    * Given, the flow is cut down to the steps the change touches and the way into each;
-   * it words the line that stands for the steps left out.
+   * they word the lines and pills that stand for the steps left out.
    */
-  between?: (steps: number) => string
+  words?: CutWords
 ): {
   nodes: StepNode[]
   edges: FlowEdge[]
@@ -136,6 +148,18 @@ export function buildGraph(
         : "known"
       : undefined
     const isNew = view.newSteps.has(step.step_id)
+    const alertIds = new Set([
+      ...stepFindings,
+      ...coupons.flatMap((coupon) => coupon.change.finding_ids ?? []),
+    ])
+    const alerts = sortAlerts(
+      view.findings.filter(
+        (finding) =>
+          alertIds.has(finding.finding_id) &&
+          findingStatus.get(finding.finding_id) !== "resolved" &&
+          (knownRisks || findingStatus.get(finding.finding_id) === "introduced")
+      )
+    )
     // A pill has room for its name only, so a step with a badge to show keeps its card.
     const badged =
       isNew ||
@@ -148,25 +172,29 @@ export function buildGraph(
       coupons,
       isNew,
       risk,
+      alerts,
       ghost: false,
       loops,
       removedFlow: view.removed,
       skeleton: view.flow.stage === "skeleton",
       compact,
       width: compact
-        ? Math.min(236, Math.max(120, 68 + Math.ceil(textWidth(step.name))))
+        ? Math.min(240, Math.max(120, 68 + Math.ceil(textWidth(step.name))))
         : CARD_W,
       hasIn: incoming.length > 0,
       hasOut: outgoing.length > 0,
       slot: 0,
     }
     data.slot = heightOf(data)
+    // What a screen reader says for the card: the step, then the change written on it.
+    const said = coupons[0]?.change.explanation?.summary
     return {
       id: step.step_id,
       type: "step",
       position: { x: 0, y: 0 },
       draggable: false,
       connectable: false,
+      ariaLabel: said ? `${step.name}. ${said}` : step.name,
       data,
     }
   })
@@ -189,7 +217,7 @@ export function buildGraph(
       },
     }))
 
-  const cut = between
+  const cut = words
     ? cutFlow(
         steps,
         view.layout,
@@ -209,7 +237,7 @@ export function buildGraph(
       (edge) => cut.keep.has(edge.source) && cut.keep.has(edge.target)
     )
     for (const skip of cut.skips) {
-      const count = between!(skip.steps)
+      const count = words!.between(skip.steps)
       flowEdges.push({
         id: `skip>${skip.source}>${skip.target}`,
         type: "flow",
@@ -224,6 +252,56 @@ export function buildGraph(
           uncertain: false,
           back: false,
           skipped: skip.steps,
+        },
+      })
+    }
+    // Where the flow goes on past what is drawn, a dotted pill says by how many steps.
+    for (const tail of cut.tails) {
+      const id = `more>${tail.source}`
+      const name = words!.more(tail.steps)
+      nodes.push({
+        id,
+        type: "step",
+        position: { x: 0, y: 0 },
+        draggable: false,
+        connectable: false,
+        ariaLabel: name,
+        data: {
+          step: {
+            step_id: id,
+            name,
+            kind: "result",
+            support: "static_fact",
+            resolution: "resolved",
+          },
+          coupons: [],
+          isNew: false,
+          ghost: false,
+          loops: [],
+          removedFlow: false,
+          skeleton: false,
+          compact: true,
+          width: Math.ceil(textWidth(name, 13, 7.2)) + 40,
+          hasIn: true,
+          hasOut: false,
+          slot: PILL_H,
+          stub: tail.steps,
+        },
+      })
+      flowEdges.push({
+        id: `tail>${tail.source}`,
+        type: "flow",
+        source: tail.source,
+        target: id,
+        sourceHandle: "out",
+        targetHandle: "in",
+        focusable: false,
+        data: {
+          label: tail.label,
+          exception: tail.exception,
+          uncertain: false,
+          back: false,
+          skipped: tail.steps,
         },
       })
     }
@@ -304,7 +382,9 @@ export function buildGraph(
     edges: flowEdges,
     w: Math.max(w, 120),
     h,
-    cut: nodes.length - gone.length < steps.length,
+    cut:
+      nodes.filter((node) => !node.data.ghost && !node.data.stub).length <
+      steps.length,
   }
 }
 
@@ -429,11 +509,56 @@ function arrange(
   const bandOf = fitted.of
   const bands = fitted.count
   // A line that goes on to the next band leaves by the right and comes back in by the
-  // left, so a wrapped flow keeps room on both sides for those lines.
-  const crossing = Array.from({ length: bands }, () => 0)
+  // left, so a wrapped flow keeps room on both sides for those lines. Between the bands
+  // each runs at a level of its own. The one that ends lowest runs highest and turns
+  // furthest out on the left, so they come down without crossing; a line that carries a
+  // label keeps the room its label needs.
+  const crossKey = (way: Way, hop: number) => `${way.edge.id}|${hop}`
+  const leaving: {
+    key: string
+    from: number
+    to: number
+    named: boolean
+    width: number
+  }[][] = Array.from({ length: bands }, () => [])
   for (const way of ways)
-    for (let rank = way.from; rank < way.to; rank++)
-      if (bandOf[rank] !== bandOf[rank + 1]) crossing[bandOf[rank]] += 1
+    for (let hop = 0; hop < way.ys.length - 1; hop++) {
+      const rank = way.from + hop
+      if (bandOf[rank] === bandOf[rank + 1]) continue
+      leaving[bandOf[rank]].push({
+        key: crossKey(way, hop),
+        from: way.ys[hop],
+        to: way.ys[hop + 1],
+        named: hop === 0 && Boolean(way.edge.data?.label),
+        width:
+          hop === 0 && way.edge.data?.label
+            ? labelWidth(way.edge.data.label)
+            : 0,
+      })
+    }
+  const levelOf = new Map<string, { k: number; drop: number; back: number }>()
+  /** How far the lines between a band and the next spread down. */
+  const spread = leaving.map((list) => {
+    list.sort((a, b) => b.to - a.to || b.from - a.from)
+    let drop = 0
+    // Two named lines never carry their names one over the other: each name sits further
+    // back along its own line than the one above, so it reads with that line alone.
+    let back = 0
+    list.forEach((line, k) => {
+      const above = list[k - 1]
+      if (above)
+        drop +=
+          line.named && above.named
+            ? LABEL_LANE
+            : line.named || above.named
+              ? LABEL_LANE / 2 + 2
+              : LANE
+      levelOf.set(line.key, { k, drop, back })
+      if (line.named) back += line.width + 12
+    })
+    return drop
+  })
+  const crossing = leaving.map((list) => list.length)
   const most = Math.max(...crossing, 0)
   const inset = bands > 1 ? TURN + Math.max(most - 1, 0) * LANE + 4 : 0
 
@@ -467,13 +592,9 @@ function arrange(
   let y = 0
   for (let band = 0; band < bands; band++) {
     shift[band] = y - top[band]
-    y +=
-      bottom[band] -
-      top[band] +
-      BAND_GAP +
-      Math.max(crossing[band] - 1, 0) * LANE
+    y += bottom[band] - top[band] + BAND_GAP + spread[band]
   }
-  const height = y - BAND_GAP - Math.max(crossing[bands - 1] - 1, 0) * LANE
+  const height = y - BAND_GAP - spread[bands - 1]
   const yIn = (rank: number, value: number) => value + shift[bandOf[rank]]
 
   const byId = new Map(nodes.map((node) => [node.id, node]))
@@ -486,7 +607,6 @@ function arrange(
   }
 
   // The lines: out to the right, a turn in the gap, on at the next height.
-  const crossed = Array.from({ length: bands }, () => 0)
   for (const way of ways) {
     const source = byId.get(way.edge.source)!
     const target = byId.get(way.edge.target)!
@@ -510,21 +630,22 @@ function arrange(
       const to = last ? end.y : yIn(next, way.ys[hop + 1])
       if (bandOf[next] !== bandOf[rank]) {
         const band = bandOf[rank]
-        const k = crossed[band]++
+        const { k, drop, back } = levelOf.get(crossKey(way, hop))!
         const right = bandRight[band] + TURN + k * LANE
-        const left = inset - TURN - k * LANE
-        const between =
-          bottom[band] +
-          shift[band] +
-          BAND_GAP / 2 +
-          (k - (crossing[band] - 1) / 2) * LANE
+        const left = inset - TURN - (crossing[band] - 1 - k) * LANE
+        const between = bottom[band] + shift[band] + BAND_GAP / 2 + drop
         points.push(
           { x: right, y: at.y },
           { x: right, y: between },
           { x: left, y: between },
           { x: left, y: to }
         )
-        if (hop === 0 && text) label = { x: right - 16 - half, y: between }
+        if (hop === 0 && text)
+          label = {
+            // Never further back than the line itself runs.
+            x: Math.max(right - 16 - half - back, left + 16 + half),
+            y: between,
+          }
       } else {
         const lane = laneOf.get(laneKey(way, hop)) ?? 0
         const turn = colX[rank] + colW[rank] + TURN + lane * LANE

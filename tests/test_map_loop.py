@@ -368,6 +368,64 @@ def test_context_lists_what_the_flow_has_to_account_for(workspace):
         workspace.context(tasks["提交报销"], claim=True)
 
 
+def test_observation_category_survives_submission_without_changing_severity(workspace):
+    tasks = planned(workspace)
+    task = tasks["提交报销"]
+    submission = submit_flow(workspace, task)
+    submission["observations"][0]["category"] = "reliability"
+    result = workspace.submit(task, submission)
+    assert result["status"] == "accepted"
+    finding = workspace.stored_map().findings[0]
+    assert finding.category == "reliability"
+    assert finding.severity == "medium"
+
+
+def test_step_contract_survives_submission_and_viewer_payload(workspace):
+    from genesis_ci.business_map.view import view_payload
+
+    task = planned(workspace)["提交报销"]
+    submission = submit_flow(workspace, task)
+    contract = {
+        "input": '报销金额 amount，读取自 report["amount"]。',
+        "output": "金额达到门槛进入模型审核；否则直接批准。",
+        "constraints": "THRESHOLD = 100。",
+    }
+    submission["steps"][1]["contract"] = contract
+    submission["steps"][1]["evidence"] += [
+        src(API, 7, "THRESHOLD = 100"),
+        src(API, 12, 'amount = report["amount"]'),
+    ]
+    accepted = workspace.submit(task, submission)
+    assert accepted["status"] == "accepted"
+    payload = view_payload(workspace.stored_map())
+    step = next(
+        step
+        for flow in payload["map"]["flows"]
+        for step in flow["steps"]
+        if step["step_id"] == accepted["steps"]["choose"]
+    )
+    assert step["contract"] == contract
+    assert len(step["evidence_ids"]) == 3
+
+
+def test_unknown_step_cannot_supply_a_contract_without_evidence(workspace):
+    task = planned(workspace)["提交报销"]
+    submission = submit_flow(workspace, task)
+    submission["steps"].append(
+        {
+            "key": "unknown_contract",
+            "name": "外部服务",
+            "kind": "external",
+            "resolution": "unknown",
+            "reason": "没有源码。",
+            "contract": {"input": "报销单", "output": "批准结果"},
+        }
+    )
+    result = workspace.submit(task, submission)
+    assert result["status"] == "rejected"
+    assert ("steps[7].evidence", "evidence_required") in codes(result)
+
+
 def test_accepted_flows_assemble_into_a_complete_map(workspace):
     tasks = planned(workspace)
     first = workspace.submit(tasks["提交报销"], submit_flow(workspace, tasks["提交报销"]))

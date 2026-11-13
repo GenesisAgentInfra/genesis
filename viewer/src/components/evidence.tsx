@@ -41,7 +41,7 @@ export function Evidence({
             : undefined
         return (
           <figure key={ref.evidence_id} className="m-0">
-            <figcaption className="font-mono text-[11.5px] leading-[17px] text-ink-3">
+            <figcaption className="font-mono text-[12px] leading-[17px] text-ink-3">
               {ref.path}:{lines}
             </figcaption>
             {text !== undefined && (

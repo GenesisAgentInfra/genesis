@@ -29,7 +29,7 @@ load().then((payload) => {
   if (!payload) {
     const t =
       STRINGS[detectLang([navigator.language.startsWith("zh") ? "中文" : "en"])]
-    root.render(<p className="p-8 text-[15px] text-ink-2">{t.noData}</p>)
+    root.render(<p className="p-8 text-[14px] text-ink-2">{t.noData}</p>)
     return
   }
   root.render(

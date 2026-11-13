@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import type { Strings } from "@/i18n"
+import type { Filter } from "@/model"
 
 /**
  * What the canvas shows about the current change. Nodes and edges read it to decide how
@@ -33,6 +34,8 @@ export interface CanvasState {
   apart?: string
   /** Pre-existing risks show on cards only when there is no report to walk. */
   knownRisks: boolean
+  /** The one kind of change the reader narrowed the page down to. */
+  filter?: Filter
   /** Bumped for every new ripple. */
   run: number
   /** The ripple may start: the camera is on its way or there. */

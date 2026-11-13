@@ -203,7 +203,7 @@ export function FlowEdge({
         )}
         style={{
           stroke,
-          strokeWidth: dark ? 2.25 : 1.75,
+          strokeWidth: dark ? 2.5 : 2,
           strokeDasharray: draws
             ? undefined
             : skipped
@@ -216,7 +216,7 @@ export function FlowEdge({
           opacity:
             isOut && pending
               ? 0
-              : (quiet ? 0.45 : 1) *
+              : (quiet ? 0.7 : 1) *
                 (own && outOfFocus(canvas, own.slice(0, -2)) ? 0.35 : 1),
           ["--edge-delay" as string]: `${start}ms`,
           ["--edge-duration" as string]: `${DRAW_MS}ms`,
@@ -238,7 +238,12 @@ export function FlowEdge({
         />
       )}
       {travels && (
-        <circle key={`dot-${playKey}`} r={3.5} fill="var(--change)" opacity={0}>
+        <circle
+          key={`dot-${playKey}`}
+          r={3.5}
+          fill="var(--edge-strong)"
+          opacity={0}
+        >
           <animateMotion
             ref={motionRef}
             begin="indefinite"
@@ -265,7 +270,7 @@ export function FlowEdge({
         <EdgeLabelRenderer>
           <div
             className={cn(
-              "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[11.5px] leading-4 shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160",
+              "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 font-medium shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160",
               data.exception
                 ? "text-risk"
                 : skipped
@@ -274,7 +279,7 @@ export function FlowEdge({
             )}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              opacity: isOut && pending ? 0 : quiet ? 0.6 : 1,
+              opacity: isOut && pending ? 0 : 1,
               // A label on a rippling edge comes up as its line starts to draw.
               transitionDelay: rippling ? `${start}ms` : "0ms",
             }}

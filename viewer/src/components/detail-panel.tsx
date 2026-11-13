@@ -7,13 +7,39 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Evidence } from "@/components/evidence"
-import { KindTile, StatusMark } from "@/canvas/step-node"
+import { KindTile, NumberDisc, StatusMark } from "@/canvas/step-node"
 import { cn } from "@/lib/utils"
-import { localizeNote, localizeReason, type Strings } from "@/i18n"
-import { statusOf, type Coupon, type FlowView, type Model } from "@/model"
-import type { ChangeSide, MapStep } from "@/types"
+import {
+  localizeNote,
+  localizeReason,
+  type Strings,
+  type VerdictDetail,
+} from "@/i18n"
+import {
+  statusOf,
+  type Coupon,
+  type FlowView,
+  type Model,
+  type TestStatus,
+} from "@/model"
+import type { ChangeSide, CoverageAssessment, MapStep } from "@/types"
+import { categoryOf, coverageKind } from "@/presentation"
+
+/**
+ * What a verdict rests on, said after the one word the page uses for it everywhere. A
+ * change that is tested needs no more than that word.
+ */
+function detailOf(
+  tests: CoverageAssessment | undefined,
+  status: TestStatus
+): VerdictDetail | undefined {
+  if (!tests || tests.verdict === "covered") return undefined
+  if (tests.verdict === "not_reached") return "not_reached"
+  if (tests.verdict === "reached_only")
+    return status === "untested" ? "reached_untested" : "reached_unsure"
+  return "unknown"
+}
 
 /** What the panel is about: a step (changed or not), a change off the map, or a removed flow. */
 export type PanelSubject =
@@ -35,6 +61,7 @@ interface PanelProps {
   focus?: number
   /** Walk the flow this step belongs to, from its trigger to its end. */
   onWalk?: () => void
+  onNext?: () => void
   onClose: () => void
 }
 
@@ -45,6 +72,7 @@ export function DetailPanel({
   subject,
   focus,
   onWalk,
+  onNext,
   onClose,
 }: PanelProps) {
   const coupons = subject.coupons
@@ -85,20 +113,10 @@ export function DetailPanel({
       : subject.type === "offMap"
         ? t.offMapHint
         : t.removed
-  const report = model.payload.report
-  const head = report
-    ? (report.head_ref ??
-      (report.head_revision?.startsWith("worktree:")
-        ? t.workingTree
-        : report.head_revision?.slice(0, 7)))
-    : undefined
-  const base = report
-    ? (report.base_ref ?? report.base_revision?.slice(0, 7))
-    : undefined
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-3">
+    <div className="flex h-full max-h-[inherit] min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2.5 px-4 pt-3.5 pb-3">
         {step && <KindTile kind={step.kind} small />}
         <div className="min-w-0 flex-1">
           <h2
@@ -135,7 +153,7 @@ export function DetailPanel({
           <X />
         </Button>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 [scrollbar-width:thin] overflow-y-auto overscroll-contain">
         <div className="flex flex-col gap-6 px-4 pb-5">
           {coupons.map((coupon) => (
             <ChangeDetail
@@ -146,6 +164,9 @@ export function DetailPanel({
               focused={coupons.length > 1 && focus === coupon.no}
               // A removed step is already titled with its change's summary.
               titled={Boolean(ghostSummary)}
+              step={
+                subject.type === "step" && !subject.ghost ? step : undefined
+              }
             />
           ))}
           {findings.map((finding) => (
@@ -153,8 +174,9 @@ export function DetailPanel({
               key={finding.finding_id}
               className="rounded-[12px] bg-risk-bg px-3 py-2.5"
             >
-              <h3 className="text-[12px] leading-4 font-medium text-risk">
-                {t.risks} · {t.severity[finding.severity]}
+              <h3 className="text-[12px] leading-4 font-medium text-risk-ink">
+                {t.riskTypes}：{t.category[categoryOf(finding)]} ·{" "}
+                {t.severityLabel}：{t.severity[finding.severity]}
                 {model.findingStatus.get(finding.finding_id) &&
                   ` · ${t.findingStatus[model.findingStatus.get(finding.finding_id)!]}`}
               </h3>
@@ -175,18 +197,28 @@ export function DetailPanel({
                   {step.reason}
                 </p>
               )}
+              {subject.type === "step" && !subject.ghost && (
+                <StepContractDetail step={step} t={t} />
+              )}
               <Label>{t.inCode}</Label>
               <Evidence ids={step.evidence_ids ?? []} model={model} t={t} />
             </section>
           )}
-          {report && base && head && (
-            <p className="mt-auto pt-2 text-[11.5px] leading-4 text-ink-3">
-              {t.refs} <span className="font-mono">{base}</span> →{" "}
-              <span className="font-mono">{head}</span>
-            </p>
-          )}
         </div>
-      </ScrollArea>
+      </div>
+      {onNext && (
+        <div className="flex shrink-0 justify-end border-t border-line px-3 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onNext}
+            className="rounded-full px-3 text-[13px] text-ink-2"
+          >
+            {t.nextChange}
+            <ChevronRight data-icon="inline-end" />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -194,6 +226,40 @@ export function DetailPanel({
 function Label({ children }: { children: React.ReactNode }) {
   return (
     <h3 className="text-[12px] leading-4 font-medium text-ink-3">{children}</h3>
+  )
+}
+
+/** Only explicit source-backed contracts are shown; old reports stay readable. */
+function StepContractDetail({ step, t }: { step: MapStep; t: Strings }) {
+  const contract = step.contract
+  return (
+    <section className="flex flex-col gap-2 border-t border-line pt-3">
+      <Label>{t.ioContract}</Label>
+      {contract ? (
+        <dl className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px] leading-[19px]">
+          <dt className="text-ink-3">{t.contractInput}</dt>
+          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
+            {contract.input}
+          </dd>
+          <dt className="text-ink-3">{t.contractOutput}</dt>
+          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
+            {contract.output}
+          </dd>
+          {contract.constraints && (
+            <>
+              <dt className="text-ink-3">{t.contractConstraints}</dt>
+              <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
+                {contract.constraints}
+              </dd>
+            </>
+          )}
+        </dl>
+      ) : (
+        <p className="text-[13px] leading-[19px] text-ink-3">
+          {t.contractMissing}
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -211,13 +277,14 @@ function CodeRow({
     <div
       className={cn(
         "grid grid-cols-[36px_minmax(0,1fr)] items-baseline gap-2 rounded-[10px] px-2.5 py-1.5",
-        tone === "before" ? "bg-risk-bg" : "bg-change-bg"
+        tone === "before" ? "bg-risk-bg" : "bg-ok-bg"
       )}
     >
-      <span className="text-[11.5px] leading-[18px] text-ink-3">{label}</span>
+      <span className="text-[12px] leading-[18px] text-ink-3">{label}</span>
+      {/* Code keeps its lines; one that is too long scrolls instead of breaking. */}
       <code
         className={cn(
-          "text-[12px] leading-[18px] [overflow-wrap:anywhere] whitespace-pre-wrap",
+          "block [scrollbar-width:thin] overflow-x-auto text-[12px] leading-[18px] whitespace-pre",
           tone === "before"
             ? "text-ink-2 line-through decoration-risk/50"
             : "text-ink"
@@ -235,6 +302,7 @@ function ChangeDetail({
   t,
   focused,
   titled,
+  step,
 }: {
   coupon: Coupon
   model: Model
@@ -242,6 +310,7 @@ function ChangeDetail({
   focused: boolean
   /** The panel title already says what changed. */
   titled: boolean
+  step?: MapStep
 }) {
   const ref = React.useRef<HTMLElement>(null)
   React.useEffect(() => {
@@ -258,8 +327,14 @@ function ChangeDetail({
       )
     )
     .filter((item) => item !== undefined)
-  const where = change.after?.evidence_ids ?? change.before?.evidence_ids ?? []
+  const where = [
+    ...new Set([
+      ...(change.after?.evidence_ids ?? change.before?.evidence_ids ?? []),
+      ...(step?.evidence_ids ?? []),
+    ]),
+  ]
   const summary = change.explanation?.summary
+  const detail = detailOf(tests, status)
   const hasCode = Boolean(
     change.before ||
     change.after ||
@@ -268,12 +343,24 @@ function ChangeDetail({
     tests?.items?.length
   )
   return (
-    <section ref={ref} className="flex scroll-mt-3 flex-col gap-3">
-      {!titled && (
-        <p className="text-[17px] leading-[26px] font-medium text-ink">
-          {summary ?? t.changeKind[change.kind]}
+    <section
+      ref={ref}
+      data-tone={coupon.tone}
+      className="flex scroll-mt-3 flex-col gap-3"
+    >
+      <div className="flex items-start gap-2">
+        <NumberDisc no={coupon.no} className="mt-[3px]" />
+        <p
+          className={cn(
+            "min-w-0 flex-1 font-medium text-ink",
+            titled ? "text-[13px] leading-[26px]" : "text-[18px] leading-[26px]"
+          )}
+        >
+          {titled
+            ? t.changeNo(coupon.no)
+            : (summary ?? t.changeKind[change.kind])}
         </p>
-      )}
+      </div>
       {change.explanation?.effect && (
         <div className="flex flex-col gap-1">
           <Label>{t.effect}</Label>
@@ -282,12 +369,18 @@ function ChangeDetail({
           </p>
         </div>
       )}
+      {step && <StepContractDetail step={step} t={t} />}
       <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-        <StatusMark
-          status={status}
-          label={tests ? t.verdict[tests.verdict] : t.status.unsure}
-          className="text-[13px] leading-[18px] font-medium text-ink [&_svg]:size-4"
-        />
+        <Label>{t.testEvidence}</Label>
+        {/* The same word as on the card, then what it rests on. */}
+        <p className="text-[13px] leading-[18px] text-ink-2">
+          <StatusMark
+            status={status}
+            label={t.coverage[coverageKind(tests)]}
+            className="align-top font-medium text-ink [&_svg]:size-4"
+          />
+          {detail && <span> · {t.verdictDetail[detail]}</span>}
+        </p>
         {tests?.note && (
           <p className="text-[13px] leading-[19px] text-ink-2">
             {localizeNote(tests.note, model.lang)}
@@ -299,11 +392,12 @@ function ChangeDetail({
           key={item.finding.finding_id}
           className="rounded-[12px] bg-risk-bg px-3 py-2.5"
         >
-          <p className="text-[12px] leading-4 font-medium text-risk">
-            {item.status === "introduced"
-              ? t.newRisk
-              : t.findingStatus[item.status]}{" "}
-            · {t.severity[item.finding.severity]}
+          <p className="text-[12px] leading-4 font-medium text-risk-ink">
+            {t.riskTypes}：{t.category[categoryOf(item.finding)]} ·{" "}
+            {t.severityLabel}：{t.severity[item.finding.severity]}
+            <span className="ml-2 font-normal">
+              {t.findingStatus[item.status]}
+            </span>
           </p>
           <p className="mt-1 text-[13px] leading-[19px] text-ink">
             {item.finding.statement}
@@ -312,7 +406,7 @@ function ChangeDetail({
       ))}
       {hasCode && (
         <Collapsible>
-          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-[12.5px] leading-5 font-medium text-ink-2 hover:text-ink">
+          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-[13px] leading-5 font-medium text-ink-2 hover:text-ink">
             <ChevronRight
               aria-hidden
               className="size-3.5 transition-transform duration-160 group-data-[state=open]:rotate-90"
@@ -362,7 +456,7 @@ function ChangeDetail({
                     return (
                       <li
                         key={item.test_id}
-                        className="font-mono text-[11.5px] leading-[17px] [overflow-wrap:anywhere] text-ink-2"
+                        className="font-mono text-[12px] leading-[17px] [overflow-wrap:anywhere] text-ink-2"
                       >
                         {name ?? file}{" "}
                         <span className="text-ink-3">{name ? file : ""}</span>

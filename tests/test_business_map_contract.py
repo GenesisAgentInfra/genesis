@@ -96,6 +96,21 @@ def test_step_claims_need_matching_evidence():
     )
 
 
+def test_step_contract_requires_both_sides_and_evidence():
+    rejects(
+        "complete",
+        lambda data: step(data, "step_choose_path").update(contract={"input": "amount"}),
+        "output",
+    )
+    rejects(
+        "partial",
+        lambda data: step(data, "step_notify_unknown").update(
+            evidence_ids=[], contract={"input": "report", "output": "notification"}
+        ),
+        "contract needs code evidence",
+    )
+
+
 def test_static_fact_support_needs_analyzer_anchors():
     def unanchored_static_step(data):
         step(data, "step_choose_path").update(

@@ -4,6 +4,7 @@ import {
   CircleCheck,
   CircleHelp,
   CircleX,
+  Ellipsis,
   Flag,
   Minus,
   Pencil,
@@ -15,48 +16,30 @@ import {
   Workflow,
 } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
+import { ReviewBadge } from "@/components/review-badge"
 import { BaseNode } from "@/components/base-node"
 import { cn } from "@/lib/utils"
-import { statusOf, type TestStatus } from "@/model"
+import { matches, statusOf, type TestStatus } from "@/model"
 import type { StepKind } from "@/types"
+import { coverageKind, shortSummary } from "@/presentation"
 import { RING_MS, TAG_FROM, TAG_MS, outOfFocus, useCanvas } from "./context"
 import type { StepNode as StepNodeType } from "./graph"
 
-const TILE: Record<StepKind, { icon: typeof Play; className: string }> = {
-  trigger: { icon: Play, className: "bg-[#e6f5ec] text-[#1a7f45]" },
-  action: { icon: Workflow, className: "bg-[#efeafd] text-[#6a3fd4]" },
-  decision: { icon: Split, className: "bg-[#ffeee1] text-[#c9530a]" },
-  external: { icon: Plug, className: "bg-[#fff4d1] text-[#9a6200]" },
-  result: { icon: Flag, className: "bg-[#efeff1] text-[#4f5057]" },
+/** One glyph per kind of step; its pastel pair comes from the tokens (see index.css). */
+const TILE: Record<StepKind, typeof Play> = {
+  trigger: Play,
+  action: Workflow,
+  decision: Split,
+  external: Plug,
+  result: Flag,
 }
 
-/** What a change did to a step, each with its own colour, border and corner mark. */
-const TONE = {
-  added: {
-    icon: Plus,
-    border: "border-ok/55",
-    strong: "border-ok",
-    box: "bg-ok-bg",
-    ink: "text-ok",
-    ring: "rgb(23 128 61 / 0.14)",
-  },
-  removed: {
-    icon: Minus,
-    border: "border-dashed border-risk/55",
-    strong: "border-dashed border-risk",
-    box: "bg-risk-bg",
-    ink: "text-risk",
-    ring: "rgb(217 45 32 / 0.12)",
-  },
-  modified: {
-    icon: Pencil,
-    border: "border-change/55",
-    strong: "border-change",
-    box: "bg-change-bg",
-    ink: "text-change-ink",
-    ring: "rgb(226 134 11 / 0.14)",
-  },
-} as const
+/**
+ * What a change did to a step: put it there, took it away, or altered it. The glyph at the
+ * card's corner says which; the card's colour is kept for how much the change needs a look.
+ */
+const DID = { added: Plus, removed: Minus, modified: Pencil } as const
 
 /** One icon and one colour per test status, wherever it shows. */
 export const STATUS_ICON: Record<
@@ -64,8 +47,33 @@ export const STATUS_ICON: Record<
   { icon: typeof CircleCheck; className: string }
 > = {
   tested: { icon: CircleCheck, className: "text-ok" },
-  untested: { icon: CircleX, className: "text-risk" },
+  untested: { icon: CircleX, className: "text-warn" },
   unsure: { icon: CircleHelp, className: "text-ink-3" },
+}
+
+/**
+ * The number a change goes by everywhere on the page: on its card, in the list and in the
+ * stepper.
+ */
+export function NumberDisc({
+  no,
+  className,
+}: {
+  no: number
+  className?: string
+}) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex h-5 min-w-5 shrink-0 items-center justify-center gap-px rounded-full px-1 text-[12px] leading-none font-medium tabular-nums",
+        "bg-tone-ink text-card",
+        className
+      )}
+    >
+      {no}
+    </span>
+  )
 }
 
 export function KindTile({
@@ -77,16 +85,18 @@ export function KindTile({
   className?: string
   small?: boolean
 }) {
-  const tile = TILE[kind]
-  const Icon = tile.icon
+  const Icon = TILE[kind]
   return (
     <span
       className={cn(
         "flex shrink-0 items-center justify-center transition-[filter,opacity] duration-160",
         small ? "size-7 rounded-[8px]" : "size-8 rounded-[9px]",
-        tile.className,
         className
       )}
+      style={{
+        background: `var(--tile-${kind}-bg)`,
+        color: `var(--tile-${kind}-ink)`,
+      }}
     >
       <Icon
         aria-hidden
@@ -134,6 +144,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     dimAll,
     selected,
     knownRisks,
+    filter,
     run,
     armed,
     animate,
@@ -146,6 +157,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     coupons,
     isNew,
     risk,
+    alerts = [],
     ghost,
     loops,
     removedFlow,
@@ -155,6 +167,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     hasIn,
     hasOut,
     slot,
+    stub,
   } = data
 
   const isCurrent = current === id
@@ -166,15 +179,32 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
   const arrive = trail?.steps.get(id)
   const visited = arrive !== undefined
   const lit = isCurrent || reached || isSelected
+  // Narrowed down to one kind of change, the cards of every other kind step back.
+  const filteredOut =
+    filter !== undefined &&
+    coupons.length > 0 &&
+    !coupons.some((coupon) =>
+      matches(
+        {
+          risky: coupon.risky,
+          status: statusOf(coupon.change.tests),
+          categories: coupon.categories,
+        },
+        filter
+      )
+    )
   // A removed flow is shown whole, except behind a change off the map, where every flow dims.
   const quiet =
     (trailActive && !visited) ||
+    (filteredOut && !lit) ||
     (focus &&
       !trailActive &&
       (dimAll ||
         (!removedFlow &&
           (current !== undefined || routeSteps.size > 0) &&
-          !lit)))
+          !lit &&
+          coupons.length === 0 &&
+          !routeSteps.has(id))))
   const tagged = far.has(id) && armed
   const litDelay = visited
     ? trail!.animate
@@ -187,42 +217,35 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
   // A card holding several changes shows the current one, else the most urgent of them.
   const shown = coupons.find((coupon) => coupon.no === stopNo) ?? coupons[0]
   const change = shown?.change
-  const summary = change?.explanation?.summary
+  const summary = change ? shortSummary(change) : undefined
   const status = change && !removedFlow ? statusOf(change.tests) : undefined
   // A removed step is named after its change; the line of code the CLI names it by comes last.
   const title = ghost ? (summary ?? step.name) : step.name
   const titleIsCode = skeleton || (ghost && !summary)
 
-  // What the change did to this step: put it there, took it away, or altered it. Each has
-  // its own colour, border and corner mark, so the three read apart without a word.
-  const tone =
-    coupons.length > 0 && !removedFlow
-      ? TONE[ghost ? "removed" : isNew ? "added" : "modified"]
-      : undefined
+  // A changed card takes the colour of what it asks of the reader (a new risk, no test, a
+  // verdict nobody can give, a test that checks it); the glyph at its corner says what the
+  // change did to the step.
+  const tone = coupons.length > 0 && !removedFlow ? shown?.tone : undefined
+  const Did = tone
+    ? DID[ghost ? "removed" : isNew ? "added" : "modified"]
+    : undefined
   const card = cn(
     "border-line bg-card hover:ring-0",
     "transition-[box-shadow,border-color,background-color] [transition-delay:var(--lit-delay)] duration-160",
     quiet
-      ? "bg-card/75 shadow-none"
+      ? "shadow-none"
       : "shadow-[var(--shadow-node)] hover:shadow-[var(--shadow-node-hover)]",
-    tone && "border-[1.5px]",
-    tone && !isCurrent && tone.border,
-    isCurrent &&
-      tone &&
-      cn(
-        tone.strong,
-        "shadow-[0_0_0_3px_var(--tone-ring),var(--shadow-node-hover)]"
-      ),
-    reached && "border-change/45",
-    visited && !isCurrent && (tone ? tone.strong : "border-[#3a3b40]/35"),
-    isSelected &&
-      "border-select shadow-[0_0_0_3px_rgb(47_111_235_/_0.14),var(--shadow-node-hover)]",
+    tone && "border-[1.5px] border-tone/55",
+    reached && "border-edge-strong/45",
+    visited && !isCurrent && (tone ? "border-tone" : "border-edge-strong/35"),
+    isCurrent && tone && "ring-tone",
+    isSelected && "ring-select",
     ghost && "border-dashed"
   )
-  const content = cn(
-    "transition-opacity [transition-delay:var(--lit-delay)] duration-160",
-    quiet && "opacity-60"
-  )
+  // Quiet the surface and icon, not the words needed to read the surrounding path.
+  const content =
+    "transition-opacity [transition-delay:var(--lit-delay)] duration-160"
   // Outside the module in focus the card steps back.
   const away = outOfFocus(canvas, id.slice(0, Math.max(id.indexOf("::"), 0)))
   const style = {
@@ -233,37 +256,21 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     display: "flex",
     flexDirection: "column" as const,
     justifyContent: "center",
-    "--tone-ring": tone?.ring,
     opacity: away ? 0.35 : undefined,
     transition: "opacity 160ms",
     "--lit-delay": `${litDelay}ms`,
   } as React.CSSProperties
   const changed = coupons.length > 0 && !removedFlow
-  // Zoomed far out a change becomes a solid amber block with its test status, so the first
-  // look shows where things changed without reading a word.
+  // Zoomed far out a change becomes a solid block of its colour, so the first look shows
+  // where things changed and how much they need a look without reading a word.
   const marks = changed && (
-    <>
-      <span
-        aria-hidden
-        className={cn(
-          "far-mark pointer-events-none absolute -inset-px",
-          compact ? "rounded-[14px]" : "rounded-[18px]"
-        )}
-      />
-      {status && (
-        <span
-          aria-hidden
-          className={cn(
-            "far-dot pointer-events-none absolute",
-            status === "tested"
-              ? "bg-ok"
-              : status === "untested"
-                ? "bg-risk"
-                : "bg-ink-3"
-          )}
-        />
+    <span
+      aria-hidden
+      className={cn(
+        "far-mark pointer-events-none absolute -inset-px",
+        compact ? "rounded-[14px]" : "rounded-[18px]"
       )}
-    </>
+    />
   )
 
   const ringed = (isCurrent && armed && animate) || (visited && trail!.animate)
@@ -306,7 +313,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     <span
       key={`tag-${run}`}
       className={cn(
-        "pointer-events-none absolute -top-2.5 right-3 z-10 rounded-full bg-card px-2 py-px text-[11px] leading-4 font-medium whitespace-nowrap text-change-ink shadow-[var(--shadow-node)] ring-1 ring-change/45",
+        "pointer-events-none absolute -top-2.5 right-3 z-10 rounded-full bg-card px-2 py-px text-[12px] leading-4 font-medium whitespace-nowrap text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-edge-strong/40",
         animate && "tag-in"
       )}
       style={
@@ -321,18 +328,61 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
   )
 
   const badges: React.ReactNode[] = []
-  if (isNew) badges.push(<Badge key="new" tone="ok" label={t.newStep} />)
-  if (ghost) badges.push(<Badge key="removed" tone="risk" label={t.removed} />)
-  if (risk === "new")
-    badges.push(<Badge key="risk" tone="risk" label={t.newRisk} />)
-  else if (risk === "known" && knownRisks)
-    badges.push(<Badge key="risk" tone="risk" label={t.knownRisk} />)
+  if (isNew)
+    badges.push(
+      <Badge key="new" variant="secondary">
+        {t.newStep}
+      </Badge>
+    )
+  if (ghost)
+    badges.push(
+      <Badge key="removed" variant="secondary">
+        {t.removed}
+      </Badge>
+    )
+  if (
+    alerts.length ||
+    shown?.risky ||
+    risk === "new" ||
+    (risk === "known" && knownRisks)
+  )
+    badges.push(<ReviewBadge key="risk" risky t={t} count={alerts.length} />)
+  else if (change && status && status !== "tested")
+    badges.push(
+      <ReviewBadge key="validation" risky={false} status={status} t={t} />
+    )
   if (step.resolution !== "resolved")
     badges.push(
       <span key="res">
         {step.resolution === "candidate" ? t.unconfirmed : t.unknown}
       </span>
     )
+
+  // Steps left out after this point: a dotted pill that opens the whole flow.
+  if (stub) {
+    return (
+      <div style={style}>
+        <div
+          data-slot="step-card"
+          title={t.openStub}
+          className={cn(
+            "relative flex h-8 items-center gap-1 rounded-full border border-dashed border-ink-3/50 bg-card pr-3 pl-2 text-[13px] leading-5 text-ink-2 transition-[color,border-color] duration-160 hover:border-ink-3 hover:text-ink"
+          )}
+        >
+          {hasIn && (
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="in"
+              isConnectable={false}
+            />
+          )}
+          <Ellipsis aria-hidden className="size-3.5 shrink-0" />
+          <span className="whitespace-nowrap">{step.name}</span>
+        </div>
+      </div>
+    )
+  }
 
   if (compact) {
     return (
@@ -367,8 +417,8 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
             <span
               title={step.name}
               className={cn(
-                "min-w-0 truncate text-[13.5px] leading-5 font-medium text-ink",
-                skeleton && "font-mono text-[12.5px] font-normal",
+                "min-w-0 truncate text-[14px] leading-5 font-medium text-ink",
+                skeleton && "font-mono text-[13px] font-normal",
                 removedFlow &&
                   "text-ink-2 line-through decoration-ink decoration-[1.5px]"
               )}
@@ -394,21 +444,22 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
       <BaseNode
         data-slot="step-card"
         data-changed={changed ? "" : undefined}
+        data-tone={tone}
         tabIndex={-1}
         className={cn(card, "rounded-[18px] p-3")}
       >
         {ring}
         {tag}
         {marks}
-        {tone && (
+        {tone && shown && (
+          <NumberDisc no={shown.no} className="absolute -top-2 -left-2 z-[7]" />
+        )}
+        {Did && (
           <span
             aria-hidden
-            className={cn(
-              "absolute -top-2 -right-2 z-[7] flex size-[18px] items-center justify-center rounded-full border-[1.5px] border-current bg-card",
-              tone.ink
-            )}
+            className="absolute -top-2 -right-2 z-[7] flex size-[18px] items-center justify-center rounded-full border-[1.5px] border-current bg-card text-tone-ink"
           >
-            <tone.icon className="size-2.5" strokeWidth={2.75} />
+            <Did className="size-2.5" strokeWidth={2.75} />
           </span>
         )}
         {relations}
@@ -434,7 +485,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
                 title={title}
                 className={cn(
                   "line-clamp-2 text-[14px] leading-5 font-medium [overflow-wrap:anywhere] text-ink",
-                  titleIsCode && "font-mono text-[12.5px] font-normal",
+                  titleIsCode && "font-mono text-[13px] font-normal",
                   ghost &&
                     !summary &&
                     "text-ink-2 line-through decoration-ink-3",
@@ -454,25 +505,23 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
           </div>
 
           {change && (
-            <div
-              className={cn(
-                "mt-2.5 rounded-[12px] px-2.5 py-2 transition-colors duration-160",
-                tone ? tone.box : "bg-field"
-              )}
-            >
+            <div className="mt-2 border-t border-line/60 pt-2">
               {!(ghost && summary) && (
                 <p
                   className={cn(
-                    "mb-1 line-clamp-3 text-[12.5px] leading-[18px]",
-                    tone ? tone.ink : "text-ink-2"
+                    "mb-2 line-clamp-2 text-[13px] leading-[18px]",
+                    tone ? "text-tone-ink" : "text-ink-2"
                   )}
                 >
                   {summary ?? t.changeKind[change.kind]}
                 </p>
               )}
-              <div className="flex items-center justify-between gap-2 text-[11.5px] leading-4 text-ink-2">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[12px] leading-4 text-ink-2">
                 {status ? (
-                  <StatusMark status={status} label={t.status[status]} />
+                  <StatusMark
+                    status={status}
+                    label={t.coverage[coverageKind(change.tests)]}
+                  />
                 ) : (
                   <span />
                 )}
@@ -504,18 +553,5 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
         )}
       </BaseNode>
     </div>
-  )
-}
-
-function Badge({ tone, label }: { tone: "ok" | "risk"; label: string }) {
-  return (
-    <span
-      className={cn(
-        "rounded-[5px] px-1 text-[11px] leading-4 font-medium",
-        tone === "ok" ? "bg-ok-bg text-ok" : "bg-risk-bg text-risk"
-      )}
-    >
-      {label}
-    </span>
   )
 }

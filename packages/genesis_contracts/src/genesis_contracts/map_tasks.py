@@ -25,6 +25,8 @@ from .business_map import (
     Name,
     OmissionReason,
     ResolutionStatus,
+    RiskCategory,
+    StepContract,
     StepKind,
     SymbolId,
     Text,
@@ -137,6 +139,7 @@ class SubmittedStep(ContractModel):
     anchors: tuple[Anchor, ...] = ()
     resolution: ResolutionStatus = ResolutionStatus.resolved
     reason: Text | None = None
+    contract: StepContract | None = None
     # Why one step is enough for a large function this step calls without describing it.
     unexpanded_reason: Text | None = None
 
@@ -169,6 +172,7 @@ class SubmittedObservation(ContractModel):
 
     statement: Text
     severity: Literal[Severity.info, Severity.low, Severity.medium] = Severity.low
+    category: RiskCategory | None = None
     step: Identifier
     evidence: tuple[EvidenceCite, ...] = Field(min_length=1)
     gap: Text | None = None
@@ -184,6 +188,7 @@ class ChangeAssessment(ContractModel):
 
     change_id: Identifier
     summary: Text
+    short_summary: str | None = Field(default=None, min_length=1, max_length=120)
     effect: Text | None = None
     verdict: Literal["covered", "reached_only", "not_reached", "unknown"] | None = None
     note: Text | None = None
