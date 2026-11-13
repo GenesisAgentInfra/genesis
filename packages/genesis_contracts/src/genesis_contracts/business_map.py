@@ -14,7 +14,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, JsonValue, model_validator
 
 from .fingerprint import FINGERPRINT_PATTERN
 from .models import (
@@ -167,8 +167,9 @@ class StepContract(ContractModel):
     either side is unknown; do not infer required fields or validation from names.
     """
 
-    input: Text
-    output: Text
+    # Text is accepted only for compatibility with previously generated reports.
+    input: dict[str, JsonValue] | Text
+    output: dict[str, JsonValue] | Text
     constraints: Text | None = None
 
 

@@ -1,47 +1,25 @@
 import * as React from "react"
-import { ChevronRight, Play, X } from "lucide-react"
+import { ArrowUpRight, Check, ChevronRight, Copy, Play, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardHeader, CardFooter, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Evidence } from "@/components/evidence"
+import { ReviewBadge } from "@/components/review-badge"
 import { KindTile, NumberDisc, StatusMark } from "@/canvas/step-node"
-import { cn } from "@/lib/utils"
-import {
-  localizeNote,
-  localizeReason,
-  type Strings,
-  type VerdictDetail,
-} from "@/i18n"
-import {
-  statusOf,
-  type Coupon,
-  type FlowView,
-  type Model,
-  type TestStatus,
-} from "@/model"
-import type { ChangeSide, CoverageAssessment, MapStep } from "@/types"
-import { categoryOf, coverageKind } from "@/presentation"
+import { localizeNote, type Strings } from "@/i18n"
+import { statusOf, type Coupon, type FlowView, type Model } from "@/model"
+import type { MapFinding, MapStep, StepContract } from "@/types"
+import { categoryOf, coverageKind, sourceLinkOf } from "@/presentation"
 
-/**
- * What a verdict rests on, said after the one word the page uses for it everywhere. A
- * change that is tested needs no more than that word.
- */
-function detailOf(
-  tests: CoverageAssessment | undefined,
-  status: TestStatus
-): VerdictDetail | undefined {
-  if (!tests || tests.verdict === "covered") return undefined
-  if (tests.verdict === "not_reached") return "not_reached"
-  if (tests.verdict === "reached_only")
-    return status === "untested" ? "reached_untested" : "reached_unsure"
-  return "unknown"
-}
-
-/** What the panel is about: a step (changed or not), a change off the map, or a removed flow. */
 export type PanelSubject =
   | {
       type: "step"
@@ -57,15 +35,13 @@ interface PanelProps {
   model: Model
   t: Strings
   subject: PanelSubject
-  /** The stop on show, scrolled to when the step holds several changes. */
   focus?: number
-  /** Walk the flow this step belongs to, from its trigger to its end. */
   onWalk?: () => void
   onNext?: () => void
   onClose: () => void
 }
 
-/** What a step or a change is, what it means for users, and what the tests say about it. */
+/** A stable inspector: explanation and structured data each get their own reading space. */
 export function DetailPanel({
   model,
   t,
@@ -77,222 +53,244 @@ export function DetailPanel({
 }: PanelProps) {
   const coupons = subject.coupons
   const step = subject.type === "step" ? subject.step : undefined
-  // A risk the change itself carries is shown with that change, not a second time here.
+  const active = coupons.find((coupon) => coupon.no === focus) ?? coupons[0]
+  const findings =
+    subject.type === "step" && subject.view
+      ? subject.view.findings.filter((finding) =>
+          (step?.finding_ids ?? []).includes(finding.finding_id)
+        )
+      : []
   const carried = new Set(
     coupons.flatMap((coupon) => coupon.change.finding_ids ?? [])
   )
-  const findings =
-    subject.type === "step" && subject.view
-      ? (subject.step.finding_ids ?? [])
-          .filter((id) => !carried.has(id))
-          .map((id) =>
-            subject.view!.findings.find((finding) => finding.finding_id === id)
-          )
-          .filter((finding) => finding !== undefined)
-      : []
-  const ghostSummary =
-    subject.type === "step" && subject.ghost
-      ? coupons[0]?.change.explanation?.summary
-      : undefined
   const title =
     subject.type === "step"
-      ? (ghostSummary ?? subject.step.name)
+      ? step!.name
       : subject.type === "offMap"
         ? t.offMap
         : subject.name
-  const titleIsCode =
-    (subject.type === "step" &&
-      (subject.view?.flow.stage === "skeleton" ||
-        (subject.ghost && !ghostSummary))) ||
-    (subject.type === "removedFlow" && subject.code)
-  const subtitle =
-    subject.type === "step"
-      ? subject.ghost
-        ? t.removed
-        : t.stepKind[subject.step.kind]
-      : subject.type === "offMap"
-        ? t.offMapHint
-        : t.removed
+  const removed =
+    subject.type === "removedFlow" || (subject.type === "step" && subject.ghost)
+  const evidenceIds = [
+    ...new Set([
+      ...(active?.change.after?.evidence_ids ??
+        active?.change.before?.evidence_ids ??
+        []),
+      ...(step?.evidence_ids ?? []),
+    ]),
+  ]
+  const source = sourceLinkOf(model.payload, evidenceIds)
+  const [tab, setTab] = React.useState("overview")
 
   return (
-    <div className="flex h-full max-h-[inherit] min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2.5 px-4 pt-3.5 pb-3">
-        {step && <KindTile kind={step.kind} small />}
-        <div className="min-w-0 flex-1">
-          <h2
-            title={title}
-            className={cn(
-              "truncate text-[14px] leading-5 font-medium text-ink",
-              titleIsCode && "font-mono text-[13px]"
-            )}
-          >
-            {title}
-          </h2>
-          <p className="truncate text-[12px] leading-4 text-ink-3">
-            {subtitle}
-          </p>
-        </div>
-        {onWalk && (
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={onWalk}
-            className="shrink-0 rounded-full px-2.5 text-[12px] text-ink-2"
-          >
-            <Play data-icon="inline-start" />
-            {t.runFlow}
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onClose}
-          aria-label={t.close}
-          className="-mr-1 text-ink-3"
-        >
-          <X />
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1 [scrollbar-width:thin] overflow-y-auto overscroll-contain">
-        <div className="flex flex-col gap-6 px-4 pb-5">
-          {coupons.map((coupon) => (
-            <ChangeDetail
-              key={`${coupon.no}-${coupon.primary}`}
-              coupon={coupon}
-              model={model}
-              t={t}
-              focused={coupons.length > 1 && focus === coupon.no}
-              // A removed step is already titled with its change's summary.
-              titled={Boolean(ghostSummary)}
-              step={
-                subject.type === "step" && !subject.ghost ? step : undefined
-              }
-            />
-          ))}
-          {findings.map((finding) => (
-            <section
-              key={finding.finding_id}
-              className="rounded-[12px] bg-risk-bg px-3 py-2.5"
-            >
-              <h3 className="text-[12px] leading-4 font-medium text-risk-ink">
-                {t.riskTypes}：{t.category[categoryOf(finding)]} ·{" "}
-                {t.severityLabel}：{t.severity[finding.severity]}
-                {model.findingStatus.get(finding.finding_id) &&
-                  ` · ${t.findingStatus[model.findingStatus.get(finding.finding_id)!]}`}
-              </h3>
-              <p className="mt-1 text-[13px] leading-[19px] text-ink">
-                {finding.statement}
-              </p>
-            </section>
-          ))}
-          {subject.type === "removedFlow" && !coupons.length && (
-            <p className="text-[14px] leading-[22px] text-ink-2">
-              {t.flowGone}
-            </p>
-          )}
-          {step && !coupons.length && (
-            <section className="flex flex-col gap-2">
-              {step.reason && (
-                <p className="text-[13px] leading-[19px] text-ink-2">
-                  {step.reason}
-                </p>
-              )}
-              {subject.type === "step" && !subject.ghost && (
-                <StepContractDetail step={step} t={t} />
-              )}
-              <Label>{t.inCode}</Label>
-              <Evidence ids={step.evidence_ids ?? []} model={model} t={t} />
-            </section>
-          )}
-        </div>
-      </div>
-      {onNext && (
-        <div className="flex shrink-0 justify-end border-t border-line px-3 py-2">
+    <Card className="h-full max-h-[inherit] min-h-0 gap-0 rounded-2xl py-0 shadow-[var(--shadow-float)]">
+      <CardHeader className="shrink-0 gap-4 p-5 pb-4">
+        <div className="flex min-w-0 items-start gap-3">
+          {step && <KindTile kind={step.kind} small />}
+          <div className="min-w-0 flex-1">
+            <CardTitle>
+              <h2 className="text-[16px] leading-6 [overflow-wrap:anywhere]">
+                {title}
+              </h2>
+            </CardTitle>
+          </div>
           <Button
             variant="ghost"
-            size="sm"
-            onClick={onNext}
-            className="rounded-full px-3 text-[13px] text-ink-2"
+            size="icon-sm"
+            onClick={onClose}
+            aria-label={t.close}
+            className="-mt-0.5 -mr-1 text-ink-3"
           >
+            <X />
+          </Button>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {active ? (
+              <ReviewBadge
+                risky={active.risky}
+                status={statusOf(active.change.tests)}
+                t={t}
+              />
+            ) : findings.length ? (
+              <ReviewBadge risky t={t} />
+            ) : (
+              <Badge variant="secondary">
+                {removed ? t.removed : step ? t.stepKind[step.kind] : t.offMap}
+              </Badge>
+            )}
+          </div>
+          {source ? (
+            <Button asChild variant="outline" size="sm">
+              <a href={source.url} target="_blank" rel="noopener noreferrer">
+                {source.exact ? t.githubCode : t.githubCommitted}
+                <ArrowUpRight data-icon="inline-end" />
+              </a>
+            </Button>
+          ) : onWalk ? (
+            <Button variant="outline" size="sm" onClick={onWalk}>
+              <Play data-icon="inline-start" />
+              {t.runFlow}
+            </Button>
+          ) : null}
+        </div>
+      </CardHeader>
+      <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
+        <div className="shrink-0 border-b border-line px-5">
+          <TabsList variant="line" className="h-10 gap-5 p-0">
+            <TabsTrigger value="overview" className="px-0 pb-3">
+              {t.changeOverview}
+            </TabsTrigger>
+            {step && !removed && (
+              <TabsTrigger value="contract" className="px-0 pb-3">
+                {t.ioContract}
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="min-w-0 p-5">
+            <TabsContent value="overview" className="min-w-0 space-y-6">
+              {coupons.map((coupon) => (
+                <ChangeDetail
+                  key={`${coupon.no}-${coupon.primary}`}
+                  coupon={coupon}
+                  model={model}
+                  t={t}
+                  focused={coupons.length > 1 && focus === coupon.no}
+                  evidenceIds={step?.evidence_ids ?? []}
+                />
+              ))}
+              {findings
+                .filter((finding) => !carried.has(finding.finding_id))
+                .map((finding) => (
+                  <FindingDetail
+                    key={finding.finding_id}
+                    finding={finding}
+                    t={t}
+                  />
+                ))}
+              {!coupons.length && (
+                <>
+                  <p className="text-sm leading-6 [overflow-wrap:anywhere] text-ink-2">
+                    {removed ? t.flowGone : (step?.reason ?? t.unchangedStep)}
+                  </p>
+                  {(!source || !source.exact) && (
+                    <Evidence ids={evidenceIds} model={model} t={t} />
+                  )}
+                </>
+              )}
+            </TabsContent>
+            {step && !removed && (
+              <TabsContent value="contract" className="min-w-0">
+                <ContractDetail contract={step.contract} t={t} />
+              </TabsContent>
+            )}
+          </div>
+        </ScrollArea>
+      </Tabs>
+      {onNext && (
+        <CardFooter className="shrink-0 justify-end bg-card px-5 py-3">
+          <Button variant="ghost" size="sm" onClick={onNext}>
             {t.nextChange}
             <ChevronRight data-icon="inline-end" />
           </Button>
-        </div>
+        </CardFooter>
       )}
-    </div>
+    </Card>
   )
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+function FindingDetail({ finding, t }: { finding: MapFinding; t: Strings }) {
   return (
-    <h3 className="text-[12px] leading-4 font-medium text-ink-3">{children}</h3>
-  )
-}
-
-/** Only explicit source-backed contracts are shown; old reports stay readable. */
-function StepContractDetail({ step, t }: { step: MapStep; t: Strings }) {
-  const contract = step.contract
-  return (
-    <section className="flex flex-col gap-2 border-t border-line pt-3">
-      <Label>{t.ioContract}</Label>
-      {contract ? (
-        <dl className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px] leading-[19px]">
-          <dt className="text-ink-3">{t.contractInput}</dt>
-          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
-            {contract.input}
-          </dd>
-          <dt className="text-ink-3">{t.contractOutput}</dt>
-          <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
-            {contract.output}
-          </dd>
-          {contract.constraints && (
-            <>
-              <dt className="text-ink-3">{t.contractConstraints}</dt>
-              <dd className="min-w-0 [overflow-wrap:anywhere] text-ink-2">
-                {contract.constraints}
-              </dd>
-            </>
-          )}
-        </dl>
-      ) : (
-        <p className="text-[13px] leading-[19px] text-ink-3">
-          {t.contractMissing}
-        </p>
-      )}
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="destructive">{t.category[categoryOf(finding)]}</Badge>
+        <span className="text-xs text-ink-3">
+          {t.severityLabel} · {t.severity[finding.severity]}
+        </span>
+      </div>
+      <p className="text-sm leading-6 [overflow-wrap:anywhere] text-ink-2">
+        {finding.statement}
+      </p>
     </section>
   )
 }
 
-/** The changed code, before above after, so the two can be read at one glance. */
-function CodeRow({
-  side,
-  label,
-  tone,
+function ContractDetail({
+  contract,
+  t,
 }: {
-  side: ChangeSide
-  label: string
-  tone: "before" | "after"
+  contract?: StepContract
+  t: Strings
 }) {
+  if (
+    !contract ||
+    typeof contract.input === "string" ||
+    typeof contract.output === "string"
+  )
+    return <p className="text-sm leading-6 text-ink-3">{t.contractMissing}</p>
   return (
-    <div
-      className={cn(
-        "grid grid-cols-[36px_minmax(0,1fr)] items-baseline gap-2 rounded-[10px] px-2.5 py-1.5",
-        tone === "before" ? "bg-risk-bg" : "bg-ok-bg"
-      )}
-    >
-      <span className="text-[12px] leading-[18px] text-ink-3">{label}</span>
-      {/* Code keeps its lines; one that is too long scrolls instead of breaking. */}
-      <code
-        className={cn(
-          "block [scrollbar-width:thin] overflow-x-auto text-[12px] leading-[18px] whitespace-pre",
-          tone === "before"
-            ? "text-ink-2 line-through decoration-risk/50"
-            : "text-ink"
-        )}
-      >
-        {side.text}
-      </code>
+    <div className="space-y-5">
+      <JsonBlock value={contract.input} label={t.contractInput} t={t} />
+      <JsonBlock value={contract.output} label={t.contractOutput} t={t} />
     </div>
+  )
+}
+
+function JsonBlock({
+  value,
+  label,
+  t,
+}: {
+  value: Record<string, unknown>
+  label: string
+  t: Strings
+}) {
+  const json = JSON.stringify(value, null, 2)
+  const [copyState, setCopyState] = React.useState<"idle" | "copied" | "error">(
+    "idle"
+  )
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(json)
+      setCopyState("copied")
+    } catch {
+      setCopyState("error")
+    }
+  }
+  return (
+    <section className="min-w-0 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium">
+          {label}
+          <span className="ml-2 font-mono text-[11px] font-normal text-ink-3">
+            JSON
+          </span>
+        </h3>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={copy}
+          aria-label={`${copyState === "copied" ? t.copied : t.copyJson} · ${label}`}
+        >
+          {copyState === "copied" ? <Check /> : <Copy />}
+        </Button>
+      </div>
+      <pre className="max-w-full [scrollbar-width:thin] overflow-x-auto rounded-lg bg-field p-4 font-mono text-[12px] leading-5 text-ink">
+        <code>{json}</code>
+      </pre>
+      <span
+        role="status"
+        className={copyState === "error" ? "text-xs text-risk-ink" : "sr-only"}
+      >
+        {copyState === "copied"
+          ? t.copied
+          : copyState === "error"
+            ? t.copyFailed
+            : ""}
+      </span>
+    </section>
   )
 }
 
@@ -301,135 +299,97 @@ function ChangeDetail({
   model,
   t,
   focused,
-  titled,
-  step,
+  evidenceIds,
 }: {
   coupon: Coupon
   model: Model
   t: Strings
   focused: boolean
-  /** The panel title already says what changed. */
-  titled: boolean
-  step?: MapStep
+  evidenceIds: string[]
 }) {
   const ref = React.useRef<HTMLElement>(null)
   React.useEffect(() => {
-    if (focused)
-      ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    if (focused) ref.current?.scrollIntoView({ block: "nearest" })
   }, [focused])
   const { change } = coupon
   const tests = change.tests
   const status = statusOf(tests)
-  const risks = (change.finding_ids ?? [])
-    .map((id) =>
-      model.payload.report?.finding_changes?.find(
-        (item) => item.finding.finding_id === id
-      )
+  const risks = (change.finding_ids ?? []).flatMap((id) => {
+    const item = model.payload.report?.finding_changes?.find(
+      (item) => item.finding.finding_id === id
     )
-    .filter((item) => item !== undefined)
+    return item && item.status !== "resolved" ? [item] : []
+  })
   const where = [
     ...new Set([
       ...(change.after?.evidence_ids ?? change.before?.evidence_ids ?? []),
-      ...(step?.evidence_ids ?? []),
+      ...evidenceIds,
     ]),
   ]
-  const summary = change.explanation?.summary
-  const detail = detailOf(tests, status)
-  const hasCode = Boolean(
-    change.before ||
-    change.after ||
-    where.length ||
-    coupon.place.reason ||
-    tests?.items?.length
-  )
+  const source = sourceLinkOf(model.payload, where)
+  const hasLocalCode =
+    (!source || !source.exact) &&
+    (change.before || change.after || where.length > 0)
   return (
     <section
       ref={ref}
       data-tone={coupon.tone}
-      className="flex scroll-mt-3 flex-col gap-3"
+      className="min-w-0 scroll-mt-5 space-y-5"
     >
-      <div className="flex items-start gap-2">
-        <NumberDisc no={coupon.no} className="mt-[3px]" />
-        <p
-          className={cn(
-            "min-w-0 flex-1 font-medium text-ink",
-            titled ? "text-[13px] leading-[26px]" : "text-[18px] leading-[26px]"
-          )}
-        >
-          {titled
-            ? t.changeNo(coupon.no)
-            : (summary ?? t.changeKind[change.kind])}
-        </p>
+      <div className="flex items-start gap-2.5">
+        <NumberDisc no={coupon.no} className="mt-1" />
+        <h3 className="min-w-0 text-[17px] leading-7 font-medium [overflow-wrap:anywhere]">
+          {change.explanation?.summary ?? t.changeKind[change.kind]}
+        </h3>
       </div>
       {change.explanation?.effect && (
-        <div className="flex flex-col gap-1">
-          <Label>{t.effect}</Label>
-          <p className="text-[14px] leading-[22px] text-ink-2">
-            {change.explanation.effect}
-          </p>
-        </div>
-      )}
-      {step && <StepContractDetail step={step} t={t} />}
-      <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-        <Label>{t.testEvidence}</Label>
-        {/* The same word as on the card, then what it rests on. */}
-        <p className="text-[13px] leading-[18px] text-ink-2">
-          <StatusMark
-            status={status}
-            label={t.coverage[coverageKind(tests)]}
-            className="align-top font-medium text-ink [&_svg]:size-4"
-          />
-          {detail && <span> · {t.verdictDetail[detail]}</span>}
+        <p className="text-sm leading-6 [overflow-wrap:anywhere] text-ink-2">
+          {change.explanation.effect}
         </p>
+      )}
+      {risks.map((item) => (
+        <FindingDetail
+          key={item.finding.finding_id}
+          finding={item.finding}
+          t={t}
+        />
+      ))}
+      <Separator />
+      <section className="space-y-2.5">
+        <h3 className="text-sm font-medium">{t.testEvidence}</h3>
+        <StatusMark
+          status={status}
+          label={t.coverage[coverageKind(tests)]}
+          className="text-[13px] text-ink-2"
+        />
         {tests?.note && (
-          <p className="text-[13px] leading-[19px] text-ink-2">
+          <p className="text-[13px] leading-[21px] [overflow-wrap:anywhere] text-ink-2">
             {localizeNote(tests.note, model.lang)}
           </p>
         )}
-      </div>
-      {risks.map((item) => (
-        <div
-          key={item.finding.finding_id}
-          className="rounded-[12px] bg-risk-bg px-3 py-2.5"
-        >
-          <p className="text-[12px] leading-4 font-medium text-risk-ink">
-            {t.riskTypes}：{t.category[categoryOf(item.finding)]} ·{" "}
-            {t.severityLabel}：{t.severity[item.finding.severity]}
-            <span className="ml-2 font-normal">
-              {t.findingStatus[item.status]}
-            </span>
-          </p>
-          <p className="mt-1 text-[13px] leading-[19px] text-ink">
-            {item.finding.statement}
-          </p>
-        </div>
-      ))}
-      {hasCode && (
+      </section>
+      {hasLocalCode && (
         <Collapsible>
-          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-[13px] leading-5 font-medium text-ink-2 hover:text-ink">
-            <ChevronRight
-              aria-hidden
-              className="size-3.5 transition-transform duration-160 group-data-[state=open]:rotate-90"
-            />
-            <span className="group-data-[state=open]:hidden">{t.viewCode}</span>
-            <span className="hidden group-data-[state=open]:inline">
-              {t.hideCode}
-            </span>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="group -ml-2">
+              <ChevronRight className="group-data-[state=open]:rotate-90" />
+              {t.localCode}
+            </Button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-3 pt-2.5">
-            {(change.before || change.after) && (
-              <div className="flex flex-col gap-1.5">
-                {change.before && (
-                  <CodeRow
-                    side={change.before}
-                    label={t.before}
-                    tone="before"
-                  />
-                )}
-                {change.after && (
-                  <CodeRow side={change.after} label={t.after} tone="after" />
-                )}
-              </div>
+          <CollapsibleContent className="min-w-0 space-y-3 pt-3">
+            {[
+              { side: change.before, label: t.before },
+              { side: change.after, label: t.after },
+            ].map(
+              ({ side, label }) =>
+                side && (
+                  <section key={label} className="space-y-1.5">
+                    <h4 className="text-xs text-ink-3">{label}</h4>
+                    <pre className="max-w-full overflow-x-auto rounded-lg bg-field p-3 text-xs leading-5">
+                      <code>{side.text}</code>
+                    </pre>
+                  </section>
+                )
             )}
             <Evidence
               ids={where}
@@ -437,35 +397,6 @@ function ChangeDetail({
               t={t}
               skipText={(change.after ?? change.before)?.text}
             />
-            {coupon.place.reason && (
-              <div className="flex flex-col gap-0.5">
-                <Label>{t.placed}</Label>
-                <p className="text-[12px] leading-[18px] text-ink-3">
-                  {localizeReason(coupon.place.reason, model.lang)}
-                </p>
-              </div>
-            )}
-            {tests?.items && tests.items.length > 0 && (
-              <div className="flex flex-col gap-0.5">
-                <Label>{t.tests}</Label>
-                <ul className="flex flex-col gap-0.5">
-                  {tests.items.map((item) => {
-                    const [file, name] = item.test_id
-                      .replace(/^head::|^base::/, "")
-                      .split("#")
-                    return (
-                      <li
-                        key={item.test_id}
-                        className="font-mono text-[12px] leading-[17px] [overflow-wrap:anywhere] text-ink-2"
-                      >
-                        {name ?? file}{" "}
-                        <span className="text-ink-3">{name ? file : ""}</span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            )}
           </CollapsibleContent>
         </Collapsible>
       )}

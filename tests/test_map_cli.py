@@ -9,7 +9,7 @@ from genesis_contracts.business_map import BusinessMap
 from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.evidence_bundle import EvidenceBundle
 from test_business_map_contract import SAMPLES
-from test_git_snapshot import commit, write
+from test_git_snapshot import commit, git, write
 from typer.testing import CliRunner
 
 APP = """import typer
@@ -72,7 +72,9 @@ def test_prepare_reads_the_working_tree_by_default_and_compares_with_a_base(sour
 
 def test_render_publishes_escaped_html_at_a_stable_path(source_repo):
     write(source_repo, "app.py", APP)
-    commit(source_repo)
+    sha = commit(source_repo)
+    git(source_repo, "remote", "add", "origin", "git@github.com:org/repo.git")
+    git(source_repo, "update-ref", "refs/remotes/origin/main", sha)
     session = prepared(source_repo, "--head", "HEAD")["session_id"]
     result = run("render", "--repo", str(source_repo), "--session", session)
     # A skeleton is a usable partial map.
@@ -86,6 +88,17 @@ def test_render_publishes_escaped_html_at_a_stable_path(source_repo):
     assert "<script" not in page and "http://" not in page and "https://" not in page
     assert "- Flows: 1" in (latest / "summary.md").read_text()
     assert (source_repo / ".genesis" / "out" / session / "graph.html").read_text() == page
+    view = (latest / "view.html").read_text()
+    payload = json.loads(
+        view.split('<script id="genesis-data" type="application/json">', 1)[1].split(
+            "</script>", 1
+        )[0]
+    )
+    assert payload["source_links"]
+    assert all(
+        link["exact"] and link["url"].startswith(f"https://github.com/org/repo/blob/{sha}/app.py#L")
+        for link in payload["source_links"].values()
+    )
 
 
 def test_share_mode_leaves_source_excerpts_out(source_repo):

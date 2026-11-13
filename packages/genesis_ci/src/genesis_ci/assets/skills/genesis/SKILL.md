@@ -256,14 +256,16 @@ Give each observation one `category` when the evidence supports it: `reliability
 `performance` (latency or cost), or `other`. Category is separate from severity and test
 coverage. Omit it when uncertain; never turn a behavior change or missing test into a bug.
 
-For each step whose inputs and outputs you can establish, include an optional `contract`:
-`{"input": "What this step receives", "output": "What it returns or which path it selects",
-"constraints": "Source-backed conditions, validation, side effects or failure behavior"}`.
-Both `input` and `output` are required when supplied; `constraints` is optional. Cite all
-supporting code in the step's `evidence`, including the field reads, return values and
-conditions you describe. This is a description of the current code, not a proposed API or
-a guarantee of runtime validation. Never invent types, required fields or successful
-results. If the code cannot establish both sides, omit the contract.
+For each step whose inputs and outputs you can establish, include an optional `contract`
+with structured JSON objects in `input` and `output`, preferably JSON Schema. For example:
+`{"input": {"type": "object", "properties": {"amount": {"type": "number"}}, "required": ["amount"]},
+"output": {"type": "boolean", "description": "Whether the amount exceeds the threshold"}}`.
+Use the actual data shape for each step: an internal decision may yield a boolean rather
+than an HTTP response. Both sides are required when supplied. Do not put prose strings or
+a separate `constraints` field here. Cite supporting field reads, return values and
+conditions in the step's `evidence`. Describe the expected interface, never imply that
+runtime validation exists unless it is implemented. Omit unsupported types or the whole
+contract when the code cannot establish it; never invent example payload values.
 
 Rules the CLI enforces:
 
