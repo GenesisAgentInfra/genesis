@@ -1,8 +1,0 @@
-from integrations import submit_to_provider
-
-
-async def submit_report(report, approved):
-    if not approved:
-        return {"success": False, "reason": "approval denied"}
-    result = await submit_to_provider(report)
-    return result

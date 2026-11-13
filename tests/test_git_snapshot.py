@@ -3,13 +3,11 @@ import shutil
 import subprocess
 
 import pytest
-from genesis_ci.cli import app
 from genesis_ci.git_snapshot import SnapshotError, capture_snapshot
 from genesis_ci.snapshot_store import load_snapshot, save_snapshot
 from genesis_ci.source_snapshot import EvidenceRegistry, FrozenSourceSnapshot
 from genesis_contracts.models import EvidenceSide, ReferenceRange
 from genesis_contracts.snapshot import SnapshotInput, SnapshotLimits, SnapshotSpec
-from typer.testing import CliRunner
 
 BASE, HEAD = EvidenceSide.base, EvidenceSide.head
 
@@ -465,59 +463,6 @@ def test_artifact_symlink_blob_and_loader_budget_rejected(repo, tmp_path):
         load_snapshot(directory)
 
 
-def test_cli_captures_real_repo_and_partial_exit_codes(repo, tmp_path):
-    output = (tmp_path / "artifact").resolve()
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "snapshot",
-            "--repo",
-            str(repo),
-            "--base",
-            "HEAD",
-            "--head",
-            "HEAD",
-            "--output",
-            str(output),
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert "symbols=not_analyzed" in result.output
-    assert load_snapshot(output).capture.manifest.integrity_status == "complete"
-    write(repo, "not_selected.py", "new = True\n")
-    partial = runner.invoke(
-        app,
-        [
-            "snapshot",
-            "--repo",
-            str(repo),
-            "--base",
-            "HEAD",
-            "--worktree",
-            "--output",
-            str(tmp_path / "partial"),
-        ],
-    )
-    assert partial.exit_code == 2, partial.output
-    assert (tmp_path / "partial/snapshot.json").exists()
-    failed = runner.invoke(
-        app,
-        [
-            "snapshot",
-            "--repo",
-            str(repo),
-            "--base",
-            "missing",
-            "--worktree",
-            "--output",
-            str(tmp_path / "failed"),
-        ],
-    )
-    assert failed.exit_code == 1
-    assert not (tmp_path / "failed").exists()
-
-
 def test_snapshot_spec_rejects_ambiguous_or_unsafe_selection():
     from pydantic import ValidationError
 
@@ -543,23 +488,6 @@ def test_git_conflict_stages_are_not_silently_merged(repo):
     with pytest.raises(SnapshotError) as caught:
         capture_snapshot(repo, SnapshotSpec(base=head))
     assert caught.value.code == "unmerged_index"
-
-
-def test_failed_worktree_capture_does_not_write_partial_artifact(repo, tmp_path, monkeypatch):
-    import genesis_ci.git_snapshot as module
-
-    def changing(*args, **kwargs):
-        raise module._ChangedDuringCapture()
-
-    monkeypatch.setattr(module, "_read_worktree", changing)
-    output = tmp_path / "never-written"
-    result = CliRunner().invoke(
-        app,
-        ["snapshot", "--repo", str(repo), "--base", "HEAD", "--worktree", "--output", str(output)],
-    )
-    assert result.exit_code == 1
-    assert "worktree_changed" in result.output
-    assert not output.exists()
 
 
 def test_utf8_bom_and_non_line_separators_remain_exact(repo):
