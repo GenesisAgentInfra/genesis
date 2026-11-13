@@ -1,0 +1,375 @@
+{
+  "schemaVersion": 2,
+  "name": "Genesis",
+  "theme": {
+    "name": "Genesis",
+    "iconStyle": "outlined",
+    "animation": {
+      "duration": 150,
+      "easing": [0.2, 0.8, 0.2, 1],
+      "large": {
+        "duration": 300,
+        "easing": [0.16, 1, 0.3, 1]
+      },
+      "popupScale": 0.96,
+      "pressDistance": 1
+    },
+    "colors": {
+      "light": {
+        "neutral-1": "#ffffff",
+        "neutral-2": "#fafafa",
+        "neutral-3": "#f4f4f5",
+        "neutral-4": "#d9dadd",
+        "neutral-5": "#c9cace",
+        "neutral-6": "#7d818c",
+        "neutral-7": "#62656e",
+        "neutral-8": "#4d5058",
+        "neutral-9": "#3a3b40",
+        "neutral-10": "#111113",
+        "success": "#17803d",
+        "warning": "#e2860b",
+        "error": "#d92d20",
+        "color-1": "#2f6feb",
+        "color-2": "#6a3fd4",
+        "color-3": "#1a7f45",
+        "color-4": "#c9530a",
+        "color-5": "#9a6200"
+      },
+      "dark": {
+        "neutral-1": "#101012",
+        "neutral-2": "#161619",
+        "neutral-3": "#1c1c20",
+        "neutral-4": "#26262b",
+        "neutral-5": "#3b3d44",
+        "neutral-6": "#55565d",
+        "neutral-7": "#8e9097",
+        "neutral-8": "#b6b7bd",
+        "neutral-9": "#d3d4d9",
+        "neutral-10": "#f1f1f3",
+        "success": "#4cc27a",
+        "warning": "#f0a030",
+        "error": "#ff6b5e",
+        "color-1": "#6ea0ff",
+        "color-2": "#b49cff",
+        "color-3": "#6fd39a",
+        "color-4": "#ffa066",
+        "color-5": "#f2c14e"
+      }
+    },
+    "spacing": {
+      "zero": 0,
+      "xxs": 1.9949999999999999,
+      "xs": 3.9899999999999998,
+      "s": 5.984999999999999,
+      "m": 7.9799999999999995,
+      "l": 11.969999999999999,
+      "xl": 15.959999999999999,
+      "xxl": 23.939999999999998
+    },
+    "letterSpacing": {
+      "xs": -0.02,
+      "s": -0.01,
+      "m": 0,
+      "l": 0.01,
+      "xl": 0.02
+    },
+    "text": {
+      "xxs": {
+        "size": 8,
+        "lineHeight": 11.200000000675598
+      },
+      "xs": {
+        "size": 10,
+        "lineHeight": 13.333333333852282
+      },
+      "s": {
+        "size": 12,
+        "lineHeight": 17.142857143616244
+      },
+      "m": {
+        "size": 14,
+        "lineHeight": 21
+      },
+      "l": {
+        "size": 16.890280643,
+        "lineHeight": 22.520374191
+      },
+      "xl": {
+        "size": 20.377255729,
+        "lineHeight": 22.641395254
+      },
+      "xxl": {
+        "size": 23,
+        "lineHeight": 24.91666666631583
+      }
+    },
+    "fonts": {
+      "body": {
+        "family": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif",
+        "weights": {
+          "regular": 400,
+          "medium": 500,
+          "heavy": 600
+        }
+      },
+      "display": {
+        "family": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif",
+        "weights": {
+          "regular": 400,
+          "medium": 500,
+          "heavy": 600
+        }
+      },
+      "data": {
+        "family": "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, monospace",
+        "weights": {
+          "regular": 400,
+          "medium": 500,
+          "heavy": 600
+        }
+      }
+    },
+    "radius": {
+      "zero": 0,
+      "xs": 2,
+      "s": 6,
+      "m": 8,
+      "l": 12,
+      "xl": 18,
+      "full": 9999
+    },
+    "border": {
+      "none": 0,
+      "s": 1,
+      "m": 1.25,
+      "l": 1.5
+    },
+    "shadows": {
+      "s": {
+        "type": "box",
+        "position": "outside",
+        "x": 0,
+        "y": 4,
+        "blur": 14,
+        "spread": 0,
+        "opacity": 5,
+        "color": {
+          "light": "neutral-10",
+          "dark": "neutral-10"
+        }
+      },
+      "m": {
+        "type": "box",
+        "position": "outside",
+        "x": 0,
+        "y": 10,
+        "blur": 26,
+        "spread": 0,
+        "opacity": 8,
+        "color": {
+          "light": "neutral-10",
+          "dark": "neutral-10"
+        }
+      },
+      "l": {
+        "type": "box",
+        "position": "outside",
+        "x": 0,
+        "y": 12,
+        "blur": 32,
+        "spread": 0,
+        "opacity": 10,
+        "color": {
+          "light": "neutral-10",
+          "dark": "neutral-10"
+        }
+      }
+    },
+    "primaryActionColor": "neutral-10",
+    "display": {
+      "xxs": {
+        "size": 27.13903718831696,
+        "lineHeight": 29.400623620262735
+      },
+      "xs": {
+        "size": 32.022927804732646,
+        "lineHeight": 34.691505121305234
+      },
+      "s": {
+        "size": 37.78571428571428,
+        "lineHeight": 40.93452380894743
+      },
+      "m": {
+        "size": 44.58556109509214,
+        "lineHeight": 48.30102451900306
+      },
+      "l": {
+        "size": 52.60909567920362,
+        "lineHeight": 56.993186985001444
+      },
+      "xl": {
+        "size": 62.07653061224487,
+        "lineHeight": 67.24957482898505
+      },
+      "xxl": {
+        "size": 73.24770751336564,
+        "lineHeight": 79.35168313836215
+      }
+    },
+    "colorTranslucency": {
+      "light": {
+        "success": 8,
+        "warning": 9,
+        "error": 7,
+        "color-1": 10,
+        "color-2": 11,
+        "color-3": 8,
+        "color-4": 7,
+        "color-5": 7
+      },
+      "dark": {
+        "success": 16,
+        "warning": 15,
+        "error": 16,
+        "color-1": 7,
+        "color-2": 7,
+        "color-3": 13,
+        "color-4": 13,
+        "color-5": 14
+      }
+    },
+    "colorTranslucent": {
+      "light": {
+        "success": 10,
+        "warning": 17,
+        "error": 11,
+        "color-1": 19,
+        "color-2": 19,
+        "color-3": 10,
+        "color-4": 11,
+        "color-5": 10
+      },
+      "dark": {
+        "success": 19,
+        "warning": 18,
+        "error": 18,
+        "color-1": 13,
+        "color-2": 12,
+        "color-3": 16,
+        "color-4": 15,
+        "color-5": 16
+      }
+    },
+    "characterProfile": "imported",
+    "adjustmentBaseline": {
+      "version": 1,
+      "textM": 14,
+      "text": {
+        "xxs": {
+          "size": 8,
+          "lineHeight": 11.200000000675598
+        },
+        "xs": {
+          "size": 10,
+          "lineHeight": 13.333333333852282
+        },
+        "s": {
+          "size": 12,
+          "lineHeight": 17.142857143616244
+        },
+        "m": {
+          "size": 14,
+          "lineHeight": 21
+        },
+        "l": {
+          "size": 16.890280643,
+          "lineHeight": 22.520374191
+        },
+        "xl": {
+          "size": 20.377255729,
+          "lineHeight": 22.641395254
+        },
+        "xxl": {
+          "size": 23,
+          "lineHeight": 24.91666666631583
+        }
+      },
+      "display": {
+        "xxs": {
+          "size": 27.13903718831696,
+          "lineHeight": 29.400623620262735
+        },
+        "xs": {
+          "size": 32.022927804732646,
+          "lineHeight": 34.691505121305234
+        },
+        "s": {
+          "size": 37.78571428571428,
+          "lineHeight": 40.93452380894743
+        },
+        "m": {
+          "size": 44.58556109509214,
+          "lineHeight": 48.30102451900306
+        },
+        "l": {
+          "size": 52.60909567920362,
+          "lineHeight": 56.993186985001444
+        },
+        "xl": {
+          "size": 62.07653061224487,
+          "lineHeight": 67.24957482898505
+        },
+        "xxl": {
+          "size": 73.24770751336564,
+          "lineHeight": 79.35168313836215
+        }
+      },
+      "spacing": {
+        "zero": 0,
+        "xxs": 1.9949999999999999,
+        "xs": 3.9899999999999998,
+        "s": 5.984999999999999,
+        "m": 7.9799999999999995,
+        "l": 11.969999999999999,
+        "xl": 15.959999999999999,
+        "xxl": 23.939999999999998
+      },
+      "character": {
+        "profile": "imported",
+        "radius": {
+          "zero": 0,
+          "xs": 2,
+          "s": 6,
+          "m": 8,
+          "l": 12,
+          "xl": 18,
+          "full": 9999
+        },
+        "border": {
+          "none": 0,
+          "s": 1,
+          "m": 1.25,
+          "l": 1.5
+        },
+        "weights": {
+          "body": {
+            "regular": 400,
+            "medium": 500,
+            "heavy": 600
+          },
+          "display": {
+            "regular": 400,
+            "medium": 500,
+            "heavy": 600
+          },
+          "data": {
+            "regular": 400,
+            "medium": 500,
+            "heavy": 600
+          }
+        }
+      }
+    }
+  },
+  "componentTokens": {}
+}

@@ -2,6 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
 import "./index.css"
+import EditorRoot from "../graphical/editor-root"
 import { App } from "./App"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { buildModel } from "./model"
@@ -29,13 +30,21 @@ load().then((payload) => {
   if (!payload) {
     const t =
       STRINGS[detectLang([navigator.language.startsWith("zh") ? "中文" : "en"])]
-    root.render(<p className="p-8 text-[14px] text-ink-2">{t.noData}</p>)
+    root.render(
+      <p className="p-[calc(var(--space-xxl)*4/3)] text-body-m text-ink-2">
+        {t.noData}
+      </p>
+    )
     return
   }
   root.render(
     <StrictMode>
-      <TooltipProvider delayDuration={150}>
-        <App model={buildModel(payload)} />
+      <TooltipProvider delay={150}>
+        {/* Graphical's editor wraps the viewer in development; the built page is the
+            viewer alone. */}
+        <EditorRoot route={`${location.pathname}${location.search}`}>
+          <App model={buildModel(payload)} />
+        </EditorRoot>
       </TooltipProvider>
     </StrictMode>
   )

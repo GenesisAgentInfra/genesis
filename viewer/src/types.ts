@@ -104,7 +104,7 @@ export interface MapFlow {
   limitations?: Limitation[]
 }
 
-export interface MapDomain {
+interface MapDomain {
   domain_id: string
   name: string
   support: "agent_synthesis" | "path_grouping"

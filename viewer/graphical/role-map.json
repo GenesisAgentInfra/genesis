@@ -1,0 +1,529 @@
+{
+  "version": 1,
+  "profile": "shadcn-tailwind-v4",
+  "modes": {
+    "kind": "attribute",
+    "attribute": "data-theme",
+    "dark": "dark",
+    "light": "light"
+  },
+  "appearance": {
+    "navigation": {
+      "selector": "[data-slot=\"sidebar-container\"], [data-sidebar=\"sidebar\"]",
+      "background": "--sidebar",
+      "border": "--sidebar-border"
+    },
+    "cards": {
+      "selector": "[data-slot=\"card\"]",
+      "background": "--card"
+    },
+    "initial": {
+      "navigation": "blended",
+      "grouping": "cards",
+      "surface": "raised"
+    }
+  },
+  "tokens": [
+    {
+      "variable": "--card-foreground",
+      "token": "neutral-10",
+      "format": "css"
+    },
+    {
+      "variable": "--popover-foreground",
+      "token": "neutral-10",
+      "format": "css"
+    },
+    {
+      "variable": "--secondary-foreground",
+      "token": "neutral-10",
+      "format": "css"
+    },
+    {
+      "variable": "--canvas",
+      "token": {
+        "light": "neutral-3",
+        "dark": "neutral-1"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--background",
+      "token": {
+        "light": "neutral-3",
+        "dark": "neutral-1"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--card",
+      "token": {
+        "light": "neutral-1",
+        "dark": "neutral-3"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--popover",
+      "token": {
+        "light": "neutral-1",
+        "dark": "neutral-3"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--handle",
+      "token": {
+        "light": "neutral-1",
+        "dark": "neutral-3"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--flow-top",
+      "token": {
+        "light": "neutral-1",
+        "dark": "neutral-2"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--flow-bottom",
+      "token": "neutral-2",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--flow-rim",
+      "token": "neutral-10-transparent",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--field",
+      "token": {
+        "light": "neutral-3",
+        "dark": "neutral-4"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--secondary",
+      "token": {
+        "light": "neutral-3",
+        "dark": "neutral-4"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--muted",
+      "token": {
+        "light": "neutral-3",
+        "dark": "neutral-4"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-result-bg",
+      "token": {
+        "light": "neutral-3",
+        "dark": "neutral-4"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--line",
+      "token": {
+        "light": "neutral-4",
+        "dark": "neutral-5"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--border",
+      "token": {
+        "light": "neutral-4",
+        "dark": "neutral-5"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--input",
+      "token": {
+        "light": "neutral-4",
+        "dark": "neutral-5"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--handle-rim",
+      "token": {
+        "light": "neutral-5",
+        "dark": "neutral-6"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--scrollbar",
+      "token": {
+        "light": "neutral-5",
+        "dark": "neutral-6"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--edge",
+      "token": {
+        "light": "neutral-6",
+        "dark": "neutral-7"
+      },
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--ink-3",
+      "token": "neutral-7",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--ink-2",
+      "token": "neutral-8",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--muted-foreground",
+      "token": "neutral-8",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-result-ink",
+      "token": "neutral-8",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--edge-strong",
+      "token": "neutral-9",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--ink",
+      "token": "neutral-10",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--foreground",
+      "token": "neutral-10",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--selection-ink",
+      "token": "neutral-10",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--primary",
+      "token": "primary",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--primary-foreground",
+      "token": "primary.foreground",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--risk",
+      "token": "error",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--destructive",
+      "token": "error",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--edge-exception-strong",
+      "token": "error",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--edge-exception",
+      "token": "error",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--change",
+      "token": "warning",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--warn",
+      "token": "warning",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--change-bg",
+      "token": "warning-transparent",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--ok",
+      "token": "success",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--select",
+      "token": "color-1",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--ring",
+      "token": "color-1",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--selection-bg",
+      "token": "color-1-transparent",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-action-ink",
+      "token": "color-2",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-action-bg",
+      "token": "color-2-transparent",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-trigger-ink",
+      "token": "color-3",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-trigger-bg",
+      "token": "color-3-transparent",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-decision-ink",
+      "token": "color-4",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-decision-bg",
+      "token": "color-4-transparent",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-external-ink",
+      "token": "color-5",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--tile-external-bg",
+      "token": "color-5-transparent",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--shadow-node",
+      "token": "shadow.s",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--shadow-node-hover",
+      "token": "shadow.m",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--shadow-float",
+      "token": "shadow.l",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--radius",
+      "token": "radius.l",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      },
+      "format": "rem"
+    },
+    {
+      "variable": "--ease-out",
+      "token": "motion.small.easing",
+      "defined": {
+        "path": "src/index.css",
+        "selector": ":root"
+      }
+    },
+    {
+      "variable": "--font-sans",
+      "token": "font.body",
+      "defined": {
+        "path": "src/index.css",
+        "selector": "@theme inline"
+      }
+    },
+    {
+      "variable": "--font-mono",
+      "token": "font.data",
+      "defined": {
+        "path": "src/index.css",
+        "selector": "@theme inline"
+      }
+    }
+  ],
+  "fixed": [
+    "--shadow-flow",
+    "--change-ink",
+    "--risk-ink"
+  ]
+}

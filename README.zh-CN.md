@@ -1,191 +1,70 @@
 <p align="center">
-  <a href="https://usegenesis.vercel.app/"><img src="assets/readme/favicon.svg" alt="Genesis 图标" width="52" height="52" align="middle"></a>&nbsp;&nbsp;
+  <img src="assets/readme/favicon.svg" alt="Genesis 图标" width="52" height="52" align="middle">&nbsp;&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/readme/wordmark-dark.svg">
     <img src="assets/readme/wordmark-light.svg" alt="Genesis" width="240" align="middle">
   </picture>
 </p>
 
-<h1 align="center">为你的 Agent 的每一次变更提供护栏。</h1>
+<p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <strong>简体中文</strong></p>
 
-<p align="center">
-  <a href="https://usegenesis.vercel.app/">官网</a> &nbsp;·&nbsp;
-  <a href="#genesis-get-started"><strong>开始使用</strong></a> &nbsp;·&nbsp;
-  <a href="#genesis-docs">文档</a> &nbsp;·&nbsp;
-  <a href="#genesis-stars">星标历史</a>
-</p>
+Genesis 把一个代码仓库变成一张业务流程图，每一步都有对应的代码作为依据；并且展示一次改动对这些流程做了什么：碰到了哪些步骤，现有的测试有没有覆盖到新的行为。
 
-<p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <strong>简体中文</strong> &nbsp;·&nbsp; <a href="README.ja.md">日本語</a> &nbsp;·&nbsp; <a href="README.ko.md">한국어</a> &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a> &nbsp;·&nbsp; <a href="README.fr.md">Français</a> &nbsp;·&nbsp; <a href="README.es.md">Español</a></p>
+- **CLI 是确定性的。** 它冻结一份代码快照、提取事实、找出入口、校验收到的每一条描述，并渲染结果。它不调用任何模型和服务，也从不导入或运行它读到的代码。
+- **阅读代码的是你的编码助手。** 通过自带的技能，Codex 或 Claude Code 用业务语言描述每条流程；CLI 对照代码依据，整条接受或整条拒绝。
 
-<p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square&amp;logo=github&amp;label=Stars&amp;color=e3b341" alt="GitHub 星标数" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GenesisAgentInfra/genesis?style=flat-square&amp;color=34a853" alt="许可证：Apache-2.0" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md"><img src="https://img.shields.io/static/v1?label=works+with&amp;message=Codex+%7C+Claude+Code&amp;color=7c3aed&amp;style=flat-square" alt="支持 Codex 和 Claude Code" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis#what-your-review-covers"><img src="https://img.shields.io/static/v1?label=analyzes&amp;message=Python&amp;logo=python&amp;logoColor=white&amp;color=3776ab&amp;style=flat-square" alt="支持的分析语言：Python" height="24"></a>
-  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/packages/genesis_ci/pyproject.toml"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FGenesisAgentInfra%2Fgenesis%2Fmain%2Fpackages%2Fgenesis_ci%2Fpyproject.toml&amp;query=%24.project.version&amp;label=version&amp;color=0891b2&amp;style=flat-square" alt="CLI 软件包版本" height="24"></a>
-</p>
+## 目前支持
 
-<p align="center">
-  <a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md">
-    <picture>
-      <source media="(max-width: 600px) and (prefers-reduced-motion: reduce)" srcset="assets/readme/code-intelligence-animation-mobile-poster.png">
-      <source media="(max-width: 600px)" srcset="assets/readme/code-intelligence-animation-mobile.gif">
-      <source media="(prefers-reduced-motion: reduce)" srcset="assets/readme/code-intelligence-animation-poster.png">
-      <img src="assets/readme/code-intelligence-animation.gif" alt="代码审查流程示意：从 Python 代码变更，经上下文、行为和风险分析，生成审查报告。" width="100%">
-    </picture>
-  </a>
-</p>
+- Python 源码。
+- 当前代码的完整流程图，以及相对某个版本的改动在图上的位置。
+- 测试结论来自阅读测试源码。Genesis 不运行测试。
 
-<p align="center"><sub><a href="https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md">代码审查流程示意</a></sub></p>
+## 开始使用
 
-<a id="genesis-benchmarks"></a>
-
-## 基准对比
-
-<picture>
-  <source media="(max-width: 600px)" srcset="assets/readme/agent-change-benchmarks-mobile.svg">
-  <img src="assets/readme/agent-change-benchmarks.svg" alt="Agent 变更基准对比：影响识别、分析耗时与分析成本。" width="100%">
-</picture>
-
-## 为什么需要 Genesis
-
-看清一次代码改动，会怎样改变 Agent 交付给用户的结果。
-
-| 业务影响 | Genesis 帮你审查什么 |
-| --- | --- |
-| **Agent 一直在忙，用户却拿不到结果。** [来源](https://github.com/openai/openai-agents-python/issues/191) | 任务完成和停止条件的变化。 |
-| **用户点了拒绝，操作却照常执行。** [来源](https://github.com/langchain-ai/langchain/issues/40492) | 审批检查与操作执行路径的变化。 |
-| **用户只请求一次，同一个操作却执行两次。** [来源](https://github.com/langchain-ai/langgraph/issues/9185) | 重试路径与防止重复操作的检查。 |
-| **同样的任务，消耗更多 token。** [来源](https://github.com/microsoft/agent-framework/issues/5049) | 提示词膨胀与额外模型调用。 |
-| **任务还能完成，用户却要等更久。** [来源](https://github.com/openai/openai-agents-python/issues/2386) | 阻塞调用与串行执行步骤。 |
-
-<a id="genesis-get-started"></a>
-
-## 在你的编程 Agent 中开始使用
-
-CLI 和静态分析部分开源。语义审查由 Genesis 托管服务完成，发送源码前需要获得你的授权。
-
-### 1. 为当前项目配置一次
-
-在要审查的项目中，把下面的提示词粘贴给 Codex 或 Claude Code：
-
-```text
-请从 https://github.com/GenesisAgentInfra/genesis 接入 Genesis。
-先读 README 和 docs/coding-agents.md，把 CLI 安装在当前项目之外，
-并为我当前使用的 Agent 安装用户级 genesis-review 技能。
-已有安装就复用；需要时更新未经用户修改的托管技能。
-按照 docs/coding-agents.md#configure-cr-preparation-in-this-project 的项目审查配置说明，
-在当前项目的 Agent 指令文件中加入准备 CR/PR 前先运行 Genesis 的约定，
-保留其他现有内容。检查 CLI、技能和项目约定，并告诉我修改了哪个文件。
-这一步只配置，不审查、不上传代码；以后的上传仍需获得覆盖目标服务和所选源码的授权。
-```
-
-**配置后的体验：**你照常说“帮我整理这次改动，准备发 CR”，项目指令会要求 Agent
-先运行 Genesis、解释结果，再整理 CR/PR 描述。没有固定口令，也不限中文：
-“发 CR”“提 PR”“提审”“帮我写这次改动的 PR 描述”，都属于把改动交给别人审查的意图；
-其他语言中表达相同意图的请求也适用。单独提交或推送代码不自动触发。
-这个流程在本地发起，不依赖 GitHub CI。
-它是 Agent 的默认工作约定，不保证每次触发，也不是 Git 钩子或合并门禁。
-技能安装在用户级，但这项审查约定只配置到当前项目；只安装 CLI 不会添加约定。
-手动安装、已有用户升级和移除方式见[项目配置指南](docs/coding-agents.md#configure-cr-preparation-in-this-project)。
-
-<details>
-<summary>手动安装</summary>
-
-在待审查应用的仓库之外执行：
+在你要分析的项目之外安装 CLI：
 
 ```sh
 git clone https://github.com/GenesisAgentInfra/genesis.git
 cd genesis
 uv sync --python 3.12 --package genesis-ci --no-dev --frozen
-uv run --package genesis-ci --no-dev --frozen genesis version
-uv run --package genesis-ci --no-dev --frozen genesis agent install --agent codex
-uv run --package genesis-ci --no-dev --frozen genesis agent status --agent codex
+uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
 ```
 
-</details>
+`--agent` 可以是 `codex`、`claude` 或 `both`。然后在要分析的项目里，让你的编码助手梳理项目的业务流程，或者说明一次改动对流程的影响；也可以直接点名技能：Claude Code 里用 `/genesis`，Codex 里用 `$genesis`。
 
-### 2. 照常准备 CR/PR
+结果写在该项目的 `.genesis/` 目录下：一个用浏览器打开的页面（`view.html`）和一份摘要（`summary.md`）。
 
-```text
-帮我整理这次改动，准备发 CR/PR。
-先解释审查发现和未验证的部分，再整理提交审查的描述。
-上传前先展示发送范围。
-```
+## 命令
 
-也可以明确选择技能：
-
-| Agent | 调用方式 |
+| 命令 | 作用 |
 | --- | --- |
-| Codex | `$genesis-review` 后接你的请求 |
-| Claude Code | `/genesis-review` 后接你的请求 |
+| `genesis agent install` | 让你的编码助手能发现 Genesis；不做分析，不上传任何内容。 |
+| `genesis agent status` | 检查已安装的技能文件。 |
+| `genesis map prepare` | 冻结快照、提取事实，写出静态骨架。 |
+| `genesis map plan` | 把入口归并成流程，每条流程建一个任务。 |
+| `genesis map status` | 列出任务、它们的状态和还缺什么。 |
+| `genesis map context` | 开始一个任务所需的全部内容。 |
+| `genesis map query` | 查看一个符号及其相邻关系，或搜索冻结的源码。 |
+| `genesis map read` | 读取某条依据引用背后的冻结源码。 |
+| `genesis map submit` | 校验一个任务的一次提交；整条接受或整条拒绝。 |
+| `genesis map diff` | 列出相对基准版本改了什么，以及它们落在图上的位置。 |
+| `genesis map render` | 为一次会话写出页面和摘要。 |
 
-需要其他审查范围时，请指定分支比较或两个提交。任务描述和流程图都是可选上下文。
+`map` 这组命令由编码助手替你执行；列在这里是为了让你知道它做了什么。
 
-未配置个人连接设置时，可以直接使用官方共享试用，无需执行 `genesis auth`。
-试用额度有限，由所有用户共享。无需提供模型供应商的 API 密钥。
-[访问方式与试用限制](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md#default-shared-trial)。
+## 仓库结构
 
-## 审查涵盖哪些内容
-
-| 维度 | 你会获得什么 |
+| 路径 | 内容 |
 | --- | --- |
-| 业务行为 | 通过改动前后的代码证据，说明应用行为可能发生的变化。 |
-| 受影响路径 | 与改动关联的调用方、代码路径，以及你提供的流程图。 |
-| 成本、等待与失败 | 基于现有证据的条件性风险分析和静态估算。 |
-| 测试 | 相关测试源码检查了什么，以及可能缺少哪些断言。 |
-| 验证 | 建议执行的检查，以及仍然缺少的证据。 |
+| `packages/genesis_ci` | CLI：快照、Python 事实提取、流程图工作流、助手技能。 |
+| `packages/genesis_contracts` | CLI 读写的各种文件的结构定义。 |
+| `viewer/` | `genesis map render` 写出的页面的源码。 |
+| `fixtures/business-map` | 每种结构的一份完整示例。 |
 
-## 从代码改动到审查报告
+## 开发
 
-1. **本地准备。** Genesis 捕获所选改动并提取代码证据。Agent 会展示选中待上传的源码片段与事实。
-2. **授权上传。** 获得你的授权后，Genesis 才会把这些材料发送到托管服务。你也可以仅在本地分析，获得一份部分报告。
-3. **在对话中阅读结果。** Agent 解释报告、核对证据与状态，并指出仍需验证的内容。
-
-报告保存在项目的 `.genesis/analyses/<run-id>/` 目录：
-
-- `summary.md`：从易读的摘要开始。
-- `report.md`：查看详细发现、证据和状态。
-- `report.json`：在你自己的工具中使用结构化结果。
-
-退出码：**0** 表示在声明的范围内完成分析，**2** 表示产出了可用的部分报告，**1** 表示无法产出所请求的结果。
-不要将 `.genesis/` 提交到 Git，其中可能包含捕获的源码。
-
-## 源码与服务
-
-公开仓库包含 CLI 和静态分析部分。私有语义服务由 Genesis 团队运营，仓库不提供可自托管的服务端实现。
-
-预览和离线分析均在本地完成。安装技能不会开启每次编辑后的自动审查。
-
-[数据处理、个人密钥与配置](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md)。
-
-<a id="genesis-docs"></a>
-
-## 文档
-
-- [编程 Agent 指南](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/coding-agents.md)：安装、技能发现、团队指令和故障排查。
-- [CLI 指南](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/usage.md)：命令、可选上下文、凭据和数据处理。
-- [GitHub Action](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/github-action.md)：配置仓库自动化；使用托管分析时需要明确提供 Genesis 密钥。
-- [参与开发](https://github.com/GenesisAgentInfra/genesis/blob/main/CONTRIBUTING.md)：开发与测试客户端。
-- [仓库边界](https://github.com/GenesisAgentInfra/genesis/blob/main/docs/repository-boundary.md)和[报告数据格式](https://github.com/GenesisAgentInfra/code-intelligence-protocol)。
-
-<a id="genesis-stars"></a>
-
-## 星标历史
-
-<a href="https://www.star-history.com/#GenesisAgentInfra/genesis&amp;Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&amp;type=Date&amp;theme=dark">
-    <img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&amp;type=Date" alt="GenesisAgentInfra/genesis 的星标历史" width="100%">
-  </picture>
-</a>
-
-[在 Star History 查看](https://www.star-history.com/#GenesisAgentInfra/genesis&Date)
-
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可证
 
-Genesis CLI 的原创代码采用 [Apache-2.0](https://github.com/GenesisAgentInfra/genesis/blob/main/LICENSE) 许可证。
-该许可证不授予对单独运营的 Genesis 服务的访问权限。
-捆绑组件保留各自的许可证，详见 [NOTICE](https://github.com/GenesisAgentInfra/genesis/blob/main/NOTICE)
-和[第三方声明](https://github.com/GenesisAgentInfra/genesis/blob/main/THIRD_PARTY_NOTICES.md)。
+Genesis 自身的代码采用 [Apache-2.0](LICENSE) 许可。打包进来的组件保留各自的许可证，见 [NOTICE](NOTICE) 和[第三方声明](THIRD_PARTY_NOTICES.md)。

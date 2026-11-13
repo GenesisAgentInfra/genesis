@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    for package in ("genesis_ci", "genesis_contracts", "genesis_tokenizer"):
+    for package in ("genesis_ci", "genesis_contracts"):
         wheels = sorted((ROOT / "dist").glob(f"{package}-*.whl"))
         if len(wheels) != 1:
             raise SystemExit(f"Expected exactly one freshly built {package} wheel")
@@ -20,32 +20,18 @@ def main():
                 raise SystemExit("CLI/contracts package leaked server or fixture files")
             if package == "genesis_ci":
                 required = {
-                    "genesis_ci/assets/prices-2026-11-04.json",
-                    "genesis_ci/assets/public-trial.json",
                     "genesis_ci/assets/skills/genesis/SKILL.md",
                     "genesis_ci/assets/skills/genesis/agents/openai.yaml",
                     "genesis_ci/assets/skills/genesis/scripts/run_genesis.py",
+                    "genesis_ci/assets/viewer/index.html",
                 }
                 if not required <= set(names):
-                    raise SystemExit(
-                        "CLI wheel lacks required pricing, trial or agent skill assets"
-                    )
-            if package == "genesis_tokenizer":
-                required = {
-                    "genesis_tokenizer/assets/o200k_base.tiktoken.gz",
-                    "genesis_tokenizer/assets/o200k_base.json",
-                    "genesis_tokenizer/assets/TIKTOKEN_LICENSE.txt",
-                }
-                if not required <= set(names):
-                    raise SystemExit("Shared tokenizer wheel lacks pinned offline assets")
+                    raise SystemExit("CLI wheel lacks the agent skill or the viewer page")
             metadata = wheel.read(
                 next(name for name in names if name.endswith("/METADATA"))
             ).decode()
             parsed = Parser().parsestr(metadata)
-            expected_license = (
-                "Apache-2.0 AND MIT" if package == "genesis_tokenizer" else "Apache-2.0"
-            )
-            if parsed["License-Expression"] != expected_license:
+            if parsed["License-Expression"] != "Apache-2.0":
                 raise SystemExit(f"Wrong license metadata in {wheels[0].name}")
             license_files = set(parsed.get_all("License-File", []))
             if not {"LICENSE", "NOTICE"} <= license_files:
@@ -58,10 +44,6 @@ def main():
                 matching = [name for name in names if name.endswith(suffix)]
                 if len(matching) != 1 or wheel.read(matching[0]) != expected:
                     raise SystemExit(f"Missing or changed {filename} in {package} wheel")
-            if package == "genesis_tokenizer" and not any(
-                name.endswith("TIKTOKEN_LICENSE.txt") for name in license_files
-            ):
-                raise SystemExit("Tokenizer metadata omits its upstream MIT notice")
             dependencies = [
                 line for line in metadata.splitlines() if line.startswith("Requires-Dist:")
             ]

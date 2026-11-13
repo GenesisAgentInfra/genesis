@@ -1,0 +1,737 @@
+{
+  "document": {
+    "name": "Genesis",
+    "theme": {
+      "primaryActionColor": "neutral-10",
+      "colors": {
+        "light": {
+          "color-1": "#2f6feb",
+          "color-2": "#6a3fd4",
+          "color-3": "#1a7f45",
+          "color-4": "#c9530a",
+          "color-5": "#9a6200",
+          "neutral-1": "#ffffff",
+          "neutral-2": "#fafafa",
+          "neutral-3": "#f4f4f5",
+          "neutral-4": "#d9dadd",
+          "neutral-5": "#c9cace",
+          "neutral-6": "#7d818c",
+          "neutral-7": "#62656e",
+          "neutral-8": "#4d5058",
+          "neutral-9": "#3a3b40",
+          "neutral-10": "#111113",
+          "success": "#17803d",
+          "warning": "#e2860b",
+          "error": "#d92d20"
+        },
+        "dark": {
+          "color-1": "#6ea0ff",
+          "color-2": "#b49cff",
+          "color-3": "#6fd39a",
+          "color-4": "#ffa066",
+          "color-5": "#f2c14e",
+          "neutral-1": "#101012",
+          "neutral-2": "#161619",
+          "neutral-3": "#1c1c20",
+          "neutral-4": "#26262b",
+          "neutral-5": "#3b3d44",
+          "neutral-6": "#55565d",
+          "neutral-7": "#8e9097",
+          "neutral-8": "#b6b7bd",
+          "neutral-9": "#d3d4d9",
+          "neutral-10": "#f1f1f3",
+          "success": "#4cc27a",
+          "warning": "#f0a030",
+          "error": "#ff6b5e"
+        }
+      },
+      "fonts": {
+        "body": {
+          "family": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif",
+          "weights": {
+            "regular": 400,
+            "medium": 500,
+            "heavy": 600
+          }
+        },
+        "display": {
+          "family": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif",
+          "weights": {
+            "regular": 400,
+            "medium": 500,
+            "heavy": 600
+          }
+        },
+        "data": {
+          "family": "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, monospace",
+          "weights": {
+            "regular": 400,
+            "medium": 500,
+            "heavy": 600
+          }
+        }
+      }
+    }
+  },
+  "roleMap": {
+    "version": 1,
+    "profile": "shadcn-tailwind-v4",
+    "modes": {
+      "kind": "attribute",
+      "attribute": "data-theme",
+      "dark": "dark",
+      "light": "light"
+    },
+    "appearance": {
+      "navigation": {
+        "selector": "[data-slot=\"sidebar-container\"], [data-sidebar=\"sidebar\"]",
+        "background": "--sidebar",
+        "border": "--sidebar-border"
+      },
+      "cards": {
+        "selector": "[data-slot=\"card\"]",
+        "background": "--card"
+      },
+      "initial": {
+        "navigation": "blended",
+        "grouping": "cards",
+        "surface": "raised"
+      }
+    },
+    "tokens": [
+      {
+        "variable": "--card-foreground",
+        "token": "neutral-10",
+        "format": "css"
+      },
+      {
+        "variable": "--popover-foreground",
+        "token": "neutral-10",
+        "format": "css"
+      },
+      {
+        "variable": "--secondary-foreground",
+        "token": "neutral-10",
+        "format": "css"
+      },
+      {
+        "variable": "--canvas",
+        "token": {
+          "light": "neutral-3",
+          "dark": "neutral-1"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--background",
+        "token": {
+          "light": "neutral-3",
+          "dark": "neutral-1"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--card",
+        "token": {
+          "light": "neutral-1",
+          "dark": "neutral-3"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--popover",
+        "token": {
+          "light": "neutral-1",
+          "dark": "neutral-3"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--handle",
+        "token": {
+          "light": "neutral-1",
+          "dark": "neutral-3"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--flow-top",
+        "token": {
+          "light": "neutral-1",
+          "dark": "neutral-2"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--flow-bottom",
+        "token": "neutral-2",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--flow-rim",
+        "token": "neutral-10-transparent",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--field",
+        "token": {
+          "light": "neutral-3",
+          "dark": "neutral-4"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--secondary",
+        "token": {
+          "light": "neutral-3",
+          "dark": "neutral-4"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--muted",
+        "token": {
+          "light": "neutral-3",
+          "dark": "neutral-4"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-result-bg",
+        "token": {
+          "light": "neutral-3",
+          "dark": "neutral-4"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--line",
+        "token": {
+          "light": "neutral-4",
+          "dark": "neutral-5"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--border",
+        "token": {
+          "light": "neutral-4",
+          "dark": "neutral-5"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--input",
+        "token": {
+          "light": "neutral-4",
+          "dark": "neutral-5"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--handle-rim",
+        "token": {
+          "light": "neutral-5",
+          "dark": "neutral-6"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--scrollbar",
+        "token": {
+          "light": "neutral-5",
+          "dark": "neutral-6"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--edge",
+        "token": {
+          "light": "neutral-6",
+          "dark": "neutral-7"
+        },
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--ink-3",
+        "token": "neutral-7",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--ink-2",
+        "token": "neutral-8",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--muted-foreground",
+        "token": "neutral-8",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-result-ink",
+        "token": "neutral-8",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--edge-strong",
+        "token": "neutral-9",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--ink",
+        "token": "neutral-10",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--foreground",
+        "token": "neutral-10",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--selection-ink",
+        "token": "neutral-10",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--primary",
+        "token": "primary",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--primary-foreground",
+        "token": "primary.foreground",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--risk",
+        "token": "error",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--destructive",
+        "token": "error",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--edge-exception-strong",
+        "token": "error",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--edge-exception",
+        "token": "error",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        },
+        "derive": {
+          "mix": 0.7,
+          "with": "neutral-1"
+        }
+      },
+      {
+        "variable": "--change",
+        "token": "warning",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--warn",
+        "token": "warning",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        },
+        "derive": {
+          "mix": 0.85,
+          "with": "neutral-10"
+        }
+      },
+      {
+        "variable": "--change-bg",
+        "token": "warning-transparent",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--ok",
+        "token": "success",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--select",
+        "token": "color-1",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--ring",
+        "token": "color-1",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--selection-bg",
+        "token": "color-1-transparent",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-action-ink",
+        "token": "color-2",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-action-bg",
+        "token": "color-2-transparent",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-trigger-ink",
+        "token": "color-3",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-trigger-bg",
+        "token": "color-3-transparent",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-decision-ink",
+        "token": "color-4",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-decision-bg",
+        "token": "color-4-transparent",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-external-ink",
+        "token": "color-5",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--tile-external-bg",
+        "token": "color-5-transparent",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--shadow-node",
+        "token": "shadow.s",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--shadow-node-hover",
+        "token": "shadow.m",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--shadow-float",
+        "token": "shadow.l",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--radius",
+        "token": "radius.m",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        },
+        "format": "rem"
+      },
+      {
+        "variable": "--ease-out",
+        "token": "motion.small.easing",
+        "defined": {
+          "path": "src/index.css",
+          "selector": ":root"
+        }
+      },
+      {
+        "variable": "--font-sans",
+        "token": "font.body",
+        "defined": {
+          "path": "src/index.css",
+          "selector": "@theme inline"
+        }
+      },
+      {
+        "variable": "--font-mono",
+        "token": "font.data",
+        "defined": {
+          "path": "src/index.css",
+          "selector": "@theme inline"
+        }
+      }
+    ],
+    "fixed": [
+      "--shadow-flow",
+      "--change-ink",
+      "--risk-ink"
+    ]
+  },
+  "source": {
+    "light": {
+      "--canvas": "#f4f4f5",
+      "--ink": "#111113",
+      "--ink-2": "#4d5058",
+      "--ink-3": "#62656e",
+      "--line": "#d9dadd",
+      "--field": "#f4f4f5",
+      "--edge": "#7d818c",
+      "--edge-strong": "#3a3b40",
+      "--edge-exception": "#c57368",
+      "--edge-exception-strong": "#b5524a",
+      "--select": "#2f6feb",
+      "--change": "#e2860b",
+      "--change-bg": "#fff6e8",
+      "--change-ink": "#8a4a00",
+      "--risk": "#d92d20",
+      "--risk-ink": "#b42318",
+      "--ok": "#17803d",
+      "--warn": "#c26d00",
+      "--handle": "#ffffff",
+      "--handle-rim": "#c9cace",
+      "--scrollbar": "#c9cace",
+      "--selection-bg": "#d6e4fd",
+      "--selection-ink": "#0b2a66",
+      "--tile-trigger-bg": "#e6f5ec",
+      "--tile-trigger-ink": "#1a7f45",
+      "--tile-action-bg": "#efeafd",
+      "--tile-action-ink": "#6a3fd4",
+      "--tile-decision-bg": "#ffeee1",
+      "--tile-decision-ink": "#c9530a",
+      "--tile-external-bg": "#fff4d1",
+      "--tile-external-ink": "#9a6200",
+      "--tile-result-bg": "#efeff1",
+      "--tile-result-ink": "#4f5057",
+      "--background": "#f4f4f5",
+      "--foreground": "#111113",
+      "--card": "#ffffff",
+      "--card-foreground": "#111113",
+      "--popover": "#ffffff",
+      "--popover-foreground": "#111113",
+      "--primary": "#111113",
+      "--primary-foreground": "#ffffff",
+      "--secondary": "#f1f1f3",
+      "--secondary-foreground": "#111113",
+      "--muted": "#f1f1f3",
+      "--muted-foreground": "#4d5058",
+      "--destructive": "#d92d20",
+      "--border": "#d9dadd",
+      "--input": "#d9dadd",
+      "--ring": "#2f6feb",
+      "--radius": "0.75rem",
+      "--ease-out": "cubic-bezier(0.16, 1, 0.3, 1)",
+      "--shadow-node": "0 1px 2px rgb(17 17 19 / 0.04), 0 4px 14px rgb(17 17 19 / 0.05)",
+      "--shadow-node-hover": "0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08)",
+      "--shadow-float": "0 1px 2px rgb(17 17 19 / 0.05), 0 12px 32px rgb(17 17 19 / 0.1)",
+      "--flow-top": "#fcfcfc",
+      "--flow-bottom": "#f8f8f9",
+      "--flow-rim": "rgb(17 17 19 / 0.07)",
+      "--font-sans": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif",
+      "--font-mono": "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, monospace"
+    },
+    "dark": {
+      "--canvas": "#101012",
+      "--ink": "#f1f1f3",
+      "--ink-2": "#b6b7bd",
+      "--ink-3": "#8e9097",
+      "--line": "#3b3d44",
+      "--field": "#26262b",
+      "--edge": "#90939d",
+      "--edge-strong": "#d3d4d9",
+      "--edge-exception": "#a35a52",
+      "--edge-exception-strong": "#f09a90",
+      "--select": "#6ea0ff",
+      "--change": "#f0a030",
+      "--change-bg": "#33260f",
+      "--change-ink": "#ffcb80",
+      "--risk": "#ff6b5e",
+      "--risk-ink": "#ffa39a",
+      "--ok": "#4cc27a",
+      "--warn": "#f0a030",
+      "--handle": "#1c1c20",
+      "--handle-rim": "#55565d",
+      "--scrollbar": "#55565d",
+      "--selection-bg": "#24427a",
+      "--selection-ink": "#eaf1ff",
+      "--tile-trigger-bg": "#173524",
+      "--tile-trigger-ink": "#6fd39a",
+      "--tile-action-bg": "#2a2247",
+      "--tile-action-ink": "#b49cff",
+      "--tile-decision-bg": "#3d2413",
+      "--tile-decision-ink": "#ffa066",
+      "--tile-external-bg": "#382c0c",
+      "--tile-external-ink": "#f2c14e",
+      "--tile-result-bg": "#2a2a2f",
+      "--tile-result-ink": "#b6b7bd",
+      "--background": "#101012",
+      "--foreground": "#f1f1f3",
+      "--card": "#1c1c20",
+      "--card-foreground": "#f1f1f3",
+      "--popover": "#1c1c20",
+      "--popover-foreground": "#f1f1f3",
+      "--primary": "#f1f1f3",
+      "--primary-foreground": "#101012",
+      "--secondary": "#26262b",
+      "--secondary-foreground": "#f1f1f3",
+      "--muted": "#26262b",
+      "--muted-foreground": "#b6b7bd",
+      "--destructive": "#ff6b5e",
+      "--border": "#3b3d44",
+      "--input": "#3b3d44",
+      "--ring": "#6ea0ff",
+      "--radius": "0.75rem",
+      "--ease-out": "cubic-bezier(0.16, 1, 0.3, 1)",
+      "--shadow-node": "0 1px 2px rgb(0 0 0 / 0.3), 0 4px 14px rgb(0 0 0 / 0.25)",
+      "--shadow-node-hover": "0 2px 4px rgb(0 0 0 / 0.35), 0 10px 26px rgb(0 0 0 / 0.35)",
+      "--shadow-float": "0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.45)",
+      "--flow-top": "#18181b",
+      "--flow-bottom": "#151517",
+      "--flow-rim": "rgb(255 255 255 / 0.07)",
+      "--font-sans": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif",
+      "--font-mono": "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, monospace"
+    }
+  }
+}

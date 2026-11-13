@@ -1,0 +1,4224 @@
+{
+  "format": "graphical-install-report-v1",
+  "dryRun": false,
+  "project": "graphical",
+  "inputs": {
+    "inventory": "graphical/install/style-inventory.json",
+    "input": "graphical/install/import.json",
+    "keep": []
+  },
+  "totals": [
+    {
+      "label": "Colors",
+      "before": 37,
+      "after": 18,
+      "derived": 0,
+      "kept": 0
+    },
+    {
+      "label": "Text sizes",
+      "before": 10,
+      "after": 5,
+      "derived": 0,
+      "kept": 0
+    },
+    {
+      "label": "Font weights",
+      "before": 2,
+      "after": 2,
+      "derived": 0,
+      "kept": 0
+    },
+    {
+      "label": "Spacing",
+      "before": 15,
+      "after": 7,
+      "derived": 2,
+      "kept": 0
+    },
+    {
+      "label": "Corners",
+      "before": 11,
+      "after": 5,
+      "derived": 0,
+      "kept": 0
+    },
+    {
+      "label": "Borders",
+      "before": 2,
+      "after": 2,
+      "derived": 0,
+      "kept": 0
+    },
+    {
+      "label": "Shadows",
+      "before": 4,
+      "after": 3,
+      "derived": 0,
+      "kept": 0
+    }
+  ],
+  "families": {
+    "color": {
+      "rewritten": 0,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 18,
+      "kept": 8,
+      "preserved": 252
+    },
+    "font-size": {
+      "rewritten": 81,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 0,
+      "preserved": 0
+    },
+    "spacing": {
+      "rewritten": 193,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 0,
+      "preserved": 0
+    },
+    "radius": {
+      "rewritten": 73,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 0,
+      "preserved": 6
+    },
+    "font-weight": {
+      "rewritten": 6,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 25,
+      "kept": 0,
+      "preserved": 0
+    },
+    "border-width": {
+      "rewritten": 20,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 0,
+      "preserved": 8
+    },
+    "line-height": {
+      "rewritten": 6,
+      "removed": 41,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 4,
+      "preserved": 3
+    },
+    "shadow": {
+      "rewritten": 0,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 4,
+      "preserved": 29
+    },
+    "font-family": {
+      "rewritten": 12,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 0,
+      "preserved": 0
+    },
+    "letter-spacing": {
+      "rewritten": 6,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 0,
+      "preserved": 0
+    },
+    "token": {
+      "rewritten": 111,
+      "removed": 0,
+      "skipped": 0,
+      "tokens": 0,
+      "kept": 0,
+      "preserved": 0
+    }
+  },
+  "files": [
+    "src/App.tsx",
+    "src/atlas/nodes.tsx",
+    "src/canvas/flow-edge.tsx",
+    "src/canvas/step-node.tsx",
+    "src/components/base-node.tsx",
+    "src/components/commit-range.tsx",
+    "src/components/detail-panel.tsx",
+    "src/components/evidence.tsx",
+    "src/components/headline.tsx",
+    "src/components/map-mark.tsx",
+    "src/components/ui/badge.tsx",
+    "src/components/ui/button.tsx",
+    "src/components/ui/card.tsx",
+    "src/components/ui/popover.tsx",
+    "src/components/ui/scroll-area.tsx",
+    "src/components/ui/tabs.tsx",
+    "src/components/ui/tooltip.tsx",
+    "src/index.css",
+    "src/main.tsx"
+  ],
+  "written": [
+    "graphical/project.json",
+    "graphical/themes/graphical.json",
+    "graphical/role-map.json",
+    "graphical/generated/theme.css",
+    "graphical/README.md",
+    "graphical/generated/tailwind-theme.css",
+    "graphical/generated/tailwind-merge.cjs",
+    "graphical/install/install-report.json",
+    "graphical/install/install-report.md"
+  ],
+  "fonts": {
+    "font-sans": "body",
+    "font-heading": "display",
+    "font-mono": "data"
+  },
+  "changes": [
+    {
+      "path": "src/App.tsx",
+      "line": 1198,
+      "text": "text-[14px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1198,
+      "text": "px-6",
+      "family": "spacing",
+      "after": "px-xxl"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1206,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1256,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1262,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1268,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1273,
+      "text": "rounded-none",
+      "family": "radius",
+      "after": "corner-zero"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1282,
+      "text": "rounded-none",
+      "family": "radius",
+      "after": "corner-zero"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1291,
+      "text": "rounded-none",
+      "family": "radius",
+      "after": "corner-zero"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1325,
+      "text": "rounded-2xl",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1382,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1382,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1382,
+      "text": "py-1.5",
+      "family": "spacing",
+      "after": "py-s"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1382,
+      "text": "pr-1.5",
+      "family": "spacing",
+      "after": "pr-s"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1382,
+      "text": "gap-2.5",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1382,
+      "text": "pl-3",
+      "family": "spacing",
+      "after": "pl-l"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1413,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1413,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1413,
+      "text": "px-2.5",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1291,
+      "text": "border-t",
+      "family": "border-width",
+      "after": "edge-t-m"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1382,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 76,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 79,
+      "text": "text-[20px]",
+      "family": "font-size",
+      "after": "text-body-xl"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 84,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 84,
+      "text": "rounded-[6px]",
+      "family": "radius",
+      "after": "corner-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 84,
+      "text": "px-1.5",
+      "family": "spacing",
+      "after": "px-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 114,
+      "text": "border-0",
+      "family": "border-width",
+      "after": "edge-none"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 114,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 114,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 114,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 114,
+      "text": "px-2.5",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 115,
+      "text": "ml-1",
+      "family": "spacing",
+      "after": "ml-xs"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 153,
+      "text": "rounded-[24px]",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 157,
+      "text": "px-5",
+      "family": "spacing",
+      "after": "px-xxl"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 159,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 166,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 172,
+      "text": "text-[15px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 173,
+      "text": "text-[14px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 173,
+      "text": "font-normal",
+      "family": "font-weight",
+      "after": "font-regular"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 181,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 181,
+      "text": "rounded-[5px]",
+      "family": "radius",
+      "after": "corner-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 181,
+      "text": "pb-px",
+      "family": "spacing",
+      "after": "pb-xxs"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 181,
+      "text": "px-1",
+      "family": "spacing",
+      "after": "px-xs"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 192,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 192,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 192,
+      "text": "py-0.5",
+      "family": "spacing",
+      "after": "py-xxs"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 192,
+      "text": "ml-1",
+      "family": "spacing",
+      "after": "ml-xs"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 192,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 192,
+      "text": "px-2",
+      "family": "spacing",
+      "after": "px-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 235,
+      "text": "border-[1.5px]",
+      "family": "border-width",
+      "after": "edge-l"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 235,
+      "text": "rounded-[18px]",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 235,
+      "text": "p-3",
+      "family": "spacing",
+      "after": "p-l"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 248,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 254,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 271,
+      "text": "rounded-[14px]",
+      "family": "radius",
+      "after": "corner-l"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 271,
+      "text": "py-1.5",
+      "family": "spacing",
+      "after": "py-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 271,
+      "text": "pl-1.5",
+      "family": "spacing",
+      "after": "pl-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 271,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 271,
+      "text": "pr-3.5",
+      "family": "spacing",
+      "after": "pr-xl"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 298,
+      "text": "rounded-[8px]",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 305,
+      "text": "text-[14px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 306,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 316,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 324,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 324,
+      "text": "rounded-[5px]",
+      "family": "radius",
+      "after": "corner-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 324,
+      "text": "px-1",
+      "family": "spacing",
+      "after": "px-xs"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 330,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 355,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 355,
+      "text": "rounded-[14px]",
+      "family": "radius",
+      "after": "corner-l"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 355,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 355,
+      "text": "px-3",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 376,
+      "text": "rounded-[18px]",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 380,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 79,
+      "text": "leading-7",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 84,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 173,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 172,
+      "text": "leading-[22px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 181,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 192,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 248,
+      "text": "leading-[19px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 254,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 271,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 306,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 305,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 316,
+      "text": "leading-[17px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 324,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 330,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 355,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 355,
+      "text": "leading-[18px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 376,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 380,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/flow-edge.tsx",
+      "line": 275,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/canvas/flow-edge.tsx",
+      "line": 275,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/canvas/flow-edge.tsx",
+      "line": 275,
+      "text": "py-0.5",
+      "family": "spacing",
+      "after": "py-xxs"
+    },
+    {
+      "path": "src/canvas/flow-edge.tsx",
+      "line": 275,
+      "text": "px-2",
+      "family": "spacing",
+      "after": "px-m"
+    },
+    {
+      "path": "src/canvas/flow-edge.tsx",
+      "line": 275,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 71,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 71,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 71,
+      "text": "gap-px",
+      "family": "spacing",
+      "after": "gap-xxs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 71,
+      "text": "px-1",
+      "family": "spacing",
+      "after": "px-xs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 95,
+      "text": "rounded-[8px]",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 95,
+      "text": "rounded-[9px]",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 125,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 241,
+      "text": "border-[1.5px]",
+      "family": "border-width",
+      "after": "edge-l"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 273,
+      "text": "rounded-[14px]",
+      "family": "radius",
+      "after": "corner-l"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 273,
+      "text": "rounded-[18px]",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 321,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 321,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 321,
+      "text": "py-px",
+      "family": "spacing",
+      "after": "py-xxs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 321,
+      "text": "px-2",
+      "family": "spacing",
+      "after": "px-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "text": "pl-2",
+      "family": "spacing",
+      "after": "pl-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "text": "pr-3",
+      "family": "spacing",
+      "after": "pr-l"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 401,
+      "text": "rounded-[14px]",
+      "family": "radius",
+      "after": "corner-l"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 401,
+      "text": "py-1.5",
+      "family": "spacing",
+      "after": "py-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 401,
+      "text": "pl-1.5",
+      "family": "spacing",
+      "after": "pl-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 401,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 401,
+      "text": "pr-3.5",
+      "family": "spacing",
+      "after": "pr-xl"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 410,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 410,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 410,
+      "text": "px-1",
+      "family": "spacing",
+      "after": "px-xs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 424,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 433,
+      "text": "text-[14px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 434,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 434,
+      "text": "font-normal",
+      "family": "font-weight",
+      "after": "font-regular"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 462,
+      "text": "rounded-[18px]",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 462,
+      "text": "p-3",
+      "family": "spacing",
+      "after": "p-l"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 472,
+      "text": "border-[1.5px]",
+      "family": "border-width",
+      "after": "edge-l"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 472,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 487,
+      "text": "gap-2.5",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 499,
+      "text": "text-[14px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 500,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 500,
+      "text": "font-normal",
+      "family": "font-weight",
+      "after": "font-regular"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 512,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 512,
+      "text": "mt-1",
+      "family": "spacing",
+      "after": "mt-xs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 512,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 520,
+      "text": "mt-2",
+      "family": "spacing",
+      "after": "mt-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 520,
+      "text": "pt-2",
+      "family": "spacing",
+      "after": "pt-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 524,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 524,
+      "text": "mb-2",
+      "family": "spacing",
+      "after": "mb-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 531,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 531,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 550,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 550,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 550,
+      "text": "mt-2",
+      "family": "spacing",
+      "after": "mt-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 321,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 434,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 433,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 500,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 499,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 512,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 520,
+      "text": "border-t",
+      "family": "border-width",
+      "after": "edge-t-m"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 524,
+      "text": "leading-[18px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 531,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/base-node.tsx",
+      "line": 9,
+      "text": "rounded-md",
+      "family": "radius",
+      "after": "corner-s"
+    },
+    {
+      "path": "src/components/base-node.tsx",
+      "line": 9,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 23,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 23,
+      "text": "rounded-[6px]",
+      "family": "radius",
+      "after": "corner-s"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 23,
+      "text": "px-1",
+      "family": "spacing",
+      "after": "px-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 66,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 66,
+      "text": "gap-0.5",
+      "family": "spacing",
+      "after": "gap-xxs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 66,
+      "text": "py-1",
+      "family": "spacing",
+      "after": "py-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 66,
+      "text": "pl-1",
+      "family": "spacing",
+      "after": "pl-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 66,
+      "text": "pr-2",
+      "family": "spacing",
+      "after": "pr-m"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 81,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 100,
+      "text": "rounded-[16px]",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 100,
+      "text": "gap-0",
+      "family": "spacing",
+      "after": "gap-zero"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 100,
+      "text": "p-0",
+      "family": "spacing",
+      "after": "p-zero"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 182,
+      "text": "gap-3",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 182,
+      "text": "pb-3",
+      "family": "spacing",
+      "after": "pb-l"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 182,
+      "text": "pt-3.5",
+      "family": "spacing",
+      "after": "pt-xl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 182,
+      "text": "px-4",
+      "family": "spacing",
+      "after": "px-xl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 183,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 197,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 197,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 197,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 197,
+      "text": "py-1",
+      "family": "spacing",
+      "after": "py-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 197,
+      "text": "px-2",
+      "family": "spacing",
+      "after": "px-m"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 206,
+      "text": "px-4",
+      "family": "spacing",
+      "after": "px-xl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 206,
+      "text": "py-4",
+      "family": "spacing",
+      "after": "py-xl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 206,
+      "text": "gap-5",
+      "family": "spacing",
+      "after": "gap-xxl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 209,
+      "text": "gap-3",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 210,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 211,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 212,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 213,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 220,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 220,
+      "text": "px-4",
+      "family": "spacing",
+      "after": "px-xl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 220,
+      "text": "py-4",
+      "family": "spacing",
+      "after": "py-xl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 227,
+      "text": "pb-1",
+      "family": "spacing",
+      "after": "pb-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 227,
+      "text": "px-3",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 227,
+      "text": "pt-6",
+      "family": "spacing",
+      "after": "pt-xxl"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 246,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 246,
+      "text": "px-1",
+      "family": "spacing",
+      "after": "px-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 246,
+      "text": "pb-1",
+      "family": "spacing",
+      "after": "pb-xs"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 23,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 23,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 183,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 197,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 220,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 246,
+      "text": "leading-4",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 86,
+      "text": "rounded-2xl",
+      "family": "radius",
+      "after": "corner-xl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 86,
+      "text": "gap-0",
+      "family": "spacing",
+      "after": "gap-zero"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 86,
+      "text": "py-0",
+      "family": "spacing",
+      "after": "py-zero"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 87,
+      "text": "gap-4",
+      "family": "spacing",
+      "after": "gap-xl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 87,
+      "text": "pb-4",
+      "family": "spacing",
+      "after": "pb-xl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 87,
+      "text": "p-5",
+      "family": "spacing",
+      "after": "p-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 88,
+      "text": "gap-3",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 92,
+      "text": "text-[16px]",
+      "family": "font-size",
+      "after": "text-body-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 102,
+      "text": "-mt-0.5",
+      "family": "spacing",
+      "after": "-mt-xxs"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 102,
+      "text": "-mr-1",
+      "family": "spacing",
+      "after": "-mr-xs"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 107,
+      "text": "gap-3",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 108,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 138,
+      "text": "gap-0",
+      "family": "spacing",
+      "after": "gap-zero"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 139,
+      "text": "px-5",
+      "family": "spacing",
+      "after": "px-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 140,
+      "text": "p-0",
+      "family": "spacing",
+      "after": "p-zero"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 140,
+      "text": "gap-5",
+      "family": "spacing",
+      "after": "gap-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 141,
+      "text": "px-0",
+      "family": "spacing",
+      "after": "px-zero"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 141,
+      "text": "pb-3",
+      "family": "spacing",
+      "after": "pb-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 145,
+      "text": "px-0",
+      "family": "spacing",
+      "after": "px-zero"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 145,
+      "text": "pb-3",
+      "family": "spacing",
+      "after": "pb-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 152,
+      "text": "p-5",
+      "family": "spacing",
+      "after": "p-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 153,
+      "text": "space-y-6",
+      "family": "spacing",
+      "after": "space-y-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 175,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 193,
+      "text": "py-3",
+      "family": "spacing",
+      "after": "py-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 193,
+      "text": "px-5",
+      "family": "spacing",
+      "after": "px-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 206,
+      "text": "space-y-2",
+      "family": "spacing",
+      "after": "space-y-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 207,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 209,
+      "text": "text-xs",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 213,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 232,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 234,
+      "text": "space-y-5",
+      "family": "spacing",
+      "after": "space-y-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 263,
+      "text": "space-y-2",
+      "family": "spacing",
+      "after": "space-y-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 264,
+      "text": "gap-3",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 265,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 267,
+      "text": "text-[11px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 267,
+      "text": "font-normal",
+      "family": "font-weight",
+      "after": "font-regular"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 267,
+      "text": "ml-2",
+      "family": "spacing",
+      "after": "ml-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 280,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 280,
+      "text": "rounded-lg",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 280,
+      "text": "p-4",
+      "family": "spacing",
+      "after": "p-xl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 285,
+      "text": "text-xs",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 343,
+      "text": "space-y-5",
+      "family": "spacing",
+      "after": "space-y-xxl"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 345,
+      "text": "gap-2.5",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 346,
+      "text": "mt-1",
+      "family": "spacing",
+      "after": "mt-xs"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 347,
+      "text": "text-[17px]",
+      "family": "font-size",
+      "after": "text-body-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 352,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 364,
+      "text": "space-y-2.5",
+      "family": "spacing",
+      "after": "space-y-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 365,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 369,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 372,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 380,
+      "text": "-ml-2",
+      "family": "spacing",
+      "after": "-ml-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 385,
+      "text": "space-y-3",
+      "family": "spacing",
+      "after": "space-y-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 385,
+      "text": "pt-3",
+      "family": "spacing",
+      "after": "pt-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 394,
+      "text": "space-y-1.5",
+      "family": "spacing",
+      "after": "space-y-s"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 395,
+      "text": "text-xs",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 396,
+      "text": "text-xs",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 396,
+      "text": "rounded-lg",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 396,
+      "text": "p-3",
+      "family": "spacing",
+      "after": "p-l"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 92,
+      "text": "leading-6",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 139,
+      "text": "border-b",
+      "family": "border-width",
+      "after": "edge-b-m"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 175,
+      "text": "leading-6",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 213,
+      "text": "leading-6",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 232,
+      "text": "leading-6",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 267,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 280,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 280,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 347,
+      "text": "leading-7",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 352,
+      "text": "leading-6",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 372,
+      "text": "leading-[21px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/detail-panel.tsx",
+      "line": 396,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 31,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 45,
+      "text": "m-0",
+      "family": "spacing",
+      "after": "m-zero"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 46,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 62,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 62,
+      "text": "rounded-[10px]",
+      "family": "radius",
+      "after": "corner-l"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 62,
+      "text": "mt-1",
+      "family": "spacing",
+      "after": "mt-xs"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 62,
+      "text": "py-2",
+      "family": "spacing",
+      "after": "py-m"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 62,
+      "text": "px-3",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 46,
+      "text": "font-mono",
+      "family": "font-family",
+      "after": "font-data"
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 46,
+      "text": "leading-[17px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/evidence.tsx",
+      "line": 62,
+      "text": "leading-[18px]",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 91,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 93,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 93,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 93,
+      "text": "p-1",
+      "family": "spacing",
+      "after": "p-xs"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 100,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 100,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 100,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 100,
+      "text": "px-2.5",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 114,
+      "text": "text-[12px]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 114,
+      "text": "gap-0.5",
+      "family": "spacing",
+      "after": "gap-xxs"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 114,
+      "text": "pl-1",
+      "family": "spacing",
+      "after": "pl-xs"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 147,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 147,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 147,
+      "text": "py-2",
+      "family": "spacing",
+      "after": "py-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 147,
+      "text": "px-3",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 157,
+      "text": "rounded-[14px]",
+      "family": "radius",
+      "after": "corner-l"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 157,
+      "text": "p-1.5",
+      "family": "spacing",
+      "after": "p-s"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 157,
+      "text": "mt-2",
+      "family": "spacing",
+      "after": "mt-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 160,
+      "text": "gap-0.5",
+      "family": "spacing",
+      "after": "gap-xxs"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 173,
+      "text": "rounded-[9px]",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 173,
+      "text": "gap-2.5",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 173,
+      "text": "px-2.5",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 173,
+      "text": "py-2.5",
+      "family": "spacing",
+      "after": "py-l"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 178,
+      "text": "text-[14px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 221,
+      "text": "rounded-sm",
+      "family": "radius",
+      "after": "corner-xs"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 221,
+      "text": "px-1",
+      "family": "spacing",
+      "after": "px-xs"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 114,
+      "text": "border-l",
+      "family": "border-width",
+      "after": "edge-l-m"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 178,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 221,
+      "text": "font-sans",
+      "family": "font-family",
+      "after": "font-body"
+    },
+    {
+      "path": "src/components/map-mark.tsx",
+      "line": 13,
+      "text": "text-[13px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/map-mark.tsx",
+      "line": 13,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/map-mark.tsx",
+      "line": 13,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/components/map-mark.tsx",
+      "line": 13,
+      "text": "px-3",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/map-mark.tsx",
+      "line": 17,
+      "text": "mr-0.5",
+      "family": "spacing",
+      "after": "mr-xxs"
+    },
+    {
+      "path": "src/components/map-mark.tsx",
+      "line": 13,
+      "text": "leading-5",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "line": 7,
+      "text": "text-xs",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "line": 7,
+      "text": "py-0.5",
+      "family": "spacing",
+      "after": "py-xxs"
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "line": 7,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "line": 7,
+      "text": "has-data-[icon=inline-end]:pr-1.5",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-end]:pr-s"
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "line": 7,
+      "text": "has-data-[icon=inline-start]:pl-1.5",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-start]:pl-s"
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "line": 7,
+      "text": "px-2",
+      "family": "spacing",
+      "after": "px-m"
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "line": 7,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 7,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 7,
+      "text": "rounded-lg",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 24,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 24,
+      "text": "has-data-[icon=inline-end]:pr-2",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-end]:pr-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 24,
+      "text": "has-data-[icon=inline-start]:pl-2",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-start]:pl-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 24,
+      "text": "px-2.5",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 25,
+      "text": "text-xs",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 25,
+      "text": "in-data-[slot=button-group]:rounded-lg",
+      "family": "radius",
+      "after": "in-data-[slot=button-group]:corner-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 25,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 25,
+      "text": "has-data-[icon=inline-end]:pr-1.5",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-end]:pr-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 25,
+      "text": "has-data-[icon=inline-start]:pl-1.5",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-start]:pl-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 25,
+      "text": "px-2",
+      "family": "spacing",
+      "after": "px-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 26,
+      "text": "text-[0.8rem]",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 26,
+      "text": "in-data-[slot=button-group]:rounded-lg",
+      "family": "radius",
+      "after": "in-data-[slot=button-group]:corner-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 26,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 26,
+      "text": "has-data-[icon=inline-end]:pr-1.5",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-end]:pr-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 26,
+      "text": "has-data-[icon=inline-start]:pl-1.5",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-start]:pl-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 26,
+      "text": "px-2.5",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 27,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 27,
+      "text": "has-data-[icon=inline-end]:pr-2",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-end]:pr-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 27,
+      "text": "has-data-[icon=inline-start]:pl-2",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-start]:pl-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 27,
+      "text": "px-2.5",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 30,
+      "text": "in-data-[slot=button-group]:rounded-lg",
+      "family": "radius",
+      "after": "in-data-[slot=button-group]:corner-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 32,
+      "text": "in-data-[slot=button-group]:rounded-lg",
+      "family": "radius",
+      "after": "in-data-[slot=button-group]:corner-m"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "line": 7,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "text": "rounded-xl",
+      "family": "radius",
+      "after": "corner-l"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "text": "*:[img:first-child]:rounded-t-xl",
+      "family": "radius",
+      "after": "*:[img:first-child]:corner-t-l"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "text": "*:[img:last-child]:rounded-b-xl",
+      "family": "radius",
+      "after": "*:[img:last-child]:corner-b-l"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "text": "has-data-[slot=card-footer]:pb-0",
+      "family": "spacing",
+      "after": "has-data-[slot=card-footer]:pb-zero"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "text": "has-[>img:first-child]:pt-0",
+      "family": "spacing",
+      "after": "has-[>img:first-child]:pt-zero"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "text": "data-[size=sm]:has-data-[slot=card-footer]:pb-0",
+      "family": "spacing",
+      "after": "data-[size=sm]:has-data-[slot=card-footer]:pb-zero"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 27,
+      "text": "rounded-t-xl",
+      "family": "radius",
+      "after": "corner-t-l"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 27,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 40,
+      "text": "group-data-[size=sm]/card:text-sm",
+      "family": "font-size",
+      "after": "group-data-[size=sm]/card:text-body-m"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 40,
+      "text": "text-base",
+      "family": "font-size",
+      "after": "text-body-l"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 52,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 86,
+      "text": "rounded-b-xl",
+      "family": "radius",
+      "after": "corner-b-l"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 40,
+      "text": "font-heading",
+      "family": "font-family",
+      "after": "font-display"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 40,
+      "text": "leading-snug",
+      "family": "line-height",
+      "after": ""
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 86,
+      "text": "border-t",
+      "family": "border-width",
+      "after": "edge-t-m"
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "line": 30,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "line": 30,
+      "text": "rounded-lg",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "line": 30,
+      "text": "gap-2.5",
+      "family": "spacing",
+      "after": "gap-l"
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "line": 30,
+      "text": "p-2.5",
+      "family": "spacing",
+      "after": "p-l"
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "line": 49,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "line": 49,
+      "text": "gap-0.5",
+      "family": "spacing",
+      "after": "gap-xxs"
+    },
+    {
+      "path": "src/components/ui/scroll-area.tsx",
+      "line": 39,
+      "text": "p-px",
+      "family": "spacing",
+      "after": "p-xxs"
+    },
+    {
+      "path": "src/components/ui/scroll-area.tsx",
+      "line": 46,
+      "text": "rounded-full",
+      "family": "radius",
+      "after": "corner-full"
+    },
+    {
+      "path": "src/components/ui/scroll-area.tsx",
+      "line": 39,
+      "text": "data-horizontal:border-t",
+      "family": "border-width",
+      "after": "data-horizontal:edge-t-m"
+    },
+    {
+      "path": "src/components/ui/scroll-area.tsx",
+      "line": 39,
+      "text": "data-vertical:border-l",
+      "family": "border-width",
+      "after": "data-vertical:edge-l-m"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 16,
+      "text": "gap-2",
+      "family": "spacing",
+      "after": "gap-m"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 25,
+      "text": "data-[variant=line]:rounded-none",
+      "family": "radius",
+      "after": "data-[variant=line]:corner-zero"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 25,
+      "text": "rounded-lg",
+      "family": "radius",
+      "after": "corner-m"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 25,
+      "text": "p-[3px]",
+      "family": "spacing",
+      "after": "p-xs"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 30,
+      "text": "gap-1",
+      "family": "spacing",
+      "after": "gap-xs"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "rounded-md",
+      "family": "radius",
+      "after": "corner-s"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "py-0.5",
+      "family": "spacing",
+      "after": "py-xxs"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "has-data-[icon=inline-end]:pr-1",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-end]:pr-xs"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "has-data-[icon=inline-start]:pl-1",
+      "family": "spacing",
+      "after": "has-data-[icon=inline-start]:pl-xs"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "px-1.5",
+      "family": "spacing",
+      "after": "px-s"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 81,
+      "text": "text-sm",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "text": "border",
+      "family": "border-width",
+      "after": "edge-m"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "text": "text-xs",
+      "family": "font-size",
+      "after": "text-body-s"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "text": "**:data-[slot=kbd]:rounded-sm",
+      "family": "radius",
+      "after": "**:data-[slot=kbd]:corner-xs"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "text": "rounded-md",
+      "family": "radius",
+      "after": "corner-s"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "text": "gap-1.5",
+      "family": "spacing",
+      "after": "gap-s"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "text": "py-1.5",
+      "family": "spacing",
+      "after": "py-s"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "text": "has-data-[slot=kbd]:pr-1.5",
+      "family": "spacing",
+      "after": "has-data-[slot=kbd]:pr-s"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "text": "px-3",
+      "family": "spacing",
+      "after": "px-l"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 50,
+      "text": "rounded-[2px]",
+      "family": "radius",
+      "after": "corner-xs"
+    },
+    {
+      "path": "src/index.css",
+      "line": 257,
+      "text": "body {margin:0}",
+      "family": "spacing",
+      "after": "var(--space-zero)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 258,
+      "text": "body {font-size:14px}",
+      "family": "font-size",
+      "after": "var(--size-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 275,
+      "text": "code,pre {font-family:var(--font-mono)}",
+      "family": "font-family",
+      "after": "var(--font-data)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 289,
+      "text": ".react-flow__attribution {font-size:10px}",
+      "family": "font-size",
+      "after": "var(--size-xs)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 299,
+      "text": ".react-flow__handle {border-width:1.25px}",
+      "family": "border-width",
+      "after": "var(--border-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 430,
+      "text": ".commit-tree [class*=\"index-module_container\"] {font-family:var(--font-sans)}",
+      "family": "font-family",
+      "after": "var(--font-body)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 431,
+      "text": ".commit-tree [class*=\"index-module_container\"] {font-size:12px}",
+      "family": "font-size",
+      "after": "var(--size-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 435,
+      "text": ".commit-tree>[class*=\"index-module_container\"] {margin-bottom:-36px}",
+      "family": "spacing",
+      "after": "calc(var(--space-xxl) * -1.5)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 445,
+      "text": ".commit-tree [class*=\"index-module_details\"]>div {gap:3px}",
+      "family": "spacing",
+      "after": "var(--space-xs)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 447,
+      "text": ".commit-tree [class*=\"index-module_details\"]>div {padding-right:4px}",
+      "family": "spacing",
+      "after": "var(--space-xs)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 450,
+      "text": ".commit-tree [class*=\"index-module_msg\"] {margin-top:0}",
+      "family": "spacing",
+      "after": "var(--space-zero)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 453,
+      "text": ".commit-tree [class*=\"index-module_msg\"] {font-size:13px}",
+      "family": "font-size",
+      "after": "var(--size-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 459,
+      "text": ".commit-tree [class*=\"index-module_labelAndLink\"] {gap:8px}",
+      "family": "spacing",
+      "after": "var(--space-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 472,
+      "text": ".commit-tree [class*=\"index-module_bold\"] {font-size:12px}",
+      "family": "font-size",
+      "after": "var(--size-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 473,
+      "text": ".commit-tree [class*=\"index-module_bold\"] {font-weight:400}",
+      "family": "font-weight",
+      "after": "var(--weight-body-regular)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 489,
+      "text": ".commit-tree [class*=\"index-module_outer\"],.commit-tree [class*=\"index-module_number\"] {border-radius:6px}",
+      "family": "radius",
+      "after": "var(--radius-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 491,
+      "text": ".commit-tree [class*=\"index-module_outer\"],.commit-tree [class*=\"index-module_number\"] {padding:0 7px}",
+      "family": "spacing",
+      "after": "var(--space-zero)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 491,
+      "text": ".commit-tree [class*=\"index-module_outer\"],.commit-tree [class*=\"index-module_number\"] {padding:0 7px}",
+      "family": "spacing",
+      "after": "var(--space-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 493,
+      "text": ".commit-tree [class*=\"index-module_outer\"],.commit-tree [class*=\"index-module_number\"] {font-size:11px}",
+      "family": "font-size",
+      "after": "var(--size-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 494,
+      "text": ".commit-tree [class*=\"index-module_outer\"],.commit-tree [class*=\"index-module_number\"] {font-weight:500}",
+      "family": "font-weight",
+      "after": "var(--weight-body-medium)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 502,
+      "text": ".commit-tree [class*=\"index-module_block\"] {border-radius:10px}",
+      "family": "radius",
+      "after": "var(--radius-l)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 513,
+      "text": ".commit-tree [class*=\"styles-module_tooltip\"] {border-radius:8px}",
+      "family": "radius",
+      "after": "var(--radius-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 516,
+      "text": ".commit-tree [class*=\"styles-module_tooltip\"] {font-size:12px}",
+      "family": "font-size",
+      "after": "var(--size-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 289,
+      "text": "line-height (added)",
+      "family": "line-height",
+      "after": "var(--line-xs)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 289,
+      "text": "letter-spacing (added)",
+      "family": "letter-spacing",
+      "after": "var(--letter-spacing-xs)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 431,
+      "text": "line-height (added)",
+      "family": "line-height",
+      "after": "var(--line-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 431,
+      "text": "letter-spacing (added)",
+      "family": "letter-spacing",
+      "after": "var(--letter-spacing-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 454,
+      "text": "line-height: 18px;",
+      "family": "line-height",
+      "after": "var(--line-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 453,
+      "text": "letter-spacing (added)",
+      "family": "letter-spacing",
+      "after": "var(--letter-spacing-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 475,
+      "text": "line-height: 16px;",
+      "family": "line-height",
+      "after": "var(--line-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 472,
+      "text": "letter-spacing (added)",
+      "family": "letter-spacing",
+      "after": "var(--letter-spacing-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 495,
+      "text": "line-height: 20px;",
+      "family": "line-height",
+      "after": "var(--line-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 493,
+      "text": "letter-spacing (added)",
+      "family": "letter-spacing",
+      "after": "var(--letter-spacing-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 517,
+      "text": "line-height: 16px;",
+      "family": "line-height",
+      "after": "var(--line-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 516,
+      "text": "letter-spacing (added)",
+      "family": "letter-spacing",
+      "after": "var(--letter-spacing-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 14,
+      "text": "--font-sans: -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\",\n    \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui,\n    sans-serif",
+      "family": "token",
+      "after": "var(--font-body)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 17,
+      "text": "--font-heading: var(--font-sans)",
+      "family": "token",
+      "after": "var(--font-display)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 19,
+      "text": "--font-mono: ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, monospace",
+      "family": "token",
+      "after": "var(--font-data)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 72,
+      "text": "--canvas: #f4f4f5",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 73,
+      "text": "--ink: #111113",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 74,
+      "text": "--ink-2: #4d5058",
+      "family": "token",
+      "after": "var(--neutral-8)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 75,
+      "text": "--ink-3: #62656e",
+      "family": "token",
+      "after": "var(--neutral-7)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 76,
+      "text": "--line: #d9dadd",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 77,
+      "text": "--field: #f4f4f5",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 78,
+      "text": "--edge: #7d818c",
+      "family": "token",
+      "after": "var(--neutral-6)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 79,
+      "text": "--edge-strong: #3a3b40",
+      "family": "token",
+      "after": "var(--neutral-9)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 80,
+      "text": "--edge-exception: #c57368",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 81,
+      "text": "--edge-exception-strong: #b5524a",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 82,
+      "text": "--select: #2f6feb",
+      "family": "token",
+      "after": "var(--color-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 83,
+      "text": "--change: #e2860b",
+      "family": "token",
+      "after": "var(--warning)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 84,
+      "text": "--change-bg: #fff6e8",
+      "family": "token",
+      "after": "var(--warning-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 85,
+      "text": "--change-ink: #8a4a00",
+      "family": "token",
+      "after": "var(--warning)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 86,
+      "text": "--risk: #d92d20",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 87,
+      "text": "--risk-bg: #fdf0ef",
+      "family": "token",
+      "after": "var(--error-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 88,
+      "text": "--risk-ink: #b42318",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 89,
+      "text": "--ok: #17803d",
+      "family": "token",
+      "after": "var(--success)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 90,
+      "text": "--ok-bg: #ebf7ef",
+      "family": "token",
+      "after": "var(--success-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 92,
+      "text": "--warn: #c26d00",
+      "family": "token",
+      "after": "var(--warning)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 93,
+      "text": "--handle: #ffffff",
+      "family": "token",
+      "after": "var(--neutral-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 94,
+      "text": "--handle-rim: #c9cace",
+      "family": "token",
+      "after": "var(--neutral-5)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 95,
+      "text": "--scrollbar: #c9cace",
+      "family": "token",
+      "after": "var(--neutral-5)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 96,
+      "text": "--selection-bg: #d6e4fd",
+      "family": "token",
+      "after": "var(--color-1-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 97,
+      "text": "--selection-ink: #0b2a66",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 98,
+      "text": "--tile-trigger-bg: #e6f5ec",
+      "family": "token",
+      "after": "var(--color-3-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 99,
+      "text": "--tile-trigger-ink: #1a7f45",
+      "family": "token",
+      "after": "var(--color-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 100,
+      "text": "--tile-action-bg: #efeafd",
+      "family": "token",
+      "after": "var(--color-2-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 101,
+      "text": "--tile-action-ink: #6a3fd4",
+      "family": "token",
+      "after": "var(--color-2)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 102,
+      "text": "--tile-decision-bg: #ffeee1",
+      "family": "token",
+      "after": "var(--color-4-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 103,
+      "text": "--tile-decision-ink: #c9530a",
+      "family": "token",
+      "after": "var(--color-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 104,
+      "text": "--tile-external-bg: #fff4d1",
+      "family": "token",
+      "after": "var(--color-5-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 105,
+      "text": "--tile-external-ink: #9a6200",
+      "family": "token",
+      "after": "var(--color-5)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 106,
+      "text": "--tile-result-bg: #efeff1",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 107,
+      "text": "--tile-result-ink: #4f5057",
+      "family": "token",
+      "after": "var(--neutral-8)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 109,
+      "text": "--background: var(--canvas)",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 110,
+      "text": "--foreground: var(--ink)",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 111,
+      "text": "--card: #ffffff",
+      "family": "token",
+      "after": "var(--neutral-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 112,
+      "text": "--card-foreground: var(--ink)",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 113,
+      "text": "--popover: #ffffff",
+      "family": "token",
+      "after": "var(--neutral-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 114,
+      "text": "--popover-foreground: var(--ink)",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 115,
+      "text": "--primary: var(--ink)",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 116,
+      "text": "--primary-foreground: #ffffff",
+      "family": "token",
+      "after": "var(--on-neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 117,
+      "text": "--secondary: #f1f1f3",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 118,
+      "text": "--secondary-foreground: var(--ink)",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 119,
+      "text": "--muted: #f1f1f3",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 120,
+      "text": "--muted-foreground: var(--ink-2)",
+      "family": "token",
+      "after": "var(--neutral-8)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 121,
+      "text": "--accent: #f1f1f3",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 122,
+      "text": "--accent-foreground: var(--ink)",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 123,
+      "text": "--destructive: var(--risk)",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 124,
+      "text": "--border: var(--line)",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 125,
+      "text": "--input: var(--line)",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 126,
+      "text": "--ring: var(--select)",
+      "family": "token",
+      "after": "var(--color-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 127,
+      "text": "--radius: 0.75rem",
+      "family": "token",
+      "after": "var(--radius-l)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 129,
+      "text": "--ease-out: cubic-bezier(0.16, 1, 0.3, 1)",
+      "family": "token",
+      "after": "var(--motion-easing)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 131,
+      "text": "--shadow-node: 0 1px 2px rgb(17 17 19 / 0.04), 0 4px 14px rgb(17 17 19 / 0.05)",
+      "family": "token",
+      "after": "var(--shadow-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 133,
+      "text": "--shadow-node-hover: 0 2px 4px rgb(17 17 19 / 0.05), 0 10px 26px rgb(17 17 19 / 0.08)",
+      "family": "token",
+      "after": "var(--shadow-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 135,
+      "text": "--shadow-float: 0 1px 2px rgb(17 17 19 / 0.05), 0 12px 32px rgb(17 17 19 / 0.1)",
+      "family": "token",
+      "after": "var(--shadow-l)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 138,
+      "text": "--flow-top: #fcfcfc",
+      "family": "token",
+      "after": "var(--neutral-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 139,
+      "text": "--flow-bottom: #f8f8f9",
+      "family": "token",
+      "after": "var(--neutral-2)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 140,
+      "text": "--flow-rim: rgb(17 17 19 / 0.07)",
+      "family": "token",
+      "after": "var(--neutral-10-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 150,
+      "text": "--canvas: #101012",
+      "family": "token",
+      "after": "var(--neutral-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 151,
+      "text": "--ink: #f1f1f3",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 152,
+      "text": "--ink-2: #b6b7bd",
+      "family": "token",
+      "after": "var(--neutral-8)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 153,
+      "text": "--ink-3: #8e9097",
+      "family": "token",
+      "after": "var(--neutral-7)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 154,
+      "text": "--line: #3b3d44",
+      "family": "token",
+      "after": "var(--neutral-5)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 155,
+      "text": "--field: #26262b",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 156,
+      "text": "--edge: #90939d",
+      "family": "token",
+      "after": "var(--neutral-7)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 157,
+      "text": "--edge-strong: #d3d4d9",
+      "family": "token",
+      "after": "var(--neutral-9)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 158,
+      "text": "--edge-exception: #a35a52",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 159,
+      "text": "--edge-exception-strong: #f09a90",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 160,
+      "text": "--select: #6ea0ff",
+      "family": "token",
+      "after": "var(--color-1)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 161,
+      "text": "--change: #f0a030",
+      "family": "token",
+      "after": "var(--warning)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 162,
+      "text": "--change-bg: #33260f",
+      "family": "token",
+      "after": "var(--warning-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 163,
+      "text": "--change-ink: #ffcb80",
+      "family": "token",
+      "after": "var(--warning)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 164,
+      "text": "--risk: #ff6b5e",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 165,
+      "text": "--risk-bg: #3b1a17",
+      "family": "token",
+      "after": "var(--error-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 166,
+      "text": "--risk-ink: #ffa39a",
+      "family": "token",
+      "after": "var(--error)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 167,
+      "text": "--ok: #4cc27a",
+      "family": "token",
+      "after": "var(--success)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 168,
+      "text": "--ok-bg: #14301f",
+      "family": "token",
+      "after": "var(--success-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 169,
+      "text": "--warn: #f0a030",
+      "family": "token",
+      "after": "var(--warning)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 170,
+      "text": "--handle: #1c1c20",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 171,
+      "text": "--handle-rim: #55565d",
+      "family": "token",
+      "after": "var(--neutral-6)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 172,
+      "text": "--scrollbar: #55565d",
+      "family": "token",
+      "after": "var(--neutral-6)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 173,
+      "text": "--selection-bg: #24427a",
+      "family": "token",
+      "after": "var(--color-1-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 174,
+      "text": "--selection-ink: #eaf1ff",
+      "family": "token",
+      "after": "var(--neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 175,
+      "text": "--tile-trigger-bg: #173524",
+      "family": "token",
+      "after": "var(--color-3-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 176,
+      "text": "--tile-trigger-ink: #6fd39a",
+      "family": "token",
+      "after": "var(--color-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 177,
+      "text": "--tile-action-bg: #2a2247",
+      "family": "token",
+      "after": "var(--color-2-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 178,
+      "text": "--tile-action-ink: #b49cff",
+      "family": "token",
+      "after": "var(--color-2)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 179,
+      "text": "--tile-decision-bg: #3d2413",
+      "family": "token",
+      "after": "var(--color-4-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 180,
+      "text": "--tile-decision-ink: #ffa066",
+      "family": "token",
+      "after": "var(--color-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 181,
+      "text": "--tile-external-bg: #382c0c",
+      "family": "token",
+      "after": "var(--color-5-transparent)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 182,
+      "text": "--tile-external-ink: #f2c14e",
+      "family": "token",
+      "after": "var(--color-5)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 183,
+      "text": "--tile-result-bg: #2a2a2f",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 184,
+      "text": "--tile-result-ink: #b6b7bd",
+      "family": "token",
+      "after": "var(--neutral-8)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 186,
+      "text": "--card: #1c1c20",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 187,
+      "text": "--popover: #1c1c20",
+      "family": "token",
+      "after": "var(--neutral-3)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 188,
+      "text": "--primary-foreground: #101012",
+      "family": "token",
+      "after": "var(--on-neutral-10)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 189,
+      "text": "--secondary: #26262b",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 190,
+      "text": "--muted: #26262b",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 191,
+      "text": "--accent: #26262b",
+      "family": "token",
+      "after": "var(--neutral-4)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 193,
+      "text": "--shadow-node: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 14px rgb(0 0 0 / 0.25)",
+      "family": "token",
+      "after": "var(--shadow-s)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 195,
+      "text": "--shadow-node-hover: 0 2px 4px rgb(0 0 0 / 0.35), 0 10px 26px rgb(0 0 0 / 0.35)",
+      "family": "token",
+      "after": "var(--shadow-m)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 196,
+      "text": "--shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.45)",
+      "family": "token",
+      "after": "var(--shadow-l)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 197,
+      "text": "--flow-top: #18181b",
+      "family": "token",
+      "after": "var(--neutral-2)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 198,
+      "text": "--flow-bottom: #151517",
+      "family": "token",
+      "after": "var(--neutral-2)"
+    },
+    {
+      "path": "src/index.css",
+      "line": 199,
+      "text": "--flow-rim: rgb(255 255 255 / 0.07)",
+      "family": "token",
+      "after": "var(--neutral-10-transparent)"
+    },
+    {
+      "path": "src/main.tsx",
+      "line": 32,
+      "text": "text-[14px]",
+      "family": "font-size",
+      "after": "text-body-m"
+    },
+    {
+      "path": "src/main.tsx",
+      "line": 32,
+      "text": "p-8",
+      "family": "spacing",
+      "after": "p-[calc(var(--space-xxl)*4/3)]"
+    }
+  ],
+  "skipped": [],
+  "kept": [],
+  "overrides": [
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 71,
+      "text": "leading-none",
+      "style": "Body S",
+      "kind": "line-height",
+      "reason": "edge"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 410,
+      "text": "leading-none",
+      "style": "Body S",
+      "kind": "line-height",
+      "reason": "edge"
+    }
+  ],
+  "choices": [],
+  "tidied": [
+    {
+      "path": "src/App.tsx",
+      "line": 1198,
+      "kind": "grouped",
+      "text": "flex h-full items-center justify-center px-6 text-center text-[14px] text-ink-2"
+    },
+    {
+      "path": "src/App.tsx",
+      "line": 1206,
+      "kind": "grouped",
+      "text": "pointer-events-none absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col items-start gap-2 md:top-4 md:left-4"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 114,
+      "kind": "grouped",
+      "text": "nodrag nopan h-7 shrink-0 gap-1.5 rounded-full border-0 bg-card px-2.5 text-[12px] font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line hover:bg-card hover:text-ink hover:shadow-[var(--shadow-node-hover)] dark:bg-card dark:hover:bg-card"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 153,
+      "kind": "grouped",
+      "text": "pointer-events-none h-full w-full rounded-[24px] bg-[linear-gradient(180deg,var(--flow-top),var(--flow-bottom))] shadow-[var(--shadow-flow)] ring-1 ring-[var(--flow-rim)] transition-opacity duration-160"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 235,
+      "kind": "grouped",
+      "text": "relative flex h-full w-full cursor-pointer flex-col justify-between rounded-[18px] border-[1.5px] border-dashed border-tone/60 bg-card p-3 shadow-[var(--shadow-node)] transition-[opacity,box-shadow,border-color] duration-160 hover:shadow-[var(--shadow-node-hover)]"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 271,
+      "kind": "grouped",
+      "text": "relative flex h-full w-full cursor-pointer items-center gap-2 rounded-[14px] border border-line bg-card py-1.5 pr-3.5 pl-1.5 shadow-[var(--shadow-node)] transition-[opacity,box-shadow] duration-160 hover:shadow-[var(--shadow-node-hover)]"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 298,
+      "kind": "grouped",
+      "text": "flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-field text-ink-3"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 355,
+      "kind": "grouped",
+      "text": "flex h-full w-full cursor-pointer items-center gap-1.5 rounded-[14px] border border-dashed border-line px-3 text-[13px] leading-[18px] text-ink-2 transition-[opacity,color,border-color] duration-160 hover:border-ink-3/50 hover:text-ink"
+    },
+    {
+      "path": "src/atlas/nodes.tsx",
+      "line": 376,
+      "kind": "grouped",
+      "text": "pointer-events-none relative h-full w-full rounded-[18px] border border-dashed border-edge-exception/50 transition-opacity duration-160"
+    },
+    {
+      "path": "src/canvas/flow-edge.tsx",
+      "line": 275,
+      "kind": "grouped",
+      "text": "nodrag nopan pointer-events-none absolute rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 font-medium shadow-[var(--shadow-node)] ring-1 ring-line transition-opacity duration-160"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 71,
+      "kind": "grouped",
+      "text": "flex h-5 min-w-5 shrink-0 items-center justify-center gap-px rounded-full px-1 text-[12px] leading-none font-medium tabular-nums"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 321,
+      "kind": "grouped",
+      "text": "pointer-events-none absolute -top-2.5 right-3 z-10 rounded-full bg-card px-2 py-px text-[12px] leading-4 font-medium whitespace-nowrap text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-edge-strong/40"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 374,
+      "kind": "grouped",
+      "text": "relative flex h-8 items-center gap-1 rounded-full border border-dashed border-ink-3/50 bg-card pr-3 pl-2 text-[13px] leading-5 text-ink-2 transition-[color,border-color] duration-160 hover:border-ink-3 hover:text-ink"
+    },
+    {
+      "path": "src/canvas/step-node.tsx",
+      "line": 472,
+      "kind": "grouped",
+      "text": "absolute -top-2 -right-2 z-[7] flex size-[18px] items-center justify-center rounded-full border-[1.5px] border-current bg-card text-tone-ink"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 66,
+      "kind": "grouped",
+      "text": "hidden h-9 cursor-pointer items-center gap-0.5 rounded-full bg-card py-1 pr-2 pl-1 shadow-[var(--shadow-node)] ring-1 ring-line transition-shadow duration-160 hover:shadow-[var(--shadow-node-hover)] md:inline-flex"
+    },
+    {
+      "path": "src/components/commit-range.tsx",
+      "line": 81,
+      "kind": "grouped",
+      "text": "inline-flex size-7 items-center justify-center rounded-full text-ink-3 transition-colors duration-160 hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-select"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 100,
+      "kind": "grouped",
+      "text": "inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-ink-2 hover:bg-field hover:text-ink"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 114,
+      "kind": "grouped",
+      "text": "flex items-center gap-0.5 border-l border-line pl-1 text-[12px] text-ink-2"
+    },
+    {
+      "path": "src/components/headline.tsx",
+      "line": 173,
+      "kind": "grouped",
+      "text": "flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-left transition-colors duration-160 hover:bg-field"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 14,
+      "kind": "grouped",
+      "text": "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "line": 27,
+      "kind": "grouped",
+      "text": "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)"
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "line": 30,
+      "kind": "grouped",
+      "text": "z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+    },
+    {
+      "path": "src/components/ui/scroll-area.tsx",
+      "line": 39,
+      "kind": "grouped",
+      "text": "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent"
+    },
+    {
+      "path": "src/components/ui/tabs.tsx",
+      "line": 63,
+      "kind": "grouped",
+      "text": "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+    },
+    {
+      "path": "src/components/ui/tooltip.tsx",
+      "line": 44,
+      "kind": "grouped",
+      "text": "z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+    }
+  ],
+  "multiples": [
+    {
+      "label": "XXL × 4/3",
+      "value": "calc(var(--space-xxl) * 4 / 3)",
+      "px": 32,
+      "uses": 1,
+      "files": 1,
+      "examples": [
+        {
+          "text": "p-[calc(var(--space-xxl)*4/3)]",
+          "uses": 1
+        }
+      ]
+    }
+  ],
+  "scales": [],
+  "warnings": [],
+  "coverage": []
+}

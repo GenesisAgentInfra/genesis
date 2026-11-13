@@ -6,7 +6,7 @@ import * as React from "react"
  * attribute before the first paint, so a kept choice never flashes the other rendition.
  */
 
-export type Theme = "light" | "dark"
+type Theme = "light" | "dark"
 
 const KEY = "genesis:theme"
 

@@ -3,16 +3,9 @@ from __future__ import annotations
 import hashlib
 import re
 from functools import lru_cache
-from typing import Protocol
 
 from genesis_contracts import EvidenceRef
 from genesis_contracts.models import SourceExcerpt
-
-
-class SnapshotReader(Protocol):
-    def evidence_catalog(self) -> tuple[EvidenceRef, ...]: ...
-
-    def read_excerpt(self, evidence_id: str) -> SourceExcerpt: ...
 
 
 class FrozenSnapshotReader:
@@ -42,39 +35,6 @@ class FrozenSnapshotReader:
             return self._excerpts[evidence_id]
         except KeyError as error:
             raise KeyError(f"no captured excerpt for evidence_id {evidence_id}") from error
-
-    def read_selected(self, evidence_ids: tuple[str, ...]) -> tuple[SourceExcerpt, ...]:
-        if len(evidence_ids) != len(set(evidence_ids)):
-            raise ValueError("selected evidence IDs must be unique")
-        return tuple(self.read_excerpt(evidence_id) for evidence_id in evidence_ids)
-
-    @classmethod
-    def from_directory(cls, root, manifest, evidence):
-        """Capture manifest bytes once; validate paths, digests, and source ranges."""
-        from pathlib import Path
-
-        root = Path(root).absolute()
-        captured = {}
-        for file in manifest.files:
-            path = root / file.side.value / file.path
-            for candidate in (path, *path.parents):
-                if candidate.is_symlink():
-                    raise ValueError("snapshot inputs cannot use symlinks")
-            raw = path.read_bytes()
-            digest = "sha256:" + hashlib.sha256(raw).hexdigest()
-            if digest != file.content_digest:
-                raise ValueError(f"file digest mismatch: {file.side}/{file.path}")
-            captured[(file.side, file.path)] = (raw.decode("utf-8"), file.kind)
-        excerpts = []
-        for ref in evidence:
-            if ref.snapshot_id != manifest.snapshot_id:
-                raise ValueError("evidence snapshot mismatch")
-            source = captured.get((ref.side, ref.path))
-            if source is None or source[1] != ref.kind:
-                raise ValueError("evidence is absent from manifest or kind differs")
-            text = slice_source(source[0], ref.range)
-            excerpts.append(SourceExcerpt(evidence_id=ref.evidence_id, text=text))
-        return cls(evidence, tuple(excerpts))
 
 
 _PHYSICAL_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n|$)")

@@ -11,31 +11,43 @@ import {
   Workflow,
   SquareTerminal,
   Zap,
-  Maximize2,
-  Minimize2,
+  FoldHorizontal,
+  UnfoldHorizontal,
   type LucideIcon,
 } from "lucide-react"
 
 import { NumberDisc, StatusMark } from "@/canvas/step-node"
 import { ReviewBadge } from "@/components/review-badge"
 import { Button } from "@/components/ui/button"
-import { outOfFocus, useCanvas } from "@/canvas/context"
+import { useCanvas } from "@/canvas/context"
 import { cn } from "@/lib/utils"
 import { coverageKind, shortSummary } from "@/presentation"
-import { matches, statusOf } from "@/model"
+import { statusOf } from "@/model"
 import type { EntryKind } from "@/types"
-import type {
-  LabelNode,
-  ModuleNode,
-  MoreNode,
-  OffMapNode,
-  RowNode,
+import {
+  CARD_HEAD,
+  HEAD_H,
+  OFF_MAP,
+  type BoxNode,
+  type FlowCardNode,
+  type ModuleNode,
+  type MoreNode,
+  type OffMapNode,
+  type RowNode,
 } from "./build"
 
-/** Text that keeps about the same size on screen however far the reader zooms out. */
-const steady = (px: number, max: number) => ({
-  fontSize: `clamp(${px}px, calc(${px}px / var(--zoom, 1)), ${max}px)`,
-})
+/**
+ * A heading keeps its size on screen however far the reader zooms out: its row is scaled
+ * back up by the inverse of the zoom (up to twice), and narrowed by as much so it still
+ * ends on its frame's right edge.
+ */
+const LIFT: React.CSSProperties = {
+  transform: "scale(var(--lift, 1))",
+  width: "calc(100% / var(--lift, 1))",
+}
+
+/** How far a module's heading stands above its first flow. */
+const HEAD_CLEAR = 14
 
 /** The card whose details are open, ringed in its own colour the way a picked change is. */
 const PICKED = "border-solid ring-tone"
@@ -54,41 +66,43 @@ function useAtlas(): AtlasHandlers {
 
 /** A module is a heading on the canvas, with no enclosing surface. */
 export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
-  const { t, trailActive, focusedModule } = useCanvas()
+  const { t, walking, focusedModule } = useCanvas()
   const { onOverview } = useAtlas()
   const away = Boolean(focusedModule && focusedModule !== id)
   return (
     <div
       className={cn(
-        "group @container pointer-events-none h-full w-full transition-opacity duration-160",
-        trailActive && "opacity-80",
+        "group @container pointer-events-none relative h-full w-full transition-opacity duration-160",
+        walking && "opacity-80",
         away && "opacity-35"
       )}
     >
-      <div className="pointer-events-auto relative flex h-12 items-center gap-2.5 pr-[168px]">
-        <span
-          className="truncate leading-[1.2] font-medium text-ink"
-          style={steady(16, 34)}
-        >
+      {/* The row stands on a line 14px above the module's first card and grows upward. */}
+      <div
+        className="pointer-events-auto absolute left-0 flex origin-bottom-left items-center gap-m"
+        style={{ ...LIFT, bottom: `calc(100% - ${HEAD_H - HEAD_CLEAR}px)` }}
+      >
+        <h2 className="min-w-0 truncate text-body-xl font-medium text-ink">
           {data.title}
-        </span>
+        </h2>
         <span
           className={cn(
-            "shrink-0 leading-[1.2]",
-            data.changes ? "font-medium text-ink-2" : "text-ink-3"
+            "shrink-0 corner-s px-s text-body-s font-medium tabular-nums",
+            data.changes
+              ? "bg-ink/[0.07] text-ink-2"
+              : "bg-ink/[0.05] text-ink-3"
           )}
-          style={steady(12, 26)}
         >
           {data.changes
             ? t.moduleChanges(data.changes)
             : t.moduleFlows(data.flows)}
         </span>
         {/* One button in one place opens the module and closes it again, so the way in and
-            the way back are never a guess. It says so in words wherever the frame has the
-            room, and with its glyph alone on a narrow cell until it is pointed at. Laid over
-            the header, so a module's name never gives up room to it. */}
+            the way back are never a guess. On a cell it sits at the heading's right; on a
+            module that runs the full width it follows the count, so it stays in view when
+            the map runs on past the screen. */}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           type="button"
           aria-expanded={data.open}
@@ -103,16 +117,19 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
               : undefined
           }
           className={cn(
-            "nodrag nopan absolute top-1/2 right-0 h-7 -translate-y-1/2 gap-1 px-2 text-xs font-medium text-ink-2 hover:text-ink",
-            data.open
-              ? "cursor-pointer"
-              : "cursor-zoom-in group-hover:text-ink"
+            "nodrag nopan h-7 shrink-0 gap-s",
+            "corner-full edge-none px-l",
+            "text-body-s font-medium",
+            "bg-card text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line",
+            "hover:bg-card hover:text-ink hover:shadow-[var(--shadow-node-hover)] dark:bg-card dark:hover:bg-card",
+            data.wide ? "ml-xs" : "ml-auto",
+            data.open ? "cursor-pointer" : "cursor-zoom-in"
           )}
         >
           {data.open ? (
-            <Minimize2 aria-hidden className="size-3.5" />
+            <FoldHorizontal aria-hidden className="size-3.5" />
           ) : (
-            <Maximize2 aria-hidden className="size-3.5" />
+            <UnfoldHorizontal aria-hidden className="size-3.5" />
           )}
           <span
             className={cn(
@@ -130,52 +147,68 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
 }
 
 /**
- * The name of a flow over its steps, and nothing beside it: what starts the flow is its
- * first card, and what is left out is said where it is left out. With no change to read,
- * it offers a walk through the flow.
+ * The card a drawn flow sits on: its name at the head, its steps and lines inset below.
+ * Only the head takes a click; the rest of the card belongs to the canvas. With no change
+ * to read, the head offers a walk through the flow.
  */
-export function LabelView({ data }: NodeProps<LabelNode>) {
+export function FlowCardView({ data }: NodeProps<FlowCardNode>) {
   const canvas = useCanvas()
   const { t } = canvas
   const { onRun } = useAtlas()
-  const away = outOfFocus(canvas, data.flowId || "__offmap")
+  const away = canvas.away(data.flowId || OFF_MAP)
   return (
     <div
+      data-tone={data.tone}
       className={cn(
-        "flex h-full min-w-0 items-end gap-2.5 pb-2.5 transition-opacity duration-160",
+        "h-full w-full",
+        "corner-xl",
+        "pointer-events-none bg-[linear-gradient(180deg,var(--flow-top),var(--flow-bottom))] shadow-[var(--shadow-flow)] ring-1 ring-[var(--flow-rim)] transition-opacity duration-160",
         away && "opacity-35"
       )}
     >
-      <span
-        title={data.name}
-        className={cn(
-          "min-w-0 truncate leading-[1.25] font-medium text-ink",
-          data.code && "font-mono font-normal",
-          data.struck &&
-            "text-ink-2 line-through decoration-ink decoration-[1.5px]"
-        )}
-        style={steady(14, 30)}
-      >
-        {data.name}
-      </span>
-      {data.code && (
-        <span className="shrink-0 rounded-[5px] bg-field px-1 pb-px text-[12px] leading-4 text-ink-3">
-          {t.skeletonTag}
-        </span>
-      )}
-      {data.flowId && !data.struck && !canvas.focus && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onRun(data.flowId)
-          }}
-          className="nodrag nopan inline-flex shrink-0 items-center gap-1 rounded-full bg-card px-2 py-0.5 text-[12px] leading-4 font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line transition-colors duration-160 hover:text-ink"
+      <div className="flex items-center px-xxl" style={{ height: CARD_HEAD }}>
+        <div
+          className="pointer-events-auto flex min-w-0 origin-left cursor-pointer items-center gap-m"
+          style={LIFT}
         >
-          <Play aria-hidden className="size-3" />
-          {t.runFlow}
-        </button>
-      )}
+          {data.tone && (
+            // The most pressing change on the flow, in its one colour.
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 corner-full bg-tone"
+            />
+          )}
+          <span
+            title={data.name}
+            className={cn(
+              "min-w-0 truncate text-body-m font-medium text-ink",
+              data.code && "font-data text-body-m font-regular",
+              data.struck &&
+                "text-ink-2 line-through decoration-ink decoration-[1.5px]"
+            )}
+          >
+            {data.name}
+          </span>
+          {data.code && (
+            <span className="shrink-0 corner-s bg-field px-xs pb-xxs text-body-s text-ink-3">
+              {t.skeletonTag}
+            </span>
+          )}
+          {data.flowId && !data.struck && !canvas.focus && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onRun(data.flowId)
+              }}
+              className="nodrag nopan ml-xs inline-flex shrink-0 items-center gap-xs corner-full bg-card px-m py-xxs text-body-s font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line transition-colors duration-160 hover:text-ink"
+            >
+              <Play aria-hidden className="size-3" />
+              {t.runFlow}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -197,23 +230,19 @@ const ENTRY_ICON: Record<EntryKind, LucideIcon> = {
 export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
   const canvas = useCanvas()
   const { t } = canvas
-  const away = outOfFocus(canvas, "__offmap")
+  const away = canvas.away(OFF_MAP)
   const change = data.coupon.change
   const status = statusOf(change.tests)
   const picked = canvas.apart === id
-  const out =
-    !picked &&
-    !matches(
-      { risky: data.coupon.risky, status, categories: data.coupon.categories },
-      canvas.filter
-    )
   return (
     <div
       data-tone={data.coupon.tone}
       className={cn(
-        "relative flex h-full w-full cursor-pointer flex-col justify-between rounded-[18px] border-[1.5px] border-dashed border-tone/60 bg-card p-3 shadow-[var(--shadow-node)] transition-[opacity,box-shadow,border-color] duration-160 hover:shadow-[var(--shadow-node-hover)]",
+        "relative flex h-full w-full flex-col justify-between",
+        "corner-xl edge-l border-dashed p-l",
+        "cursor-pointer border-tone/60 bg-card shadow-[var(--shadow-node)] transition-[opacity,box-shadow,border-color] duration-160",
+        "hover:shadow-[var(--shadow-node-hover)]",
         picked && PICKED,
-        out && "opacity-60 shadow-none",
         away && "opacity-35"
       )}
     >
@@ -224,13 +253,13 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
       {(data.coupon.risky || status !== "tested") && (
         <ReviewBadge risky={data.coupon.risky} status={status} t={t} />
       )}
-      <p className="line-clamp-2 text-[13px] leading-[19px] text-tone-ink">
+      <p className="line-clamp-2 text-body-m text-tone-ink">
         {shortSummary(change) ?? t.changeKind[change.kind]}
       </p>
       <StatusMark
         status={status}
         label={t.coverage[coverageKind(change.tests)]}
-        className="text-[12px] leading-4 text-ink-2"
+        className="text-body-s text-ink-2"
       />
     </div>
   )
@@ -240,20 +269,19 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
 export function RowView({ id, data }: NodeProps<RowNode>) {
   const canvas = useCanvas()
   const { t } = canvas
-  const away = outOfFocus(canvas, data.flowId)
+  const away = canvas.away(data.flowId)
   const Icon = (data.entry && ENTRY_ICON[data.entry]) || Workflow
   return (
     <div
       // A flow that is gone carries no verdict: it rings in the plain colour.
       data-tone={data.struck ? "unsure" : undefined}
       className={cn(
-        "relative flex h-full w-full cursor-pointer items-center gap-2 rounded-[14px] border border-line bg-card py-1.5 pr-3.5 pl-1.5 shadow-[var(--shadow-node)] transition-[opacity,box-shadow] duration-160 hover:shadow-[var(--shadow-node-hover)]",
+        "relative flex h-full w-full items-center gap-m",
+        "corner-l edge-m py-s pr-xl pl-s",
+        "cursor-pointer border-line bg-card shadow-[var(--shadow-node)] transition-[opacity,box-shadow] duration-160",
+        "hover:shadow-[var(--shadow-node-hover)]",
         data.struck && "border-dashed",
         canvas.apart === id && PICKED,
-        data.struck &&
-          canvas.filter &&
-          canvas.apart !== id &&
-          "opacity-60 shadow-none",
         away && "opacity-35"
       )}
     >
@@ -274,15 +302,21 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
         isConnectable={false}
         className="!opacity-0"
       />
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-field text-ink-3">
+      <span
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center",
+          "corner-m",
+          "bg-field text-ink-3"
+        )}
+      >
         <Icon aria-hidden className="size-3.5" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span
           title={data.name}
           className={cn(
-            "truncate text-[14px] leading-5 text-ink",
-            data.code && "font-mono text-[13px] text-ink-2",
+            "truncate text-body-m text-ink",
+            data.code && "font-data text-body-m text-ink-2",
             data.struck &&
               "text-ink-2 line-through decoration-ink decoration-[1.5px]"
           )}
@@ -292,7 +326,7 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
         {data.summary && (
           <span
             title={data.summary}
-            className="truncate text-[12px] leading-[17px] text-ink-3"
+            className="truncate text-body-s text-ink-3"
           >
             {data.summary}
           </span>
@@ -300,13 +334,13 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
       </span>
       {data.code && data.passing && !data.struck && (
         // Its name is still code, and the right of the row no longer says why.
-        <span className="shrink-0 rounded-[5px] bg-field px-1 text-[12px] leading-4 text-ink-3">
+        <span className="shrink-0 corner-s bg-field px-xs text-body-s text-ink-3">
           {t.skeletonTag}
         </span>
       )}
       <span
         className={cn(
-          "shrink-0 text-[12px] leading-4",
+          "shrink-0 text-body-s",
           data.passing && !data.struck ? "font-medium text-ink-2" : "text-ink-3"
         )}
       >
@@ -331,12 +365,40 @@ export function MoreView({ data }: NodeProps<MoreNode>) {
   return (
     <div
       className={cn(
-        "flex h-full w-full cursor-pointer items-center gap-1.5 rounded-[14px] border border-dashed border-line px-3 text-[13px] leading-[18px] text-ink-2 transition-[opacity,color,border-color] duration-160 hover:border-ink-3/50 hover:text-ink",
+        "flex h-full w-full items-center gap-s",
+        "corner-l edge-m border-dashed px-l",
+        "text-body-m",
+        "cursor-pointer border-line text-ink-2 transition-[opacity,color,border-color] duration-160",
+        "hover:border-ink-3/50 hover:text-ink",
         focusedModule && "opacity-35"
       )}
     >
       <ChevronDown aria-hidden className="size-3.5 shrink-0" />
       <span className="truncate">{t.supportingRow(data.count)}</span>
+    </div>
+  )
+}
+
+/**
+ * The error path of a flow, in a dashed box under its other rows: the lines into it keep
+ * their pale red, the box only gathers them and says what they are.
+ */
+export function BoxView({ data }: NodeProps<BoxNode>) {
+  const canvas = useCanvas()
+  const away = canvas.away(data.flowId)
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        "relative h-full w-full",
+        "corner-xl edge-m border-dashed",
+        "pointer-events-none border-edge-exception/50 transition-opacity duration-160",
+        away && "opacity-35"
+      )}
+    >
+      <span className="absolute top-2 left-3.5 text-body-s font-medium text-ink-3">
+        {canvas.t.errorPaths}
+      </span>
     </div>
   )
 }

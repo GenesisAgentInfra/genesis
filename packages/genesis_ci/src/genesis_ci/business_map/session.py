@@ -30,7 +30,6 @@ from .python_facts import collect_file, python_facts, python_source_roots
 from .skeleton import build_skeleton
 
 PRIVATE_DIRECTORIES = ("sessions/", "out/")
-ARTIFACTS = ("business-map.json", "evidence-bundle.json")
 OTHER_CHANGE_LIMIT = 100
 # A map that skips the largest modules of a project misses its core. Real projects
 # have source files of several thousand lines, far above the limits the report

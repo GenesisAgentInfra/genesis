@@ -1,4 +1,4 @@
-import { edgeLabel, type RouteLayout } from "@/layout"
+import { edgeLabel, type FlowGraph, type Line } from "@/flow-graph"
 import type { MapEdge, MapStep } from "@/types"
 
 /**
@@ -9,7 +9,7 @@ import type { MapEdge, MapStep } from "@/types"
  */
 
 /** A line that stands for the steps left out between two that are drawn. */
-export interface Skip {
+interface Skip {
   source: string
   target: string
   /** How many steps it leaves out. */
@@ -20,7 +20,7 @@ export interface Skip {
 }
 
 /** Steps left out after a drawn one, with nothing drawn further on to lead to. */
-export interface Tail {
+interface Tail {
   source: string
   steps: number
   /** The branch taken out of the source, when every way into the tail is the same one. */
@@ -28,7 +28,7 @@ export interface Tail {
   exception: boolean
 }
 
-export interface Cut {
+interface Cut {
   keep: Set<string>
   skips: Skip[]
   tails: Tail[]
@@ -40,18 +40,12 @@ const ROUNDS = 8
 
 export function cutFlow(
   steps: MapStep[],
-  layout: RouteLayout,
+  graph: FlowGraph<MapEdge>,
   /** The steps the change touches. */
   marked: Set<string>
 ): Cut | undefined {
   if (!marked.size) return undefined
-  const out = new Map<string, MapEdge[]>()
-  const into = new Map<string, MapEdge[]>()
-  for (const edge of layout.forward) {
-    if (edge.source === edge.target) continue
-    out.set(edge.source, [...(out.get(edge.source) ?? []), edge])
-    into.set(edge.target, [...(into.get(edge.target) ?? []), edge])
-  }
+  const { out, into } = graph
   const triggers = steps.filter((step) => step.kind === "trigger")
   const starts = (
     triggers.length ? triggers : steps.filter((step) => !into.has(step.step_id))
@@ -92,24 +86,23 @@ export function cutFlow(
     if (step?.kind === "decision" || step?.kind === "result" || !out.has(id))
       keep.add(id)
     for (const edge of out.get(id) ?? []) {
-      if (edge.relation === "exception") keep.add(edge.target)
+      if (edge.exception) keep.add(edge.target)
       if (affected.has(edge.target)) continue
       affected.add(edge.target)
       ahead.push(edge.target)
     }
   }
   // A retry must remain a real loop, never disappear into an unrelated dotted tail.
-  for (const row of layout.rows)
-    for (const { edge } of row.loops)
-      if (affected.has(edge.source) || affected.has(edge.target)) {
-        keep.add(edge.source)
-        keep.add(edge.target)
-      }
+  for (const loop of graph.loops)
+    if (affected.has(loop.source) || affected.has(loop.target)) {
+      keep.add(loop.source)
+      keep.add(loop.target)
+    }
 
   /** The hidden steps one end of `edges` away from a kept step, and on from those. */
   const spread = (
     from: string,
-    edges: Map<string, MapEdge[]>,
+    edges: Map<string, Line[]>,
     end: "source" | "target"
   ) => {
     const found = new Set<string>()
@@ -133,9 +126,9 @@ export function cutFlow(
     const drawn = new Map<string, Set<string>>()
     const link = (source: string, target: string) =>
       drawn.set(source, (drawn.get(source) ?? new Set()).add(target))
-    for (const edge of layout.forward)
-      if (keep.has(edge.source) && keep.has(edge.target))
-        link(edge.source, edge.target)
+    for (const line of graph.lines)
+      if (!line.back && keep.has(line.source) && keep.has(line.target))
+        link(line.source, line.target)
     const found: (Skip & { inside: string[] })[] = []
     for (const source of keep)
       for (const target of keep) {
@@ -148,16 +141,14 @@ export function cutFlow(
         const ways = (out.get(source) ?? []).filter((edge) =>
           among.has(edge.target)
         )
-        const labels = new Set(ways.map((edge) => edgeLabel(edge) ?? ""))
+        const labels = new Set(ways.map((line) => edgeLabel(line.of) ?? ""))
         found.push({
           source,
           target,
           steps: inside.length,
           inside,
           label: labels.size === 1 ? [...labels][0] || undefined : undefined,
-          exception:
-            ways.length > 0 &&
-            ways.every((edge) => edge.relation === "exception"),
+          exception: ways.length > 0 && ways.every((line) => line.exception),
         })
         link(source, target)
       }
@@ -193,8 +184,7 @@ export function cutFlow(
   ): (Tail & { inside: string[] })[] => {
     const told = new Set(skips.flatMap((skip) => skip.inside))
     const owner = new Map<string, string>()
-    for (const row of layout.rows) {
-      const id = row.step.step_id
+    for (const id of graph.order) {
       if (!keep.has(id)) continue
       for (const hidden of spread(id, out, "target"))
         if (!told.has(hidden) && !owner.has(hidden)) owner.set(hidden, id)
@@ -207,15 +197,13 @@ export function cutFlow(
       const ways = (out.get(source) ?? []).filter((edge) =>
         among.has(edge.target)
       )
-      const labels = new Set(ways.map((edge) => edgeLabel(edge) ?? ""))
+      const labels = new Set(ways.map((line) => edgeLabel(line.of) ?? ""))
       return {
         source,
         steps: steps.length,
         inside: steps,
         label: labels.size === 1 ? [...labels][0] || undefined : undefined,
-        exception:
-          ways.length > 0 &&
-          ways.every((edge) => edge.relation === "exception"),
+        exception: ways.length > 0 && ways.every((line) => line.exception),
       }
     })
   }

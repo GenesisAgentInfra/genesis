@@ -28,7 +28,7 @@ export function Evidence({
     .filter((ref) => ref !== undefined)
   if (!refs.length) return null
   return (
-    <div className="flex flex-col gap-2" aria-label={t.code}>
+    <div className="flex flex-col gap-m" aria-label={t.code}>
       {refs.map((ref) => {
         const lines =
           ref.range.start_line === ref.range.end_line
@@ -42,8 +42,8 @@ export function Evidence({
             ? excerpt
             : undefined
         return (
-          <figure key={ref.evidence_id} className="m-0">
-            <figcaption className="font-mono text-[12px] leading-[17px] [overflow-wrap:anywhere] text-ink-3">
+          <figure key={ref.evidence_id} className="m-zero">
+            <figcaption className="font-data text-body-s [overflow-wrap:anywhere] text-ink-3">
               {source ? (
                 <a
                   href={source.url}
@@ -59,7 +59,7 @@ export function Evidence({
               )}
             </figcaption>
             {text !== undefined && (
-              <pre className="mt-1 max-h-64 overflow-auto rounded-[10px] bg-field px-3 py-2 text-[12px] leading-[18px] text-ink">
+              <pre className="mt-xs max-h-64 overflow-auto corner-l bg-field px-l py-m text-body-s text-ink">
                 {text}
               </pre>
             )}

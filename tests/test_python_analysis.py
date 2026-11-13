@@ -297,3 +297,15 @@ def test_imported_module_mutation_invalidates_exported_symbol(source_repo):
         },
     )
     assert calls(result)[0].target.status == "unknown"
+
+
+def test_decorator_defaults_calls_belong_to_enclosing_scope(source_repo):
+    result = analyze(
+        source_repo,
+        {
+            "app.py": "def factory(): pass\n@factory()\ndef run(x=factory()):\n    return factory()\n"
+        },
+    )
+    found = [c for c in calls(result) if c.callee.text == "factory"]
+    assert [c.symbol_id for c in found].count("app.py#<module>") == 2
+    assert [c.symbol_id for c in found].count("app.py#run") == 1

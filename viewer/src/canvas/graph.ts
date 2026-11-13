@@ -1,45 +1,70 @@
-import dagre from "@dagrejs/dagre"
 import type { Edge, Node } from "@xyflow/react"
 
-import { edgeLabel } from "@/layout"
+import { drawnGraph, edgeLabel, type Line } from "@/flow-graph"
 import { cutFlow } from "./focus"
 import { removedNodeId, type Coupon, type FlowView } from "@/model"
 import type { FindingChange, MapFinding, MapStep } from "@/types"
 import { sortAlerts } from "@/presentation"
 
 /**
- * A flow drawn left to right: a step the change leaves alone is a small pill, a step it
- * touches is a card that says what changed. Steps of one rank share a column, a branch is
- * named on its line, and every line runs at right angles in the gaps between columns.
- * A flow too long for the width it is given wraps onto a second band, like a line of text.
+ * A flow drawn left to right in lanes: a step the change leaves alone is a small pill, a
+ * step it touches is a card that says what changed. The way through that keeps off the
+ * error path is one row; other branches run in rows under it and the error path in a dashed
+ * box under those. Every step takes a column of one width, a branch is named on its line,
+ * and every line runs at right angles. A flow never wraps: it runs as wide as it needs.
  *
  * Drawn for a change, a flow shows only the steps the change touches and the way into each
  * of them; a dotted line stands for the steps left out in between (see `cutFlow`).
  */
 
-export const CARD_W = 216
+/** Every step, pill or card, takes a column of this width, so a flow reads as a grid. */
+const CARD_W = 192
 const PILL_H = 44
-/** Between two steps of one column, and the least between two columns. */
-const NODE_SEP = 16
-const COL_GAP = 40
+/** A pill whose name needs a second line. */
+const PILL_TALL = 60
+/** Room for a pill's name on one line: the column less its tile and padding. */
+const PILL_TEXT = CARD_W - 58
+/** Between two rows: room for a line running between them, or a label. */
+const ROW_GAP = 28
+/** The least between two columns. */
+const COL_GAP = 44
+/** The widest a gap grows for the label of a branch that could hang back instead. */
+const LABEL_CAP = 96
 /** How far past a column a line runs before it turns, and between two lines turning there. */
 const TURN = 14
+/** A line starts and ends this far clear of a step's box: its port is a dot on the edge
+ *  of the box, and an arrowhead stops just short of it. */
+const PORT = 3.5
+/** How far a step back runs out past its ends, how far it keeps from the cards, and from
+ *  another step back running over it. */
+const LOOP_OUT = 24
+const LOOP_GAP = 28
+const LOOP_APART = 24
 const LANE = 8
-/** Between two lines that each carry a label where they run side by side. */
-const LABEL_LANE = 26
-const BAND_GAP = 48
+/** The box around the error path: its padding, and the room its name takes over its rows. */
+const BOX_PAD = 14
+const BOX_HEAD = 30
 const GHOST_GAP = 28
-/** A card for a step the change removed: its name and what was said about it. */
-const GHOST_H = 172
 
 export interface Point {
   x: number
   y: number
 }
 
+/** The dashed box the error path of a flow runs in, placed like a step. */
+interface ErrorBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 export interface StepNodeData extends Record<string, unknown> {
   step: MapStep
+  /** The changes whose own place this step is. */
   coupons: Coupon[]
+  /** Changes told on another card that land here too, by their number. */
+  echoes: number[]
   isNew: boolean
   risk?: "new" | "known"
   alerts?: MapFinding[]
@@ -71,9 +96,10 @@ export interface FlowEdgeData extends Record<string, unknown> {
   back: boolean
   /** The line stands for this many steps that are not drawn. */
   skipped?: number
-  /** The corners of the line, as offsets from where it leaves its source. */
-  route?: Point[]
-  /** Where its label sits, as an offset from the same point. */
+  /** The corners of the line where it is drawn, from the port it leaves to the port it
+   *  reaches. The layout sets them; a view only draws through them. */
+  points?: Point[]
+  /** Where its label sits. */
   labelAt?: Point
 }
 
@@ -89,8 +115,10 @@ function textWidth(text: string, cjk = 14, latin = 7.7): number {
 /** A label on a line: a small pill. */
 const labelWidth = (text: string) => Math.ceil(textWidth(text, 12, 6.7)) + 18
 
-export function heightOf(data: StepNodeData): number {
-  if (data.compact) return PILL_H
+function heightOf(data: StepNodeData): number {
+  if (data.stub) return PILL_H
+  if (data.compact)
+    return textWidth(data.step.name) > PILL_TEXT ? PILL_TALL : PILL_H
   let height = 68
   if (data.coupons.length) height += 80
   if (data.loops.length) height += 24
@@ -102,7 +130,7 @@ export function buildGraph(
   findingStatus: Map<string, FindingChange["status"]>,
   /** Risks that were already there show on cards (only with no report to walk). */
   knownRisks: boolean,
-  /** How wide the flow may run before it wraps onto another band. */
+  /** How wide the flow may run with the steps it removed set down beside it. */
   max = Infinity,
   /**
    * Given, the flow is cut down to the steps the change touches and the way into each;
@@ -114,6 +142,8 @@ export function buildGraph(
   edges: FlowEdge[]
   w: number
   h: number
+  /** The dashed boxes the error paths run in. */
+  boxes: ErrorBox[]
   /** Whether steps were left out. */
   cut: boolean
 } {
@@ -122,12 +152,19 @@ export function buildGraph(
   const edges = (view.flow.edges ?? []).filter(
     (edge) => ids.has(edge.source) && ids.has(edge.target)
   )
-  const keyOf = view.layout.edgeKey
-  const forward = new Set(view.layout.forward)
+  const lineOf = new Map(view.graph.lines.map((line) => [line.of, line]))
 
   const findings = new Set(view.findings.map((finding) => finding.finding_id))
   let nodes: StepNode[] = steps.map((step) => {
-    const coupons = view.byStep.get(step.step_id) ?? []
+    // A change that lands on several steps is told once, on its own place; elsewhere the
+    // step carries only its number.
+    const placed = view.byStep.get(step.step_id) ?? []
+    const coupons = placed.filter((coupon) => coupon.primary)
+    const echoes = [
+      ...new Set(
+        placed.filter((coupon) => !coupon.primary).map((coupon) => coupon.no)
+      ),
+    ].filter((no) => !coupons.some((coupon) => coupon.no === no))
     const loops = edges
       .filter(
         (edge) => edge.source === step.step_id && edge.target === step.step_id
@@ -145,7 +182,10 @@ export function buildGraph(
     const risk: StepNodeData["risk"] = stepFindings.length
       ? stepFindings.some((id) => findingStatus.get(id) === "introduced")
         ? "new"
-        : "known"
+        : // A risk that was already there shows only with no report to walk.
+          knownRisks
+          ? "known"
+          : undefined
       : undefined
     const isNew = view.newSteps.has(step.step_id)
     const alertIds = new Set([
@@ -161,15 +201,12 @@ export function buildGraph(
       )
     )
     // A pill has room for its name only, so a step with a badge to show keeps its card.
-    const badged =
-      isNew ||
-      step.resolution !== "resolved" ||
-      risk === "new" ||
-      (risk === "known" && knownRisks)
+    const badged = isNew || step.resolution !== "resolved" || risk !== undefined
     const compact = !coupons.length && !loops.length && !badged
     const data: StepNodeData = {
       step,
       coupons,
+      echoes,
       isNew,
       risk,
       alerts,
@@ -178,9 +215,7 @@ export function buildGraph(
       removedFlow: view.removed,
       skeleton: view.flow.stage === "skeleton",
       compact,
-      width: compact
-        ? Math.min(240, Math.max(120, 68 + Math.ceil(textWidth(step.name))))
-        : CARD_W,
+      width: CARD_W,
       hasIn: incoming.length > 0,
       hasOut: outgoing.length > 0,
       slot: 0,
@@ -202,7 +237,7 @@ export function buildGraph(
   let flowEdges: FlowEdge[] = edges
     .filter((edge) => edge.target !== edge.source)
     .map((edge) => ({
-      id: keyOf.get(edge) ?? `${edge.source}>${edge.target}`,
+      id: lineOf.get(edge)?.id ?? `${edge.source}>${edge.target}`,
       type: "flow",
       source: edge.source,
       target: edge.target,
@@ -213,19 +248,22 @@ export function buildGraph(
         label: edgeLabel(edge),
         exception: edge.relation === "exception",
         uncertain: edge.resolution !== "resolved",
-        back: !forward.has(edge),
+        back: lineOf.get(edge)?.back ?? true,
       },
     }))
 
   const cut = words
     ? cutFlow(
         steps,
-        view.layout,
+        view.graph,
         new Set(
           nodes
             .filter(
               ({ data }) =>
-                data.coupons.length > 0 || data.isNew || data.risk === "new"
+                data.coupons.length > 0 ||
+                data.echoes.length > 0 ||
+                data.isNew ||
+                data.risk === "new"
             )
             .map((node) => node.id)
         )
@@ -275,6 +313,7 @@ export function buildGraph(
             resolution: "resolved",
           },
           coupons: [],
+          echoes: [],
           isNew: false,
           ghost: false,
           loops: [],
@@ -314,12 +353,7 @@ export function buildGraph(
 
   const gone = view.removedSteps.filter((coupon) => coupon.place.removed_step)
   const run = gone.length * (CARD_W + 20) - 20
-  const size = arrange(
-    nodes,
-    flowEdges,
-    max,
-    gone.length ? { w: run, h: GHOST_H } : undefined
-  )
+  const size = arrange(nodes, flowEdges)
 
   // Steps the change removed have no place among the current ones: they wait after the
   // end of the flow when there is room beside its last band, else in a row below.
@@ -340,6 +374,7 @@ export function buildGraph(
         resolution: "resolved",
       },
       coupons: [coupon],
+      echoes: [],
       isNew: false,
       ghost: true,
       loops: [],
@@ -352,20 +387,18 @@ export function buildGraph(
       slot: 0,
     }
     data.slot = heightOf(data)
-    const at = size.spot
-      ? { x: size.spot.x + index * (CARD_W + 20), y: size.spot.y }
-      : beside
-        ? {
-            x: size.tail.x + 40 + index * (CARD_W + 20),
-            y: Math.max(
-              0,
-              Math.min(
-                (size.tail.top + size.tail.bottom - data.slot) / 2,
-                size.h - data.slot
-              )
-            ),
-          }
-        : { x: index * (CARD_W + 20), y: below }
+    const at = beside
+      ? {
+          x: size.tail.x + 40 + index * (CARD_W + 20),
+          y: Math.max(
+            0,
+            Math.min(
+              (size.tail.top + size.tail.bottom - data.slot) / 2,
+              size.h - data.slot
+            )
+          ),
+        }
+      : { x: index * (CARD_W + 20), y: below }
     nodes.push({
       id: removedNodeId(removed.step_id, coupon.no),
       type: "step",
@@ -382,331 +415,549 @@ export function buildGraph(
     edges: flowEdges,
     w: Math.max(w, 120),
     h,
+    boxes: size.boxes,
     cut:
       nodes.filter((node) => !node.data.ghost && !node.data.stub).length <
       steps.length,
   }
 }
 
+/** What is drawn of a flow, as a graph: its steps in the order given, its lines as marked. */
+export function graphOfDrawing(nodes: StepNode[], edges: FlowEdge[]) {
+  return drawnGraph(
+    nodes.map((node) => node.id),
+    edges.map((edge): Line<FlowEdge> => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      back: Boolean(edge.data?.back),
+      exception: Boolean(edge.data?.exception),
+      of: edge,
+    }))
+  )
+}
+
 /**
- * Places the steps and routes the lines. dagre decides which column a step is in, the order
- * down a column and the lane a long line keeps to as it passes other columns; the rest is
- * a grid: columns as wide as their widest step, gaps as wide as the labels and turns in them
- * need, and bands of columns wrapped to the width given.
+ * Places the steps and routes the lines, as lanes. The way through the flow that keeps off
+ * the error path is one row, read left to right; every other branch runs in a row below
+ * it, and steps reached only by an error run in rows of their own under all of them, inside
+ * one dashed box. A step's column is how many steps lead up to it at most, every column is
+ * as wide as a card, and a gap between columns is as wide as the labels and turns in it.
  */
 function arrange(
   nodes: StepNode[],
-  edges: FlowEdge[],
-  max: number,
-  /** Something to set down in a free corner of the last band, if one is large enough. */
-  extra?: { w: number; h: number }
+  edges: FlowEdge[]
 ): {
   w: number
   h: number
   tail: { x: number; top: number; bottom: number }
-  spot?: Point
+  boxes: ErrorBox[]
 } {
-  if (!nodes.length) return { w: 0, h: 0, tail: { x: 0, top: 0, bottom: 0 } }
-  const graph = new dagre.graphlib.Graph()
-  graph.setGraph({ rankdir: "LR", nodesep: NODE_SEP, ranksep: 80 })
-  graph.setDefaultEdgeLabel(() => ({}))
-  for (const node of nodes)
-    graph.setNode(node.id, { width: node.data.width, height: node.data.slot })
-  const lines = edges.filter((edge) => !edge.data?.back)
-  for (const edge of lines) graph.setEdge(edge.source, edge.target)
-  dagre.layout(graph)
+  if (!nodes.length)
+    return { w: 0, h: 0, tail: { x: 0, top: 0, bottom: 0 }, boxes: [] }
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const graph = graphOfDrawing(nodes, edges)
+  const { out, into } = graph
+  // The lines that lead on, in the order the flow lists them.
+  const lines = graph.lines.filter((line) => !line.back).map((line) => line.of)
 
-  // Columns: steps that dagre gave the same centre.
-  const centres = [
-    ...new Set(nodes.map((node) => Math.round(graph.node(node.id).x))),
-  ].sort((a, b) => a - b)
-  const rankOf = new Map(
-    nodes.map((node) => [
-      node.id,
-      centres.indexOf(Math.round(graph.node(node.id).x)),
-    ])
+  // Reading order: every step after the steps that lead to it.
+  const order: string[] = []
+  const waiting = new Map(
+    nodes.map((node) => [node.id, into.get(node.id)?.length ?? 0])
   )
-  const ranks = centres.length
-  const colW = Array.from({ length: ranks }, () => 0)
-  for (const node of nodes) {
-    const rank = rankOf.get(node.id)!
-    colW[rank] = Math.max(colW[rank], node.data.width)
+  const ready = nodes
+    .filter((node) => !waiting.get(node.id))
+    .map((node) => node.id)
+  while (ready.length) {
+    const id = ready.shift()!
+    order.push(id)
+    for (const edge of out.get(id) ?? []) {
+      const left = waiting.get(edge.target)! - 1
+      waiting.set(edge.target, left)
+      if (left === 0) ready.push(edge.target)
+    }
   }
-  const cy = (id: string) => graph.node(id).y
+  for (const node of nodes) if (!order.includes(node.id)) order.push(node.id)
 
-  // The way of each line, column by column: the height it keeps to where it passes one.
+  // The main row: from the trigger, at each fork the branch off the error path, then a
+  // real step before a pill for steps left out, then the one that runs longest.
+  const rest = new Map<string, number>()
+  for (const id of [...order].reverse())
+    rest.set(
+      id,
+      1 +
+        Math.max(
+          0,
+          ...(out.get(id) ?? []).map((edge) => rest.get(edge.target) ?? 0)
+        )
+    )
+  const first =
+    nodes.find(
+      (node) => node.data.step.kind === "trigger" && !into.get(node.id)?.length
+    )?.id ?? order[0]
+  const main = [first]
+  const onMain = new Set(main)
+  for (let at = first; ;) {
+    const next = (out.get(at) ?? [])
+      .filter((edge) => !onMain.has(edge.target))
+      .sort(
+        (a, b) =>
+          Number(a.exception) - Number(b.exception) ||
+          Number(Boolean(byId.get(a.target)!.data.stub)) -
+            Number(Boolean(byId.get(b.target)!.data.stub)) ||
+          rest.get(b.target)! - rest.get(a.target)!
+      )[0]
+    if (!next) break
+    at = next.target
+    main.push(at)
+    onMain.add(at)
+  }
+
+  // A step is on the error path when every way into it is an error or comes from one.
+  const error = new Set<string>()
+  for (const id of order) {
+    if (onMain.has(id)) continue
+    const ins = into.get(id) ?? []
+    if (
+      ins.length &&
+      ins.every((edge) => edge.exception || error.has(edge.source))
+    )
+      error.add(id)
+  }
+
+  // Columns: a step comes after every step that leads to it. The error path is the
+  // exception: it starts right after the first step that can fail into it, and a step
+  // that an error leads back into does not move for it.
+  const col = new Map<string, number>()
+  for (const id of order) {
+    const ins = (into.get(id) ?? []).filter((edge) => col.has(edge.source))
+    const after = (edges: Line[]) =>
+      edges.map((edge) => col.get(edge.source)! + 1)
+    const fromErrors = after(ins.filter((edge) => error.has(edge.source)))
+    const fromOthers = after(ins.filter((edge) => !error.has(edge.source)))
+    col.set(
+      id,
+      error.has(id)
+        ? Math.max(
+            fromOthers.length ? Math.min(...fromOthers) : 0,
+            ...fromErrors
+          )
+        : Math.max(0, ...fromOthers)
+    )
+  }
+
+  // Rows. A branch keeps to the row of the step it follows while that row is free; a line
+  // running along a row to its step takes the cells it passes.
+  const row = new Map<string, number>()
+  const used = new Map<number, Set<number>>()
+  const take = (r: number, from: number, to: number) => {
+    const cells = used.get(r) ?? new Set<number>()
+    for (let c = from; c <= to; c++) cells.add(c)
+    used.set(r, cells)
+  }
+  const isFree = (r: number, from: number, to: number) => {
+    const cells = used.get(r)
+    for (let c = from; c <= to; c++) if (cells?.has(c)) return false
+    return true
+  }
+  for (const id of main) row.set(id, 0)
+  take(0, col.get(main[0])!, col.get(main[main.length - 1])!)
+  const place = (id: string, base: number) => {
+    const c = col.get(id)!
+    const ins = (into.get(id) ?? []).filter((edge) => row.has(edge.source))
+    const from = (edge: Line) => Math.min(col.get(edge.source)! + 1, c)
+    for (const edge of ins) {
+      const r = row.get(edge.source)!
+      if (r >= base && isFree(r, from(edge), c)) {
+        row.set(id, r)
+        take(r, from(edge), c)
+        return
+      }
+    }
+    const lead = ins.length ? Math.min(...ins.map(from)) : c
+    for (let r = base; ; r++)
+      if (isFree(r, lead, c)) {
+        row.set(id, r)
+        take(r, lead, c)
+        return
+      }
+  }
+  const others = order
+    .filter((id) => !onMain.has(id))
+    .sort((a, b) => col.get(a)! - col.get(b)!)
+  for (const id of others) if (!error.has(id)) place(id, 1)
+  const errorRow = Math.max(0, ...row.values()) + 1
+  for (const id of others) if (error.has(id)) place(id, errorRow)
+  const rows = Math.max(0, ...row.values()) + 1
+  const boxed = error.size > 0
+
+  const rowH = Array.from({ length: rows }, () => PILL_H)
+  for (const node of nodes) {
+    const r = row.get(node.id)!
+    rowH[r] = Math.max(rowH[r], node.data.slot)
+  }
+  const rowTop: number[] = []
+  let y = 0
+  for (let r = 0; r < rows; r++) {
+    if (r) y += ROW_GAP
+    if (boxed && r === errorRow) y += BOX_HEAD
+    rowTop[r] = y
+    y += rowH[r]
+  }
+  const height = y + (boxed ? BOX_PAD : 0)
+  const mid = (r: number) => rowTop[r] + rowH[r] / 2
+
+  // How each line gets to its step: straight along its row, turning just after it leaves
+  // (then along the row it arrives on), turning just before it arrives (after running
+  // along the row it leaves), or through the gap between two rows when both are taken.
+  const stepAt = new Set(
+    nodes.map((node) => `${row.get(node.id)}:${col.get(node.id)}`)
+  )
+  const clear = (r: number, from: number, to: number) => {
+    for (let c = from; c <= to; c++) if (stepAt.has(`${r}:${c}`)) return false
+    return true
+  }
   interface Way {
     edge: FlowEdge
-    from: number
-    to: number
-    ys: number[]
+    kind: "straight" | "early" | "late" | "between" | "drop" | "rise"
+    rs: number
+    rt: number
+    cs: number
+    ct: number
+    width: number
+    left?: number
+    right?: number
+    /** Its label hangs back over the empty cell before its step instead of widening the gap. */
+    hang?: boolean
   }
   const ways: Way[] = lines.map((edge) => {
-    const from = rankOf.get(edge.source)!
-    const to = rankOf.get(edge.target)!
-    const points: Point[] = graph.edge(edge.source, edge.target)?.points ?? []
-    const ys = [cy(edge.source)]
-    for (let rank = from + 1; rank < to; rank++) {
-      const through = points.find(
-        (point) => Math.abs(point.x - centres[rank]) < 1.5
-      )
-      ys.push(through?.y ?? ys[ys.length - 1])
-    }
-    if (to > from) ys.push(cy(edge.target))
-    return { edge, from, to, ys }
-  })
-
-  // Lines that turn in the same gap keep apart: each gets a lane of its own there, shared
-  // only by lines that leave the same step.
-  const laneOf = new Map<string, number>()
-  const lanes = Array.from({ length: ranks }, () => 0)
-  const laneKey = (way: Way, hop: number) =>
-    `${way.from + hop}|${hop === 0 ? way.edge.source : way.edge.id}`
-  for (const way of [...ways].sort((a, b) => a.ys[0] - b.ys[0]))
-    for (let hop = 0; hop < way.ys.length - 1; hop++) {
-      if (Math.abs(way.ys[hop] - way.ys[hop + 1]) < 0.5) continue
-      const key = laneKey(way, hop)
-      if (!laneOf.has(key)) laneOf.set(key, lanes[way.from + hop]++)
-    }
-  const gap = Array.from({ length: Math.max(ranks - 1, 0) }, (_, rank) => {
-    const labels = ways
-      .filter((way) => way.from === rank && way.edge.data?.label)
-      .map((way) => labelWidth(way.edge.data!.label!))
-    const turns = Math.max(lanes[rank] - 1, 0) * LANE
-    return Math.max(
-      COL_GAP + turns,
-      labels.length ? TURN + turns + 8 + Math.max(...labels) + 14 : 0
-    )
-  })
-
-  // Bands: as many columns to a band as the width holds, then evened out.
-  const wrap = (limit: number) => {
-    const of: number[] = []
-    let band = 0
-    let x = 0
-    for (let rank = 0; rank < ranks; rank++) {
-      if (rank && x + gap[rank - 1] + colW[rank] > limit) {
-        band += 1
-        x = 0
+    const rs = row.get(edge.source)!
+    const rt = row.get(edge.target)!
+    const cs = col.get(edge.source)!
+    const ct = col.get(edge.target)!
+    const label = edge.data?.label
+    const way = { edge, rs, rt, cs, ct, width: label ? labelWidth(label) : 0 }
+    // Back to a column at or before its own: down into the top of a step on the error
+    // path, or up into the bottom of a step an error leads back to.
+    if (ct <= cs) return { ...way, kind: rt > rs ? "drop" : "rise" }
+    if (rs === rt)
+      return {
+        ...way,
+        kind: clear(rs, cs + 1, ct - 1) ? "straight" : "between",
       }
-      x += (x ? gap[rank - 1] : 0) + colW[rank]
-      of[rank] = band
-    }
-    return { of, count: band + 1 }
-  }
-  let fitted = wrap(max)
-  if (fitted.count > 1) {
-    const total =
-      colW.reduce((sum, width) => sum + width, 0) +
-      gap.reduce((sum, width) => sum + width, 0)
-    for (let limit = total / fitted.count; limit < max; limit += 24) {
-      const tighter = wrap(limit)
-      if (tighter.count > fitted.count) continue
-      fitted = tighter
-      break
-    }
-  }
-  const bandOf = fitted.of
-  const bands = fitted.count
-  // A line that goes on to the next band leaves by the right and comes back in by the
-  // left, so a wrapped flow keeps room on both sides for those lines. Between the bands
-  // each runs at a level of its own. The one that ends lowest runs highest and turns
-  // furthest out on the left, so they come down without crossing; a line that carries a
-  // label keeps the room its label needs.
-  const crossKey = (way: Way, hop: number) => `${way.edge.id}|${hop}`
-  const leaving: {
-    key: string
-    from: number
-    to: number
-    named: boolean
-    width: number
-  }[][] = Array.from({ length: bands }, () => [])
-  for (const way of ways)
-    for (let hop = 0; hop < way.ys.length - 1; hop++) {
-      const rank = way.from + hop
-      if (bandOf[rank] === bandOf[rank + 1]) continue
-      leaving[bandOf[rank]].push({
-        key: crossKey(way, hop),
-        from: way.ys[hop],
-        to: way.ys[hop + 1],
-        named: hop === 0 && Boolean(way.edge.data?.label),
-        width:
-          hop === 0 && way.edge.data?.label
-            ? labelWidth(way.edge.data.label)
-            : 0,
-      })
-    }
-  const levelOf = new Map<string, { k: number; drop: number; back: number }>()
-  /** How far the lines between a band and the next spread down. */
-  const spread = leaving.map((list) => {
-    list.sort((a, b) => b.to - a.to || b.from - a.from)
-    let drop = 0
-    // Two named lines never carry their names one over the other: each name sits further
-    // back along its own line than the one above, so it reads with that line alone.
-    let back = 0
-    list.forEach((line, k) => {
-      const above = list[k - 1]
-      if (above)
-        drop +=
-          line.named && above.named
-            ? LABEL_LANE
-            : line.named || above.named
-              ? LABEL_LANE / 2 + 2
-              : LANE
-      levelOf.set(line.key, { k, drop, back })
-      if (line.named) back += line.width + 12
-    })
-    return drop
+    const early = clear(rt, cs + 1, ct - 1)
+    const late = clear(rs, cs + 1, ct - 1)
+    // Into the main row a line comes late, so it never runs along the main row's cards.
+    const kind =
+      rt === 0
+        ? late
+          ? "late"
+          : early
+            ? "early"
+            : "between"
+        : early
+          ? "early"
+          : late
+            ? "late"
+            : "between"
+    return { ...way, kind }
   })
-  const crossing = leaving.map((list) => list.length)
-  const most = Math.max(...crossing, 0)
-  const inset = bands > 1 ? TURN + Math.max(most - 1, 0) * LANE + 4 : 0
+
+  // Lines turning in one gap keep apart: those leaving a step turn near its left, those
+  // arriving near its right, and lines that leave or arrive at the same step share a turn.
+  const cols = Math.max(...col.values()) + 1
+  const leaving = Array.from({ length: cols }, () => new Map<string, number>())
+  const arriving = Array.from({ length: cols }, () => new Map<string, number>())
+  const laneIn = (lanes: Map<string, number>, key: string) => {
+    if (!lanes.has(key)) lanes.set(key, lanes.size)
+    return lanes.get(key)!
+  }
+  for (const way of [...ways].sort((a, b) => b.rs - a.rs || a.rt - b.rt)) {
+    if (way.kind !== "straight" && way.kind !== "late")
+      way.left = laneIn(leaving[way.cs], way.edge.source)
+    if (way.kind === "late" || way.kind === "between")
+      way.right = laneIn(arriving[Math.max(way.ct - 1, 0)], way.edge.target)
+  }
+  // A label sits over an empty cell when its line passes one; else the gap makes room.
+  const gap = Array.from({ length: cols }, (_, c) =>
+    Math.max(
+      COL_GAP,
+      2 * TURN + Math.max(leaving[c].size + arriving[c].size - 1, 0) * LANE
+    )
+  )
+  // A long label on a branch that drops one row to the next column hangs back over the
+  // cell before its step when nothing stands there and no other line runs on below it.
+  for (const way of ways) {
+    if (way.kind !== "early" || !way.width || way.ct - way.cs !== 1) continue
+    const room = TURN + (way.left ?? 0) * LANE + 8 + way.width + 14
+    const further = (other: Way) =>
+      other !== way &&
+      other.edge.source === way.edge.source &&
+      other.left === way.left &&
+      (way.rt > way.rs ? other.rt > way.rt : other.rt < way.rt)
+    way.hang =
+      room > LABEL_CAP &&
+      !stepAt.has(`${way.rt}:${way.cs}`) &&
+      !ways.some(further)
+  }
+  for (const way of ways) {
+    if (
+      !way.width ||
+      way.hang ||
+      way.kind === "between" ||
+      way.kind === "drop" ||
+      way.kind === "rise" ||
+      way.ct - way.cs >= 2
+    )
+      continue
+    const room =
+      way.kind === "straight"
+        ? way.width + 24
+        : way.kind === "early"
+          ? TURN + (way.left ?? 0) * LANE + 8 + way.width + 14
+          : 8 + way.width + 8 + TURN + (way.right ?? 0) * LANE
+    gap[way.cs] = Math.max(gap[way.cs], room)
+  }
 
   const colX: number[] = []
-  const bandRight = Array.from({ length: bands }, () => 0)
-  let x = inset
-  for (let rank = 0; rank < ranks; rank++) {
-    if (rank && bandOf[rank] !== bandOf[rank - 1]) x = inset
-    else if (rank) x += gap[rank - 1]
-    colX[rank] = x
-    x += colW[rank]
-    bandRight[bandOf[rank]] = x
+  let x = 0
+  for (let c = 0; c < cols; c++) {
+    colX[c] = x
+    x += CARD_W + gap[c]
   }
-  // Each band keeps the heights dagre gave, moved up to where the band starts.
-  const top = Array.from({ length: bands }, () => Infinity)
-  const bottom = Array.from({ length: bands }, () => -Infinity)
-  const reach = (rank: number, from: number, to: number) => {
-    const band = bandOf[rank]
-    top[band] = Math.min(top[band], from)
-    bottom[band] = Math.max(bottom[band], to)
-  }
-  for (const node of nodes) {
-    const half = node.data.slot / 2
-    reach(rankOf.get(node.id)!, cy(node.id) - half, cy(node.id) + half)
-  }
-  for (const way of ways)
-    way.ys.forEach((value, hop) =>
-      reach(way.from + hop, value - 10, value + 10)
-    )
-  const shift: number[] = []
-  let y = 0
-  for (let band = 0; band < bands; band++) {
-    shift[band] = y - top[band]
-    y += bottom[band] - top[band] + BAND_GAP + spread[band]
-  }
-  const height = y - BAND_GAP - spread[bands - 1]
-  const yIn = (rank: number, value: number) => value + shift[bandOf[rank]]
-
-  const byId = new Map(nodes.map((node) => [node.id, node]))
-  for (const node of nodes) {
-    const rank = rankOf.get(node.id)!
+  for (const node of nodes)
     node.position = {
-      x: colX[rank],
-      y: yIn(rank, cy(node.id)) - node.data.slot / 2,
+      x: colX[col.get(node.id)!],
+      y: mid(row.get(node.id)!) - node.data.slot / 2,
     }
-  }
+  const width = Math.max(
+    ...nodes.map((node) => node.position.x + node.data.width)
+  )
 
-  // The lines: out to the right, a turn in the gap, on at the next height.
+  // Lines through the gap between two rows: each keeps a height of its own there.
+  const between = new Map<number, number>()
+  const betweenY = (way: Way) => {
+    const above =
+      way.kind === "drop" || (way.kind === "between" && way.rt > way.rs)
+    // A line falling into the error box runs above the box, then drops in.
+    const head = boxed && way.rt === errorRow ? BOX_HEAD : 0
+    const at = above
+      ? rowTop[way.rt] - head - ROW_GAP / 2
+      : rowTop[way.rt] + rowH[way.rt] + ROW_GAP / 2
+    const k = between.get(at) ?? 0
+    between.set(at, k + 1)
+    return at + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 7
+  }
+  const cell = (c: number) => colX[c] + CARD_W / 2
+  // Labels already set down, so a line running beside another puts its own label clear of
+  // theirs: along its run, from the middle outward.
+  const set: { x: number; y: number; w: number }[] = []
+  const free = (x: number, y: number, w: number) =>
+    set.every(
+      (other) =>
+        Math.abs(other.y - y) >= 22 ||
+        Math.abs(other.x - x) >= (other.w + w) / 2 + 8
+    )
+  const along = (from: number, to: number, y: number, w: number) => {
+    const lo = Math.min(from, to) + w / 2 + 8
+    const hi = Math.max(from, to) - w / 2 - 8
+    const middle = (from + to) / 2
+    if (hi <= lo) return middle
+    for (const share of [0.5, 0.3, 0.7, 0.15, 0.85]) {
+      const x = lo + (hi - lo) * share
+      if (free(x, y, w)) return x
+    }
+    return middle
+  }
+  // A label on a run between rows is set down last, the shortest runs first: they have
+  // the least room to give way.
+  const runs: {
+    edge: FlowEdge
+    width: number
+    from: number
+    to: number
+    y: number
+  }[] = []
+  // Every line is drawn a port's width to the right of where the columns put it, since it
+  // leaves from the port outside its step's box; it ends at the port of the step it reaches.
+  const drawn = (point: Point): Point => ({ x: point.x + PORT, y: point.y })
   for (const way of ways) {
     const source = byId.get(way.edge.source)!
     const target = byId.get(way.edge.target)!
     const start: Point = {
       x: source.position.x + source.data.width,
-      y: source.position.y + source.data.slot / 2,
+      y: mid(way.rs),
     }
-    const end: Point = {
-      x: target.position.x,
-      y: target.position.y + target.data.slot / 2,
-    }
-    const points: Point[] = [start]
-    let at = start
+    const end: Point = { x: target.position.x, y: mid(way.rt) }
+    const out = colX[way.cs] + CARD_W + TURN + (way.left ?? 0) * LANE
+    const back = colX[Math.max(way.ct, 0)] - TURN - (way.right ?? 0) * LANE
+    const passes = way.ct - way.cs >= 2
+    const half = way.width / 2
+    let points: Point[]
     let label: Point | undefined
-    const text = way.edge.data?.label
-    const half = text ? labelWidth(text) / 2 : 0
-    for (let hop = 0; hop < way.ys.length - 1; hop++) {
-      const rank = way.from + hop
-      const next = rank + 1
-      const last = next === way.to
-      const to = last ? end.y : yIn(next, way.ys[hop + 1])
-      if (bandOf[next] !== bandOf[rank]) {
-        const band = bandOf[rank]
-        const { k, drop, back } = levelOf.get(crossKey(way, hop))!
-        const right = bandRight[band] + TURN + k * LANE
-        const left = inset - TURN - (crossing[band] - 1 - k) * LANE
-        const between = bottom[band] + shift[band] + BAND_GAP / 2 + drop
-        points.push(
-          { x: right, y: at.y },
-          { x: right, y: between },
-          { x: left, y: between },
-          { x: left, y: to }
-        )
-        if (hop === 0 && text)
-          label = {
-            // Never further back than the line itself runs.
-            x: Math.max(right - 16 - half - back, left + 16 + half),
-            y: between,
-          }
-      } else {
-        const lane = laneOf.get(laneKey(way, hop)) ?? 0
-        const turn = colX[rank] + colW[rank] + TURN + lane * LANE
-        const turns = Math.abs(to - at.y) >= 0.5
-        if (turns) points.push({ x: turn, y: at.y }, { x: turn, y: to })
-        if (hop === 0 && text)
-          label = turns
-            ? { x: turn + 8 + half, y: to }
-            : { x: colX[rank] + colW[rank] + gap[rank] / 2, y: to }
-      }
-      at = { x: last ? end.x : colX[next], y: to }
+    let slide: { from: number; to: number; y: number } | undefined
+    if (way.kind === "straight") {
+      points = [start, end]
+      label = passes
+        ? { x: cell(way.cs + 1), y: start.y }
+        : { x: (start.x + end.x) / 2, y: start.y }
+    } else if (way.kind === "early") {
+      points = [start, { x: out, y: start.y }, { x: out, y: end.y }, end]
+      label = passes
+        ? { x: cell(way.cs + 1), y: end.y }
+        : way.hang
+          ? { x: end.x - 14 - half, y: end.y }
+          : { x: out + 8 + half, y: end.y }
+    } else if (way.kind === "late") {
+      points = [start, { x: back, y: start.y }, { x: back, y: end.y }, end]
+      label = passes
+        ? { x: cell(way.cs + 1), y: start.y }
+        : { x: start.x + 8 + half, y: start.y }
+    } else if (way.kind === "drop" || way.kind === "rise") {
+      const run = betweenY(way)
+      // It comes straight down into the middle of the top, or up into the bottom.
+      const x = target.position.x + target.data.width / 2 - PORT
+      const edge =
+        way.kind === "drop"
+          ? target.position.y - PORT
+          : target.position.y + target.data.slot + PORT
+      points = [
+        start,
+        { x: out, y: start.y },
+        { x: out, y: run },
+        { x, y: run },
+        { x, y: edge },
+      ]
+      slide = { from: out, to: x + PORT, y: run }
+    } else {
+      const run = betweenY(way)
+      points = [
+        start,
+        { x: out, y: start.y },
+        { x: out, y: run },
+        { x: back, y: run },
+        { x: back, y: end.y },
+        end,
+      ]
+      slide = { from: out, to: back, y: run }
     }
-    points.push(end)
+    // A line into the side of its step stops at that step's port.
+    if (way.kind !== "drop" && way.kind !== "rise")
+      points[points.length - 1] = { x: end.x - 2 * PORT, y: end.y }
     way.edge.data = {
       ...way.edge.data!,
-      route: points.map((point) => ({
-        x: point.x - start.x,
-        y: point.y - start.y,
-      })),
-      labelAt: label && { x: label.x - start.x, y: label.y - start.y },
+      points: points.map(drawn),
+      labelAt: undefined,
+    }
+    if (!way.width) continue
+    if (slide) runs.push({ edge: way.edge, width: way.width, ...slide })
+    else if (label) {
+      set.push({ ...label, w: way.width })
+      way.edge.data.labelAt = drawn(label)
     }
   }
-  const end = bands - 1
-  // A free corner at the right of the last band: under or over what stands there.
-  let spot: Point | undefined
-  if (extra) {
-    const right = bandRight[end]
-    const left = right - extra.w
-    const bandTop = top[end] + shift[end]
-    const bandBottom = bottom[end] + shift[end]
-    let over = bandBottom
-    let under = bandTop
-    const block = (from: number, to: number) => {
-      over = Math.min(over, from)
-      under = Math.max(under, to)
+
+  // A step back to an earlier one leaves to the right, runs back in a lane just clear of
+  // the cards between its ends (above or below, whichever is nearer) and comes in from the
+  // left. Steps back that run over each other each keep a lane of their own.
+  const lanes: { y: number; from: number; to: number; up: boolean }[] = []
+  for (const edge of edges) {
+    if (!edge.data?.back || edge.source === edge.target) continue
+    const source = byId.get(edge.source)
+    const target = byId.get(edge.target)
+    if (!source || !target) continue
+    const start = {
+      x: source.position.x + source.data.width,
+      y: source.position.y + source.data.slot / 2,
     }
+    const tx = target.position.x
+    const ty = target.position.y + target.data.slot / 2
+    const from = Math.min(start.x, tx) - LOOP_OUT
+    const to = Math.max(start.x, tx) + LOOP_OUT
+    let top = Math.min(start.y, ty)
+    let bottom = Math.max(start.y, ty)
     for (const node of nodes) {
-      if (bandOf[rankOf.get(node.id)!] !== end) continue
-      if (node.position.x + node.data.width < left - 20) continue
-      block(node.position.y, node.position.y + node.data.slot)
+      if (node.position.x > to || node.position.x + node.data.width < from)
+        continue
+      top = Math.min(top, node.position.y)
+      bottom = Math.max(bottom, node.position.y + node.data.slot)
     }
-    for (const way of ways)
-      way.ys.forEach((value, hop) => {
-        const rank = way.from + hop
-        if (bandOf[rank] !== end || colX[rank] + colW[rank] < left - 20) return
-        block(yIn(rank, value) - 12, yIn(rank, value) + 12)
+    const above = top - LOOP_GAP
+    const below = bottom + LOOP_GAP
+    const up = start.y + ty - 2 * above < 2 * below - start.y - ty
+    let lane = up ? above : below
+    const crossed = () =>
+      lanes.find(
+        (other) =>
+          other.up === up &&
+          other.from < to &&
+          from < other.to &&
+          Math.abs(other.y - lane) < LOOP_APART
+      )
+    for (let other = crossed(); other; other = crossed())
+      lane = other.y + (up ? -LOOP_APART : LOOP_APART)
+    lanes.push({ y: lane, from, to, up })
+    const leave = start.x + PORT
+    const reach = tx - PORT
+    edge.data = {
+      ...edge.data,
+      points: [
+        { x: leave, y: start.y },
+        { x: leave + LOOP_OUT, y: start.y },
+        { x: leave + LOOP_OUT, y: lane },
+        { x: reach - LOOP_OUT, y: lane },
+        { x: reach - LOOP_OUT, y: ty },
+        { x: reach, y: ty },
+      ],
+      labelAt: undefined,
+    }
+    const label = edge.data.label
+    if (label)
+      runs.push({
+        edge,
+        width: labelWidth(label),
+        from: start.x + LOOP_OUT,
+        to: tx - LOOP_OUT,
+        y: lane,
       })
-    if (left >= inset && bandBottom - under - 16 >= extra.h)
-      spot = { x: left, y: bandBottom - extra.h }
-    else if (left >= inset && over - bandTop - 16 >= extra.h)
-      spot = { x: left, y: bandTop }
+  }
+
+  runs.sort((a, b) => Math.abs(a.to - a.from) - Math.abs(b.to - b.from))
+  for (const run of runs) {
+    const x = along(run.from, run.to, run.y, run.width)
+    set.push({ x, y: run.y, w: run.width })
+    run.edge.data!.labelAt = drawn({ x, y: run.y })
+  }
+
+  // Lanes above the first row or below the last widen the flow to hold them and their
+  // labels, so they stay on its card.
+  const lift = Math.max(0, ...lanes.map((lane) => 12 - lane.y))
+  const low = Math.max(height, ...lanes.map((lane) => lane.y + 12)) + lift
+  if (lift) {
+    for (const node of nodes) node.position.y += lift
+    for (const edge of edges) {
+      for (const point of edge.data?.points ?? []) point.y += lift
+      if (edge.data?.labelAt) edge.data.labelAt.y += lift
+    }
+  }
+
+  const boxes: ErrorBox[] = []
+  if (boxed) {
+    const members = [...error].map((id) => col.get(id)!)
+    const left = colX[Math.min(...members)] - BOX_PAD
+    const top = rowTop[errorRow] - BOX_HEAD
+    boxes.push({
+      x: left,
+      y: top + lift,
+      w: colX[Math.max(...members)] + CARD_W + BOX_PAD - left,
+      h: height - top,
+    })
   }
   return {
-    spot,
-    w: Math.max(...bandRight) + inset,
-    h: height,
-    // Where the last band ends, for what is set down after the flow.
-    tail: {
-      x: bandRight[end] + (bands > 1 ? TURN + crossing[end] * LANE : 0),
-      top: top[end] + shift[end],
-      bottom: bottom[end] + shift[end],
-    },
+    w: width,
+    h: low,
+    tail: { x: width, top: 0, bottom: low },
+    boxes,
   }
 }
