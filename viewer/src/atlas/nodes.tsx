@@ -18,6 +18,7 @@ import {
 
 import { NumberDisc, StatusMark } from "@/canvas/step-node"
 import { ReviewBadge } from "@/components/review-badge"
+import { Button } from "@/components/ui/button"
 import { outOfFocus, useCanvas } from "@/canvas/context"
 import { cn } from "@/lib/utils"
 import { coverageKind, shortSummary } from "@/presentation"
@@ -51,25 +52,20 @@ function useAtlas(): AtlasHandlers {
   return value
 }
 
-/** A module: a frame around its flows. Clicking it draws every step of them. */
+/** A module is a heading on the canvas, with no enclosing surface. */
 export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
   const { t, trailActive, focusedModule } = useCanvas()
   const { onOverview } = useAtlas()
   const away = Boolean(focusedModule && focusedModule !== id)
   return (
     <div
-      data-tone={data.changes ? data.tone : undefined}
       className={cn(
-        "group @container h-full w-full rounded-[24px] border-[1.5px] bg-card/45 transition-[opacity,border-color] duration-160",
-        !data.open && "cursor-zoom-in",
-        "border-line",
-        !data.open && "hover:border-ink-3/50",
-        data.apart && "border-dashed",
+        "group @container pointer-events-none h-full w-full transition-opacity duration-160",
         trailActive && "opacity-80",
         away && "opacity-35"
       )}
     >
-      <div className="relative flex h-[56px] items-center gap-2.5 pr-[168px] pl-6">
+      <div className="pointer-events-auto relative flex h-12 items-center gap-2.5 pr-[168px]">
         <span
           className="truncate leading-[1.2] font-medium text-ink"
           style={steady(16, 34)}
@@ -91,7 +87,9 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
             the way back are never a guess. It says so in words wherever the frame has the
             room, and with its glyph alone on a narrow cell until it is pointed at. Laid over
             the header, so a module's name never gives up room to it. */}
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           aria-expanded={data.open}
           title={data.open ? t.closeModuleHint : t.openModule}
@@ -105,10 +103,10 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
               : undefined
           }
           className={cn(
-            "nodrag nopan absolute top-1/2 right-4 inline-flex h-7 -translate-y-1/2 items-center gap-1 rounded-full bg-card px-2.5 text-[12px] leading-4 font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line transition-colors duration-160 hover:text-ink hover:ring-ink-3/50",
+            "nodrag nopan absolute top-1/2 right-0 h-7 -translate-y-1/2 gap-1 px-2 text-xs font-medium text-ink-2 hover:text-ink",
             data.open
               ? "cursor-pointer"
-              : "cursor-zoom-in group-hover:text-ink group-hover:ring-ink-3/50"
+              : "cursor-zoom-in group-hover:text-ink"
           )}
         >
           {data.open ? (
@@ -125,7 +123,7 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
           >
             {data.open ? t.closeModule : data.wide ? t.openModule : t.openShort}
           </span>
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -219,10 +217,6 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
         away && "opacity-35"
       )}
     >
-      <span
-        aria-hidden
-        className="far-mark pointer-events-none absolute -inset-px rounded-[18px]"
-      />
       <NumberDisc
         no={data.coupon.no}
         className="absolute -top-2 -left-2 z-[7]"

@@ -9,21 +9,8 @@ import {
   type NodeMouseHandler,
 } from "@xyflow/react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import {
-  ArrowLeft,
-  Network,
-  Maximize,
-  Minus,
-  Moon,
-  Play,
-  Plus,
-  Sun,
-} from "lucide-react"
+import { Maximize, Minus, Moon, Play, Plus, Sun } from "lucide-react"
 
-import { RelationsOverview } from "@/components/relations-overview"
-import { RelationPanel } from "@/components/relation-panel"
-import { relationWords } from "@/relations"
-import type { MapLink } from "@/types"
 import { Button } from "@/components/ui/button"
 import { DetailPanel, type PanelSubject } from "@/components/detail-panel"
 import { Headline } from "@/components/headline"
@@ -95,7 +82,7 @@ const ARROWS = [
 const PANEL_W = 420
 // Small maps grow to use the desktop canvas without making cards oversized.
 const AUTO_MAX_ZOOM = 1.6
-/** The first look is never smaller than this: a map nobody can read is no overview. */
+/** Reading density used to lay out the map across the desktop's available width. */
 const READ_ZOOM = 0.8
 const APART = moduleNodeId("__apart")
 const NONE = new Set<string>()
@@ -234,26 +221,6 @@ function Viewer({ model }: { model: Model }) {
   const focus = model.stops.length > 0
 
   const [selected, setSelected] = React.useState<Selected>()
-  const [relationships, setRelationships] = React.useState(
-    () => new URLSearchParams(location.search).get("view") === "relations"
-  )
-  const [relationSelection, setRelationSelection] = React.useState<MapLink[]>()
-  const [destination, setDestination] = React.useState<string>()
-  const [navigationHistory, setHistory] = React.useState<
-    {
-      relationships: boolean
-      focused?: string
-      selected?: Selected
-      relations?: MapLink[]
-      viewport: { x: number; y: number; zoom: number }
-    }[]
-  >([])
-  const [restore, setRestore] = React.useState<{
-    x: number
-    y: number
-    zoom: number
-  }>()
-  const relationText = relationWords[model.lang]
   const { theme, toggle: toggleTheme } = useTheme()
   const walkable = React.useMemo(
     () => model.stops.map((stop) => stop.no),
@@ -308,10 +275,8 @@ function Viewer({ model }: { model: Model }) {
 
   // Names on the map keep their size on screen as the reader zooms out.
   React.useEffect(() => {
-    // Far out, changes turn into solid blocks and the rest recedes (see index.css).
     const set = (zoom: number) => {
       wrapper.current?.style.setProperty("--zoom", String(zoom))
-      wrapper.current?.classList.toggle("is-far", zoom < 0.5)
     }
     set(store.getState().transform[2])
     return store.subscribe((state) => set(state.transform[2]))
@@ -388,7 +353,7 @@ function Viewer({ model }: { model: Model }) {
       coupons: step.data.coupons,
     }
   }, [selected, nodeById, atlas, model])
-  const showPanel = Boolean(subject || relationSelection?.length)
+  const showPanel = Boolean(subject)
   const focusedTitle = focused
     ? (nodeById.get(focused)?.data as ModuleData | undefined)?.title
     : undefined
@@ -420,7 +385,7 @@ function Viewer({ model }: { model: Model }) {
       const left = inset
       // The zoom controls stand at the right edge, under the panel when it is open.
       const right = narrow ? 12 : withPanel ? PANEL_W + 40 : 60
-      const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 96
+      const bottom = narrow ? (withPanel ? height * 0.52 + 16 : 24) : 24
       return {
         x: left,
         y: top,
@@ -473,9 +438,9 @@ function Viewer({ model }: { model: Model }) {
     [boxOf]
   )
   /**
-   * Bring a part of the map into the free area, never smaller than `min`. When that is
-   * wider or taller than the area, start from its top left, where the flows begin; with
-   * `fromTop` it starts at the headline's left edge and just below it, even when it fits.
+   * Overview/module framing fits only the available width and starts below the headline.
+   * Long maps extend down the canvas at reading size; their height never reduces zoom.
+   * A deliberate step focus can still fit both dimensions and center its subject.
    */
   const frame = React.useCallback(
     (
@@ -484,40 +449,48 @@ function Viewer({ model }: { model: Model }) {
       duration: number,
       min: number,
       max = AUTO_MAX_ZOOM,
-      fromTop = false
+      fromTop = false,
+      reveal?: { y: number; height: number }
     ) => {
       const box = area(withPanel)
-      // A jump can add the change-list row before ResizeObserver reports its height.
-      const headerBottom = headRef.current?.getBoundingClientRect().bottom ?? 0
-      const top = Math.max(box.y, headerBottom + (narrow ? 16 : 24))
-      box.h -= top - box.y
-      box.y = top
       const zoom = Math.min(
         max,
-        Math.max(min, Math.min(box.w / bounds.width, box.h / bounds.height))
+        Math.max(
+          min,
+          fromTop
+            ? box.w / bounds.width
+            : Math.min(box.w / bounds.width, box.h / bounds.height)
+        )
       )
-      const across = !fromTop && bounds.width * zoom <= box.w
+      const across = bounds.width * zoom <= box.w
       const down = !fromTop && bounds.height * zoom <= box.h
+      let y = down
+        ? box.y + (box.h - bounds.height * zoom) / 2 - bounds.y * zoom
+        : box.y - bounds.y * zoom
+      // A change lower down must remain visible when its inspector opens.
+      if (reveal && (reveal.y + reveal.height) * zoom + y > box.y + box.h) {
+        y =
+          box.y + Math.max(0, (box.h - reveal.height * zoom) / 2) -
+          reveal.y * zoom
+      }
       void flow.setViewport(
         {
           x: across
             ? box.x + (box.w - bounds.width * zoom) / 2 - bounds.x * zoom
             : box.x - bounds.x * zoom,
-          y: down
-            ? box.y + (box.h - bounds.height * zoom) / 2 - bounds.y * zoom
-            : box.y - bounds.y * zoom,
+          y,
           zoom,
         },
         { duration, ease: easeOut, interpolate: "linear" }
       )
     },
-    [area, flow, narrow]
+    [area, flow]
   )
   const fitAll = React.useCallback(
     (duration: number, withPanel = false) => {
       const bounds = boundsOf(nodeById.keys())
       if (bounds)
-        frame(bounds, withPanel, duration, READ_ZOOM, AUTO_MAX_ZOOM, true)
+        frame(bounds, withPanel, duration, 0.05, AUTO_MAX_ZOOM, true)
     },
     [boundsOf, nodeById, frame]
   )
@@ -589,7 +562,7 @@ function Viewer({ model }: { model: Model }) {
     )
       return
     const bounds = focused ? boundsOf([focused]) : undefined
-    if (bounds) frame(bounds, false, 0, READ_ZOOM, AUTO_MAX_ZOOM, true)
+    if (bounds) frame(bounds, false, 0, 0.05, AUTO_MAX_ZOOM, true)
     else fitAll(0)
     // Only the size matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -612,7 +585,6 @@ function Viewer({ model }: { model: Model }) {
   }, [])
 
   const openPanel = (next: Selected) => {
-    setRelationSelection(undefined)
     if (!showPanel)
       opener.current =
         document.activeElement instanceof HTMLElement
@@ -621,7 +593,6 @@ function Viewer({ model }: { model: Model }) {
     setSelected(next)
   }
   const closePanel = () => {
-    setRelationSelection(undefined)
     if (document.activeElement?.closest("[data-panel]")) opener.current?.focus()
     setSelected(undefined)
   }
@@ -666,7 +637,7 @@ function Viewer({ model }: { model: Model }) {
     aim.current = undefined
     // Details keep their subject centered when its module expands or collapses.
     // The panel effect has already positioned the camera using the new node layout.
-    if (showPanel || destination || restore) return
+    if (showPanel) return
     if (!focused) {
       fitAll(glide, showPanel)
       return
@@ -674,30 +645,13 @@ function Viewer({ model }: { model: Model }) {
     const inside = atlas.nodes.filter((node) =>
       focusedFlows?.has(flowIdOf(node) ?? "")
     )
-    // The flow that was asked for; else the changed cards with the names of their flows;
-    // else everything in the module.
+    // A requested flow can be framed alone; expanding a module fits all of its steps.
     const asked = wanted
       ? inside.filter((node) => flowIdOf(node) === wanted)
       : []
-    const changed = inside.filter(
-      (node) =>
-        node.type === "offmap" ||
-        (node.type === "step" && (node as StepNodeType).data.coupons.length > 0)
-    )
-    const flows = new Set(changed.map(flowIdOf))
-    const picked = asked.length
-      ? asked
-      : changed.length
-        ? [
-            ...changed,
-            ...inside.filter(
-              (node) => node.type === "label" && flows.has(flowIdOf(node))
-            ),
-          ]
-        : inside
-    const bounds = boundsOf(
-      picked.length ? picked.map((node) => node.id) : [focused]
-    )
+    const bounds = asked.length
+      ? boundsOf(asked.map((node) => node.id))
+      : boxOf(focused)
     if (!bounds) return
     // At the top of the module its name comes along.
     const frameBox = boxOf(focused)
@@ -708,7 +662,7 @@ function Viewer({ model }: { model: Model }) {
       bounds.x = frameBox.x
     }
     // An open module starts right under the headline, the way the whole map does.
-    frame(bounds, showPanel, glide, READ_ZOOM, AUTO_MAX_ZOOM, true)
+    frame(bounds, showPanel, glide, 0.05, AUTO_MAX_ZOOM, true)
     // Runs when the focus changes; the rest is read fresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused, ready])
@@ -717,82 +671,11 @@ function Viewer({ model }: { model: Model }) {
     setFocused(id)
   }
   const toOverview = () => {
-    setRelationSelection(undefined)
     stopWalk()
     setFocused(undefined)
     setCurrent(undefined)
     setSelected(undefined)
   }
-
-  const inspectRelations = (links: MapLink[]) => {
-    if (!showPanel)
-      opener.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null
-    stopWalk()
-    setSelected(undefined)
-    setCurrent(undefined)
-    setRelationSelection(links)
-  }
-  const navigateFlow = (flowId: string) => {
-    if (!model.flowById.has(flowId)) return
-    setHistory((items) => [
-      ...items,
-      {
-        relationships,
-        focused,
-        selected,
-        relations: relationSelection,
-        viewport: flow.getViewport(),
-      },
-    ])
-    stopWalk()
-    setRelationships(false)
-    setRelationSelection(undefined)
-    setSelected(undefined)
-    setCurrent(undefined)
-    setFocused(atlas.home.get(flowId))
-    setDestination(flowId)
-  }
-  const navigateBack = () => {
-    const previous = navigationHistory.at(-1)
-    if (!previous) return
-    setHistory((items) => items.slice(0, -1))
-    setRelationships(previous.relationships)
-    setFocused(previous.focused)
-    setSelected(previous.selected)
-    setRelationSelection(previous.relations)
-    setCurrent(undefined)
-    setRestore(previous.viewport)
-  }
-  React.useEffect(() => {
-    if (!destination || !ready) return
-    const placed = atlas.flows.get(destination)
-    const bounds = boundsOf(placed?.nodes.map((node) => node.id) ?? [])
-    const label = boxOf(`label${SEP}${destination}`)
-    if (bounds && label) {
-      bounds.height += bounds.y - label.y
-      bounds.y = label.y
-      const left = Math.min(bounds.x, label.x)
-      bounds.width += bounds.x - left
-      bounds.x = left
-    }
-    if (bounds) frame(bounds, false, 0, READ_ZOOM, 1.15, true)
-    // This effect synchronizes a completed camera jump with its pending request.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDestination(undefined)
-    // A jump targets the new layout, including a flow in the already-open module.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destination, atlas, ready])
-  React.useEffect(() => {
-    if (!restore) return
-    const handle = requestAnimationFrame(() => {
-      void flow.setViewport(restore, { duration: 0 })
-      setRestore(undefined)
-    })
-    return () => cancelAnimationFrame(handle)
-  }, [restore, atlas, flow])
 
   const panelNode = !showPanel
     ? undefined
@@ -803,54 +686,33 @@ function Viewer({ model }: { model: Model }) {
         : selected?.type === "removedFlow"
           ? atlas.flows.get(selected.flowId)?.triggers[0]
           : undefined
-  /** Keep a small module whole; on a large map, keep the selected step and its neighbors. */
+  /** Fit the remaining width while keeping the selected change in view. */
   const frameDetails = React.useCallback(
-    (id: string, duration: number) => {
-      const node = boxOf(id)
-      if (!node) return
-      const flowId = flowOfNode(id)
-      const moduleId = id.startsWith(`offmap${SEP}`)
-        ? APART
-        : atlas.home.get(flowId ?? "")
-      const placed = atlas.flows.get(flowId ?? "")
-      const neighbors = new Set([id])
-      for (const edge of placed?.edges ?? []) {
-        if (edge.source === id) neighbors.add(edge.target)
-        if (edge.target === id) neighbors.add(edge.source)
-      }
-      const box = area(true)
-      const candidates = [
-        moduleId ? boxOf(moduleId) : undefined,
-        boundsOf(neighbors),
-        node,
-      ]
-      for (const candidate of candidates) {
-        if (!candidate) continue
-        const padded = {
-          x: candidate.x - 12,
-          y: candidate.y - 12,
-          width: candidate.width + 24,
-          height: candidate.height + 24,
-        }
-        const fit = Math.min(box.w / padded.width, box.h / padded.height)
-        if (fit < READ_ZOOM && candidate !== node) continue
-        frame(padded, true, duration, 0.05, AUTO_MAX_ZOOM, true)
-        return
-      }
+    (duration: number) => {
+      const bounds = focused ? boxOf(focused) : boundsOf(nodeById.keys())
+      if (bounds)
+        frame(
+          bounds,
+          true,
+          duration,
+          0.05,
+          AUTO_MAX_ZOOM,
+          true,
+          panelNode ? boxOf(panelNode) : undefined
+        )
     },
-    [area, atlas, boxOf, boundsOf, frame]
+    [focused, boxOf, boundsOf, nodeById, frame, panelNode]
   )
   const previousPanel = React.useRef<Selected | undefined>(undefined)
   React.useLayoutEffect(() => {
     if (!ready) return
     const before = previousPanel.current
     previousPanel.current = selected
-    if (destination || restore || relationships) return
     if (panelNode) {
-      frameDetails(panelNode, before === selected ? 0 : glide)
+      frameDetails(before === selected ? 0 : glide)
     } else if (before && !selected) {
       const bounds = focused ? boundsOf([focused]) : undefined
-      if (bounds) frame(bounds, false, glide, READ_ZOOM, AUTO_MAX_ZOOM, true)
+      if (bounds) frame(bounds, false, glide, 0.05, AUTO_MAX_ZOOM, true)
       else fitAll(glide)
     } else if (!selected && !focused) {
       // Also handles the first measurement of a wrapped headline.
@@ -858,9 +720,6 @@ function Viewer({ model }: { model: Model }) {
     }
   }, [
     selected,
-    destination,
-    restore,
-    relationships,
     panelNode,
     ready,
     frameDetails,
@@ -1078,8 +937,7 @@ function Viewer({ model }: { model: Model }) {
       escape: () => {
         settle()
         if (trail) stopWalk()
-        else if (selected || relationSelection) closePanel()
-        else if (relationships) setRelationships(false)
+        else if (selected) closePanel()
         else if (current) setCurrent(undefined)
         else if (focused) toOverview()
       },
@@ -1091,9 +949,7 @@ function Viewer({ model }: { model: Model }) {
         const node = nodeById.get(id)
         if (node) onNodeClick({} as React.MouseEvent, node)
       },
-      step: (by) => {
-        if (!relationships) stepBy(by)
-      },
+      step: stepBy,
     }
   })
   React.useEffect(() => {
@@ -1149,11 +1005,6 @@ function Viewer({ model }: { model: Model }) {
     [t]
   )
   const canvas: CanvasState = {
-    inspectRelations: (ids) =>
-      inspectRelations(
-        model.links.filter((link) => ids.includes(link.link_id))
-      ),
-    relationTarget: (flowId) => model.flowById.get(flowId)?.flow.name ?? "",
     t,
     focus,
     stopNo: current?.no,
@@ -1289,12 +1140,7 @@ function Viewer({ model }: { model: Model }) {
           </svg>
           <div
             ref={wrapper}
-            aria-hidden={relationships}
-            inert={relationships}
-            className={cn(
-              "absolute inset-0",
-              relationships && "pointer-events-none invisible"
-            )}
+            className="absolute inset-0"
             style={
               narrow
                 ? undefined
@@ -1334,44 +1180,11 @@ function Viewer({ model }: { model: Model }) {
             )}
           </div>
 
-          <RelationsOverview
-            model={model}
-            active={relationships}
-            panel={showPanel}
-            width={width}
-            onNavigate={navigateFlow}
-            onInspect={inspectRelations}
-            onDismiss={closePanel}
-          />
-
           <div
             ref={headRef}
             className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col items-start gap-2 md:top-4 md:left-4"
           >
-            <div className="pointer-events-auto flex items-center gap-2">
-              {navigationHistory.length > 0 && (
-                <Button variant="outline" size="sm" onClick={navigateBack}>
-                  <ArrowLeft />
-                  {relationText.back}
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                aria-pressed={relationships}
-                onClick={() => {
-                  setRelationships(!relationships)
-                  setSelected(undefined)
-                  setRelationSelection(undefined)
-                  setCurrent(undefined)
-                  stopWalk()
-                }}
-              >
-                <Network />
-                {relationships ? relationText.flows : relationText.overview}
-              </Button>
-            </div>
-            {!relationships && model.hasReport && (
+            {model.hasReport && (
               <div
                 className={
                   narrow
@@ -1392,9 +1205,7 @@ function Viewer({ model }: { model: Model }) {
                 />
               </div>
             )}
-            {!relationships && !model.hasReport && (
-              <MapMark model={model} t={t} />
-            )}
+            {!model.hasReport && <MapMark model={model} t={t} />}
           </div>
 
           {/* The walk says what it walks, where it is, and how to stop it. */}
@@ -1420,7 +1231,7 @@ function Viewer({ model }: { model: Model }) {
 
           {/* The light or dark rendition; under it zoom, for readers without a trackpad, and
               the way back to the whole map. */}
-          {!relationships && !(narrow && showPanel) && (
+          {!(narrow && showPanel) && (
             <div className="absolute right-3 bottom-8 z-10 flex flex-col gap-2">
               <Button
                 variant="ghost"
@@ -1469,7 +1280,7 @@ function Viewer({ model }: { model: Model }) {
           )}
 
           <AnimatePresence>
-            {(subject || relationSelection?.length) && (
+            {subject && (
               <motion.aside
                 key="panel"
                 data-panel
@@ -1497,46 +1308,30 @@ function Viewer({ model }: { model: Model }) {
                     : "top-4 right-4 h-[min(720px,calc(100dvh-112px))] w-[420px]"
                 )}
               >
-                {relationSelection?.length ? (
-                  <RelationPanel
-                    key={relationSelection
-                      .map((link) => link.link_id)
-                      .join(",")}
-                    model={model}
-                    links={relationSelection}
-                    onNavigate={navigateFlow}
-                    onClose={closePanel}
-                  />
-                ) : (
-                  subject && (
-                    <DetailPanel
-                      // Each new subject starts at the top with its code folded.
-                      key={JSON.stringify(selected)}
-                      model={model}
-                      t={t}
-                      subject={subject}
-                      focus={current?.no}
-                      onWalk={
-                        // With a change to read, the page steps through the changes instead.
-                        !focus &&
-                        subject?.type === "step" &&
-                        subject.view &&
-                        !subject.view.removed &&
-                        !subject.ghost
-                          ? () => walk(subject.view!.flow.flow_id)
-                          : undefined
-                      }
-                      onNext={
-                        focus && panelStops.length > 0 && walkable.length > 1
-                          ? () => stepBy(1)
-                          : undefined
-                      }
-                      onClose={closePanel}
-                      onNavigate={navigateFlow}
-                      onRelation={inspectRelations}
-                    />
-                  )
-                )}
+                <DetailPanel
+                  // Each new subject starts at the top with its code folded.
+                  key={JSON.stringify(selected)}
+                  model={model}
+                  t={t}
+                  subject={subject}
+                  focus={current?.no}
+                  onWalk={
+                    // With a change to read, the page steps through the changes instead.
+                    !focus &&
+                    subject?.type === "step" &&
+                    subject.view &&
+                    !subject.view.removed &&
+                    !subject.ghost
+                      ? () => walk(subject.view!.flow.flow_id)
+                      : undefined
+                  }
+                  onNext={
+                    focus && panelStops.length > 0 && walkable.length > 1
+                      ? () => stepBy(1)
+                      : undefined
+                  }
+                  onClose={closePanel}
+                />
               </motion.aside>
             )}
           </AnimatePresence>

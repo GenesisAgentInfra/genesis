@@ -4,7 +4,7 @@ import type { Edge, Node } from "@xyflow/react"
 import { edgeLabel } from "@/layout"
 import { cutFlow } from "./focus"
 import { removedNodeId, type Coupon, type FlowView } from "@/model"
-import type { FindingChange, MapFinding, MapStep, MapLink } from "@/types"
+import type { FindingChange, MapFinding, MapStep } from "@/types"
 import { sortAlerts } from "@/presentation"
 
 /**
@@ -55,7 +55,6 @@ export interface StepNodeData extends Record<string, unknown> {
   /** The height of its place in the column; the card sits in the middle of it. */
   slot: number
   /** Not a step: a pill that stands for this many steps left out after the one before it. */
-  links?: MapLink[]
   stub?: number
 }
 
@@ -95,7 +94,6 @@ export function heightOf(data: StepNodeData): number {
   let height = 68
   if (data.coupons.length) height += 80
   if (data.loops.length) height += 24
-  height += (data.links?.length ?? 0) * 36
   return height
 }
 
@@ -110,8 +108,7 @@ export function buildGraph(
    * Given, the flow is cut down to the steps the change touches and the way into each;
    * they word the lines and pills that stand for the steps left out.
    */
-  words?: CutWords,
-  links: MapLink[] = []
+  words?: CutWords
 ): {
   nodes: StepNode[]
   edges: FlowEdge[]
@@ -169,15 +166,10 @@ export function buildGraph(
       step.resolution !== "resolved" ||
       risk === "new" ||
       (risk === "known" && knownRisks)
-    const outgoingLinks = links.filter(
-      (link) => link.source.step_id === step.step_id
-    )
-    const compact =
-      !coupons.length && !loops.length && !badged && !outgoingLinks.length
+    const compact = !coupons.length && !loops.length && !badged
     const data: StepNodeData = {
       step,
       coupons,
-      links: outgoingLinks,
       isNew,
       risk,
       alerts,
@@ -233,10 +225,7 @@ export function buildGraph(
           nodes
             .filter(
               ({ data }) =>
-                data.coupons.length > 0 ||
-                data.isNew ||
-                data.risk === "new" ||
-                Boolean(data.links?.length)
+                data.coupons.length > 0 || data.isNew || data.risk === "new"
             )
             .map((node) => node.id)
         )

@@ -32,7 +32,6 @@ from genesis_ci.snapshot import slice_source
 from genesis_ci.snapshot_store import load_snapshot
 
 from .changes import CHANGE_TASK, ChangeAnalysis
-from .links import flow_links
 from .python_entries import entry_id
 from .session import evidence_bundle, session_root, write_json
 from .skeleton import (
@@ -1432,16 +1431,11 @@ class Workspace:
             "tasks_pending": states.count("pending") + states.count("claimed"),
             "tasks_failed": states.count("failed"),
         }
-        links = flow_links(flows, self.facts)
-        for link in links:
-            cited.update(link["source_evidence_ids"])
-            cited.update(link["target_evidence_ids"])
         document = {
             "snapshot_id": self.facts.snapshot_id,
             "side": "head",
             "domains": domains,
             "flows": flows,
-            "links": links,
             "findings": findings,
             "coverage": coverage,
             "evidence": [self.evidence(key).model_dump(mode="json") for key in sorted(cited)],

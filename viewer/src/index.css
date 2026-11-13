@@ -379,20 +379,6 @@
   }
 }
 
-/* Zoomed far out, a change is a solid block in its own colour; other cards recede. */
-.far-mark {
-  opacity: 0;
-  transition: opacity 160ms ease-out;
-  z-index: 5;
-  background: var(--tone, var(--ink-3));
-}
-.is-far .far-mark {
-  opacity: 1;
-}
-.is-far [data-slot="step-card"]:not([data-changed]) {
-  opacity: 0.4;
-}
-
 /* A module opens or closes: cards slide to their new places, the lines come back after. */
 .react-flow__node {
   animation: fade-in 220ms var(--ease-out) both;

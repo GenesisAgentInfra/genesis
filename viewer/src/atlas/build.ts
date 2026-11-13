@@ -18,11 +18,11 @@ import type { EntryKind } from "@/types"
  */
 
 export const SEP = "::"
-const P = 24
-const HEAD_H = 56
+const P = 0
+const HEAD_H = 48
 const LABEL_H = 44
 const FLOW_GAP = 36
-const MODULE_GAP = 32
+const MODULE_GAP = 64
 export const OFFMAP_W = 252
 const OFFMAP_H = 112
 const OFFMAP_GAP = 20
@@ -150,8 +150,7 @@ function drawFlow(
     model.findingStatus,
     !model.hasReport,
     max,
-    words,
-    model.links.filter((link) => link.source.flow_id === flowId)
+    words
   )
   const steps = view.flow.steps ?? []
   const triggerIds = steps
@@ -512,6 +511,7 @@ export function buildAtlas(
       position: { x, y },
       ...sized(w, height),
       zIndex: -1,
+      style: { pointerEvents: "none" },
       ...FIXED,
       data: {
         title: block.title,

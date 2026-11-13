@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ListChecks,
-  TriangleAlert,
 } from "lucide-react"
 
 import { ReviewBadge } from "@/components/review-badge"
@@ -16,11 +15,9 @@ import {
 } from "@/components/ui/tooltip"
 import { NumberDisc } from "@/canvas/step-node"
 import { cn } from "@/lib/utils"
-import { localizeLimitation, localizeReason, type Strings } from "@/i18n"
+import type { Strings } from "@/i18n"
 import type { Model, Stop } from "@/model"
 import { shortSummary } from "@/presentation"
-
-const MAX_FILES = 8
 
 /** One concise description per change; its evidence lives in the detail panel. */
 function stopTitle(stop: Stop, model: Model, t: Strings): string {
@@ -36,47 +33,9 @@ function stopTitle(stop: Stop, model: Model, t: Strings): string {
     : ""
 }
 
-function InfoTip({
-  label,
-  warn,
-  children,
-}: {
-  label: React.ReactNode
-  /** Something the map does not show: said with a warning glyph, not in passing. */
-  warn?: boolean
-  children: React.ReactNode
-}) {
-  const [open, setOpen] = React.useState(false)
-  return (
-    <Tooltip open={open} onOpenChange={setOpen}>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className={cn(
-            "inline-flex cursor-help items-center gap-1 rounded-sm underline decoration-ink-3/40 decoration-dotted underline-offset-[3px] hover:text-ink",
-            warn && "text-ink-2"
-          )}
-        >
-          {warn && <TriangleAlert aria-hidden className="size-3.5 text-warn" />}
-          {label}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent
-        side="bottom"
-        align="start"
-        sideOffset={6}
-        className="max-w-[360px] flex-col items-start gap-1 py-2"
-      >
-        {children}
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
 /**
  * A quiet entry to the change list. Only the change descriptions appear in the list;
- * incomplete analysis remains visible beside the compact controls.
+ * the canvas stays dedicated to the business flows.
  */
 export function Headline({
   model,
@@ -98,12 +57,7 @@ export function Headline({
   onPick?: (no: number) => void
   onStep?: (by: number) => void
 }) {
-  const report = model.payload.report
   const counts = model.counts
-  const files = report?.unanalyzed_changes ?? []
-  const limits = (
-    report ? (report.limitations ?? []) : (model.payload.map.limitations ?? [])
-  ).filter((item) => item.affects_completeness)
   const total = model.stops.length
   const [listOpen, setListOpen] = React.useState(false)
   const root = React.useRef<HTMLDivElement>(null)
@@ -118,36 +72,6 @@ export function Headline({
     document.addEventListener("pointerdown", away)
     return () => document.removeEventListener("pointerdown", away)
   }, [listOpen])
-
-  const notes: React.ReactNode[] = []
-  if (counts.files)
-    notes.push(
-      <InfoTip key="files" warn label={t.filesNotAnalyzed(counts.files)}>
-        <span className="font-medium">{t.unanalyzed}</span>
-        {files.slice(0, MAX_FILES).map((item) => (
-          <span key={item.path} className="[overflow-wrap:anywhere]">
-            <span className="font-mono">{item.path}</span> ·{" "}
-            {localizeReason(item.reason, model.lang)}
-          </span>
-        ))}
-        {files.length > MAX_FILES && (
-          <span>{t.andMore(files.length - MAX_FILES)}</span>
-        )}
-      </InfoTip>
-    )
-  if (counts.tests)
-    notes.push(<span key="tests">{t.testsChanged(counts.tests)}</span>)
-  if (counts.partial)
-    notes.push(
-      <InfoTip key="partial" warn label={t.partial}>
-        <span className="font-medium">{t.partialHint}</span>
-        {limits.map((item, index) => (
-          <span key={index} className="[overflow-wrap:anywhere]">
-            {localizeLimitation(item, model.lang)}
-          </span>
-        ))}
-      </InfoTip>
-    )
 
   const at = picked ? walk.indexOf(picked) : -1
 
@@ -223,11 +147,7 @@ export function Headline({
             {counts.files ? t.filesOnly : t.summaryNoChange}
           </span>
         )}
-        {(counts.files > 0 || counts.partial) && (
-          <div className="flex items-center gap-2 rounded-full bg-card px-3 py-2 text-[12px] text-ink-2 ring-1 ring-line">
-            {notes}
-          </div>
-        )}
+
       </div>
 
       {listOpen && !compact && onPick && (
