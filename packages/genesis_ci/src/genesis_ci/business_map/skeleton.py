@@ -4,8 +4,10 @@ Built from facts alone, without a model. Each entry becomes one flow that shows 
 conditions, loops, results and non-trivial calls of the entry function itself, in
 source order, connected by the branches they sit on. Names are source text.
 
-Limits: callees are not expanded, `try`/`except` is not modelled, and a call on an
-object of unknown type is shown only when it is awaited.
+Limits: callees are not expanded, and a call on an object of unknown type is shown
+only when it is awaited. Of `try`/`except` only this is modelled: an `except` block is
+not on the path of the code around it. Nothing leads into it, and where it does not end
+in a result it joins the code after the `try`.
 """
 
 from __future__ import annotations
@@ -133,14 +135,26 @@ class _Flow:
                 edge["evidence_ids"] = list(evidence)
             self.edges.append(edge)
 
-    def block(self, index: int, prefix: tuple, pending: list) -> tuple[int, list]:
-        """Consume the facts nested exactly under `prefix`; return what stays pending."""
+    def block(
+        self, index: int, prefix: tuple, pending: list, inside: tuple = ()
+    ) -> tuple[int, list]:
+        """Consume the facts nested exactly under `prefix`; return what stays pending.
+
+        `inside` names the `except` blocks this run of facts sits in.
+        """
         items = self.items
         while index < len(items):
             fact = items[index]
             chain = tuple((guard.fingerprint, guard.branch) for guard in fact.guards)
-            if chain[: len(prefix)] != prefix:
+            if chain[: len(prefix)] != prefix or fact.handlers[: len(inside)] != inside:
                 break
+            if len(fact.handlers) > len(inside):
+                # An `except` block starts here. What was pending passes it by, and
+                # whatever the block leaves pending goes on together with that.
+                handler = (*inside, fact.handlers[len(inside)])
+                index, ends = self.block(index, prefix, [], handler)
+                pending = [*pending, *ends]
+                continue
             if fact.kind in _JUMPS:
                 # Not a step: whatever was pending now goes back to, or out of, the loop.
                 if fact.loops:
@@ -163,7 +177,7 @@ class _Flow:
                     branch = nested[len(prefix)][1]
                     taken.append(branch)
                     index, branch_ends = self.block(
-                        index, (*prefix, (fact.fingerprint, branch)), [(fact, branch)]
+                        index, (*prefix, (fact.fingerprint, branch)), [(fact, branch)], inside
                     )
                     if fact.kind == FactKind.loop:
                         self.connect(

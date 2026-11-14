@@ -96,6 +96,9 @@ class CodeFact(ContractModel):
     evidence_ids: tuple[str, ...] = Field(min_length=1)
     guards: tuple[GuardRef, ...] = ()
     loops: tuple[Anchor, ...] = ()
+    # The `except` blocks this sits in, outermost first, each named by where it starts.
+    # Code in one runs only when an exception was caught: it is off the normal path.
+    handlers: tuple[str, ...] = ()
     branches: tuple[str, ...] = ()
     target: Resolution | None = None
     awaited: bool = False

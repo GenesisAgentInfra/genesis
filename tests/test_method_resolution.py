@@ -120,3 +120,32 @@ def test_no_call_target_keeps_an_instance_placeholder(source_repo):
     }
     assert internal["self.repo.save(report)"] == "internal"
     assert internal["plain(report)"] == "unknown"
+
+
+BARE = """from service import Notifier
+
+
+def test_send():
+    made = object.__new__(Notifier)
+    assert made.send(1) == 1
+
+
+def test_send_again():
+    other = Notifier.__new__(Notifier)
+    other.send(2)
+    unknown = object.__new__(pick())
+    unknown.send(3)
+"""
+
+
+def test_an_object_made_without_its_initializer_is_still_an_instance(source_repo):
+    files = {"service.py": SERVICE, "repo.py": REPO, "tests/test_bare.py": BARE}
+    result = analyze(source_repo, files)
+    for text in ("made.send(1)", "other.send(2)"):
+        sent = target(result, text, "tests/test_bare.py")
+        assert (sent.status, sent.targets) == ("candidate", ("service.py#Notifier.send",))
+    # Which class is made has to be readable from the argument.
+    assert target(result, "unknown.send(3)", "tests/test_bare.py").status == "unknown"
+    # So a test written this way is linked to the method it calls.
+    tests = {item.symbol_id: item for item in python_facts(result).tests if item.side == HEAD}
+    assert "service.py#Notifier.send" in tests["tests/test_bare.py#test_send"].called_symbol_ids

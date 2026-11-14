@@ -48,24 +48,29 @@ def load_snapshot(destination: Path, *, limits: SnapshotLimits | None = None) ->
     if raw is None or reason:
         raise SnapshotError("invalid_artifact", "Snapshot metadata is missing or exceeds limits.")
     capture = SnapshotCapture.model_validate_json(raw)
-    if len(capture.manifest.files) > limits.max_files:
+    # The limits count distinct content, as capturing does: both sides of a change
+    # name mostly the same blobs, and each is stored and read once.
+    if len({item.content_digest for item in capture.manifest.files}) > limits.max_files:
         raise SnapshotError("invalid_artifact", "Snapshot file count exceeds loader limits.")
     expected_keys = {(item.side, item.path) for item in capture.manifest.files}
     modes = {(item.side, item.path) for item in capture.modes}
     if len(modes) != len(capture.modes) or modes != expected_keys:
         raise SnapshotError("invalid_artifact", "Snapshot mode catalog differs from manifest.")
     files: dict[tuple[EvidenceSide, str], bytes] = {}
+    blobs: dict[str, bytes] = {}
     total = 0
     for file in capture.manifest.files:
-        path = "blobs/" + file.content_digest.removeprefix("sha256:")
-        raw, _, reason = _read_worktree(
-            root, path, min(limits.max_file_bytes, limits.max_total_bytes - total)
-        )
-        if raw is None or reason:
-            raise SnapshotError(
-                "invalid_artifact", "Snapshot blob is missing, unsafe, or exceeds limits."
+        if file.content_digest not in blobs:
+            path = "blobs/" + file.content_digest.removeprefix("sha256:")
+            raw, _, reason = _read_worktree(
+                root, path, min(limits.max_file_bytes, limits.max_total_bytes - total)
             )
-        files[(file.side, file.path)] = raw
-        total += len(raw)
+            if raw is None or reason:
+                raise SnapshotError(
+                    "invalid_artifact", "Snapshot blob is missing, unsafe, or exceeds limits."
+                )
+            blobs[file.content_digest] = raw
+            total += len(raw)
+        files[(file.side, file.path)] = blobs[file.content_digest]
     source = FrozenSourceSnapshot(capture.manifest, files)
     return CapturedSnapshot(capture, source)

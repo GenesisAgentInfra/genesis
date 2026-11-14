@@ -376,13 +376,27 @@ class ChangeReport(ContractModel):
         if any(by_id[ref].side != side for side, ref in sided):
             raise ValueError("evidence is cited on the wrong side of the change")
 
+    def owed(self) -> tuple[ChangeItem, ...]:
+        """The changes that have to be explained: on the map, or within reach of a flow.
+
+        A change a flow can get to is not done with because no step covers it yet. It
+        comes onto the map as its flow is described, or it is explained where it is.
+        """
+        reached = {key for item in self.possibly_affected for key in item.change_ids}
+        return tuple(
+            item
+            for item in self.changes
+            if item.projection.status != ProjectionStatus.unassigned or item.change_id in reached
+        )
+
     def _check_complete(self) -> None:
-        for item in self.changes:
-            if item.projection.status == ProjectionStatus.unassigned:
-                continue
+        for item in self.owed():
             if item.explanation is None:
-                raise ValueError("a complete report explains every change placed on the map")
-            if item.tests is None and item.kind not in _TEST_KINDS:
+                raise ValueError(
+                    "a complete report explains every change on the map or within reach of a flow"
+                )
+            placed = item.projection.status != ProjectionStatus.unassigned
+            if placed and item.tests is None and item.kind not in _TEST_KINDS:
                 raise ValueError("a complete report assesses coverage of every placed change")
         if any(item.affects_completeness for item in self.limitations):
             raise ValueError("a complete report has no limitation that affects completeness")

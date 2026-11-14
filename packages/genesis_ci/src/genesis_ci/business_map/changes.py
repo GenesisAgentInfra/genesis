@@ -15,9 +15,11 @@ function; whether its input takes the changed path is for the agent to assess.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from functools import cached_property
+from pathlib import PurePosixPath
 
 from genesis_contracts.business_map import BusinessMap
 from genesis_contracts.change_report import (
@@ -56,6 +58,15 @@ NEAREST = "No step is anchored on this code; placed on the nearest step of the s
 NEAREST_REMOVED = "Removed code; placed on the nearest remaining step of the same function."
 CALLS = "No step covers the body of this function; this step calls it."
 CITED = "No step is anchored on this code; this step cites the changed lines."
+REFERS = "This step's code refers to `{}`, which the changed line defines."
+READS = (
+    "No step covers the line that reads `{}`, which the changed line defines; placed on the "
+    "nearest step of the function that does."
+)
+# An import statement: the module it names, and the names on one line or in parentheses.
+_IMPORT = re.compile(
+    r"^[ \t]*from[ \t]+([.\w]+)[ \t]+import[ \t]*(?:\(([^)]*)\)|([^\n]*))", re.MULTILINE
+)
 CITED_RANGE_LINES = 12
 # A request made through an HTTP test client: the method and a literal path.
 _HTTP_CALL = re.compile(
@@ -90,6 +101,21 @@ def _closure(starts, graph: dict[str, set[str]], depth: int) -> set[str]:
     return seen
 
 
+def _distances(starts, graph: dict[str, set[str]], depth: int) -> dict[str, int]:
+    """How many calls each definition is away from the nearest of `starts`."""
+    found = dict.fromkeys(starts, 0)
+    frontier = list(found)
+    for calls in range(1, depth + 1):
+        following = []
+        for symbol in frontier:
+            for target in graph.get(symbol, ()):
+                if target not in found:
+                    found[target] = calls
+                    following.append(target)
+        frontier = following
+    return found
+
+
 def _unassigned(reason: str) -> dict:
     return {"status": "unassigned", "reason": reason}
 
@@ -112,9 +138,14 @@ class _Placement:
         self.cited: dict[str, list[tuple[int, int, str, str]]] = {}
         refs = {ref.evidence_id: ref for ref in business_map.evidence}
         self.reach: dict[str, set[str]] = {}
+        # Calls from a flow's entries to each definition it reaches, and its first entry.
+        self.calls_to: dict[str, dict[str, int]] = {}
+        self.first_entry: dict[str, str] = {}
         for flow_index, flow in enumerate(business_map.flows):
             entries = [entry.symbol_id for entry in flow.entries]
-            self.reach[flow.flow_id] = _closure(entries, analysis.calls[HEAD], REACH_DEPTH)
+            self.calls_to[flow.flow_id] = _distances(entries, analysis.calls[HEAD], REACH_DEPTH)
+            self.first_entry[flow.flow_id] = min(entries, default="")
+            self.reach[flow.flow_id] = set(self.calls_to[flow.flow_id])
             for step_index, step in enumerate(flow.steps):
                 key = (flow.flow_id, step.step_id)
                 self.order[key] = (flow_index, step_index)
@@ -142,6 +173,20 @@ class _Placement:
             chosen.setdefault(key[0], key)
         return list(chosen.values())
 
+    def closest(self, change: RawChange) -> str | None:
+        """The flow that gets to a change through the fewest calls.
+
+        A tie goes to the flow whose entry sorts first, so the answer is the same
+        whatever order a plan lists the flows in.
+        """
+        symbols = set(self._symbols(change))
+        ranked = sorted(
+            (min(calls[symbol] for symbol in symbols & calls.keys()), self.first_entry[flow], flow)
+            for flow, calls in self.calls_to.items()
+            if symbols & calls.keys()
+        )
+        return ranked[0][2] if ranked else None
+
     def _symbols(self, change: RawChange) -> tuple[str, ...]:
         """Head-side definitions the change lives in."""
         analysis = self.analysis
@@ -150,7 +195,10 @@ class _Placement:
         if change.after is None:
             symbol = analysis.diff.moved.get(change.symbol_id, change.symbol_id)
             return (symbol,) if symbol in analysis.workspace.symbols else ()
-        users = sorted({fact.symbol_id for _, fact in self._users(change)})
+        users = sorted(
+            {fact.symbol_id for _, fact in self._users(change)}
+            | {symbol for _, symbol, _ in self._readers(change)}
+        )
         if users:
             return tuple(users)
         if change.module_level:
@@ -165,20 +213,56 @@ class _Placement:
                 return (holder.symbol_id,)
         return (change.symbol_id,)
 
-    def _users(self, change: RawChange) -> list[tuple[str, CodeFact]]:
-        """Head facts in the same file that refer to a name a module-level change defines."""
-        if not change.module_level or change.kind not in _SOURCE_KINDS:
-            return []
+    def _names(self, change: RawChange) -> tuple[str, ...]:
+        """Module-level names a change defines, or sits inside the definition of.
+
+        A word added to a set that runs over several lines, or a sentence changed in a
+        long string, does not show the name it belongs to. The assignment around it does.
+        """
+        if not change.module_level or change.is_test:
+            return ()
         part = change.after or change.before
-        found = []
-        for name in dict.fromkeys(_ASSIGNED.findall(part.text)):
-            word = re.compile(rf"\b{re.escape(name)}\b")
-            found += [
-                (name, fact)
-                for fact in self.analysis.facts_in(HEAD, part.path)
-                if word.search(fact.text) and not fact.symbol_id.endswith("#<module>")
-            ]
-        return found
+        found = _ASSIGNED.findall(part.text) if change.kind in _SOURCE_KINDS else []
+        for first, last, names in self.analysis.assignments(part.side, part.path):
+            if first <= part.end[0] and part.start[0] <= last:
+                found += names
+        return tuple(dict.fromkeys(found))
+
+    def _reading(self, change: RawChange) -> tuple[list, list]:
+        """Where head code reads a name the change defines: by facts, and by lines."""
+        cache = self.__dict__.setdefault("_read", {})
+        if change.change_id not in cache:
+            analysis, part = self.analysis, change.after or change.before
+            facts, lines = [], []
+            for name in self._names(change):
+                word = re.compile(rf"\b{re.escape(name)}\b")
+                for path in analysis.readers(part.path, name):
+                    facts += [
+                        (name, fact)
+                        for fact in analysis.facts_in(HEAD, path)
+                        if word.search(fact.text) and not fact.symbol_id.endswith("#<module>")
+                    ]
+                    functions = [
+                        item for item in analysis.symbols_in(HEAD, path) if item.kind == "function"
+                    ]
+                    text = analysis.workspace.snapshot.source.read_text(HEAD, path)
+                    for number, line in enumerate(text.split("\n"), start=1):
+                        holder = _innermost(functions, number) if word.search(line) else None
+                        if holder is not None:
+                            lines.append((name, holder.symbol_id, number))
+            cache[change.change_id] = (facts, lines)
+        return cache[change.change_id]
+
+    def _users(self, change: RawChange) -> list[tuple[str, CodeFact]]:
+        """Head facts that refer to a name a module-level change defines."""
+        return self._reading(change)[0]
+
+    def _readers(self, change: RawChange) -> list[tuple[str, str, int]]:
+        """Lines inside functions that read such a name: the name, the function, the line.
+
+        A line can read a constant without being a fact, as an assignment does.
+        """
+        return self._reading(change)[1]
 
     def _line(self, change: RawChange, symbol: str) -> int:
         """The head line a change belongs at; for removed code, where it used to follow."""
@@ -256,19 +340,34 @@ class _Placement:
                         if other == name
                         for key in self.steps_of.get(user.fingerprint, ())
                     ],
-                    f"This step's code refers to `{name}`, which the changed line defines.",
+                    REFERS.format(name),
                 )
+        reading: dict[str, tuple[str, int]] = {}
+        for name, symbol, number in self._readers(change):
+            cited = [
+                (flow, step)
+                for start, end, flow, step in self.cited.get(symbol.partition("#")[0], ())
+                if start <= number <= end
+            ]
+            if cited:
+                return projected(cited, REFERS.format(name))
+            reading.setdefault(symbol, (name, number))
         for symbol in symbols:
             spots = sorted(self.in_symbol.get(symbol, ()))
             if not spots:
                 continue
             line, nearest = self._line(change, symbol), {}
+            if symbol in reading:
+                # Not where the constant is written: where this function reads it.
+                line = reading[symbol][1]
             # Prefer a step at the same nesting or around it over one in a finished branch.
             around = [spot for spot in spots if spot[3] == guards[: len(spot[3])]]
             for spot_line, flow, step, _ in (*spots, *around):
                 if flow not in nearest or spot_line <= line:
                     nearest[flow] = (flow, step)
             reason = NEAREST if change.after is not None else NEAREST_REMOVED
+            if symbol in reading:
+                reason = READS.format(reading[symbol][0])
             return projected(nearest.values(), reason)
         hits = [
             key
@@ -365,6 +464,50 @@ class ChangeAnalysis:
 
     def facts_in(self, side, path: str) -> list[CodeFact]:
         return self._by_path["facts"].get((side, path), [])
+
+    def assignments(self, side, path: str) -> list[tuple[int, int, tuple[str, ...]]]:
+        """Module-level assignments of a Python file: first line, last line, names."""
+        cache = self.__dict__.setdefault("_assigned", {})
+        if (side, path) not in cache:
+            found = []
+            try:
+                source = self.workspace.snapshot.source.read_text(side, path)
+                body = ast.parse(source).body if path.endswith(".py") else []
+            except (SyntaxError, ValueError, KeyError):
+                body = []
+            for node in body:
+                if isinstance(node, ast.Assign):
+                    targets = node.targets
+                elif isinstance(node, ast.AnnAssign | ast.AugAssign):
+                    targets = [node.target]
+                else:
+                    continue
+                names = tuple(item.id for item in targets if isinstance(item, ast.Name))
+                if names:
+                    found.append((node.lineno, node.end_lineno or node.lineno, names))
+            cache[(side, path)] = found
+        return cache[(side, path)]
+
+    def readers(self, path: str, name: str) -> list[str]:
+        """Head files that can read a module-level name: its own, and those importing it."""
+        cache = self.__dict__.setdefault("_importers", {})
+        if (path, name) not in cache:
+            source = self.workspace.snapshot.source
+            module = PurePosixPath(path)
+            stem = module.parent.name if module.stem == "__init__" else module.stem
+            word = re.compile(rf"\b{re.escape(name)}\b")
+            found = [path] if path in set(source.list_files(HEAD)) else []
+            for other in source.list_files(HEAD):
+                if other == path or not other.endswith(".py"):
+                    continue
+                text = source.read_text(HEAD, other)
+                if name in text and any(
+                    origin.rpartition(".")[2] == stem and word.search(grouped or inline)
+                    for origin, grouped, inline in _IMPORT.findall(text)
+                ):
+                    found.append(other)
+            cache[(path, name)] = found
+        return cache[(path, name)]
 
     @cached_property
     def calls(self) -> dict:
@@ -735,8 +878,88 @@ class ChangeAnalysis:
         return flows, cited
 
     def build(self, business_map: BusinessMap) -> ChangeReport:
-        workspace, diff = self.workspace, self.diff
+        return self._build(business_map, _Placement(self, business_map))
+
+    def build_with_closest(self, business_map: BusinessMap) -> tuple[ChangeReport, dict]:
+        """The report, and the changes still to be expanded by the flow closest to each."""
         placement = _Placement(self, business_map)
+        report = self._build(business_map, placement)
+        return report, self._closest(report, placement)
+
+    def _closest(self, report: ChangeReport, placement: _Placement) -> dict[str, list[str]]:
+        """Changes whose function no flow has expanded yet, by the flow closest to each.
+
+        Such a change has no place, or sits on a step that merely calls its function.
+        Flows that share the function would each have to expand it to carry the change.
+        One is enough, and which one should not depend on the flow described first.
+        """
+        raw = {change.change_id: change for change in self.diff.changes}
+        reached = {key for item in report.possibly_affected for key in item.change_ids}
+        found: dict[str, list[str]] = {}
+        for item in report.changes:
+            place = item.projection
+            if place.reason == CALLS or (
+                place.status == "unassigned" and item.change_id in reached
+            ):
+                flow = placement.closest(raw[item.change_id])
+                if flow is not None:
+                    found.setdefault(flow, []).append(item.change_id)
+        return found
+
+    def for_flow(self, business_map: BusinessMap, flow_id: str) -> dict:
+        """The changes as one flow task has to see them."""
+        placement = _Placement(self, business_map)
+        report = self._build(business_map, placement)
+        closest = self._closest(report, placement)
+        # The flow that describes each change, or is the one to do so.
+        carried = {key: flow for flow, keys in closest.items() for key in keys}
+        here: dict[str, list] = {}
+        for item in report.changes:
+            if item.projection.flow_id:
+                carried.setdefault(item.change_id, item.projection.flow_id)
+            here[item.change_id] = [
+                target
+                for target in (item.projection, *item.other_projections)
+                if target.flow_id == flow_id
+            ]
+        # What this flow gets to without describing it: by its calls, or on a calling step.
+        reached = {
+            key
+            for item in report.possibly_affected
+            if item.flow_id == flow_id
+            for key in item.change_ids
+        } | {key for key, targets in here.items() if any(t.reason == CALLS for t in targets)}
+        # The function to anchor a step in for each change this flow is to bring onto
+        # the map: the one the change is in, or the nearest one that reads what it defines.
+        raw = {change.change_id: change for change in self.diff.changes}
+        calls = placement.calls_to.get(flow_id, {})
+        inside: dict[str, list[str]] = {}
+        for key in closest.get(flow_id, []):
+            symbols = [symbol for symbol in placement._symbols(raw[key]) if symbol in calls]
+            if symbols:
+                nearest = min(symbols, key=lambda symbol: (calls[symbol], symbol))
+                inside.setdefault(nearest, []).append(key)
+        return {
+            "placed": [key for key, targets in here.items() if targets],
+            "closest_to": closest.get(flow_id, []),
+            "expand": [
+                {"symbol_id": symbol, "changes": inside[symbol]}
+                for symbol in sorted(inside, key=lambda symbol: (calls[symbol], symbol))
+            ],
+            "on_other_flows": [
+                {"flow": flow.name, "changes": keys}
+                for flow in business_map.flows
+                if flow.flow_id != flow_id
+                and (
+                    keys := [
+                        key for key in here if key in reached and carried.get(key) == flow.flow_id
+                    ]
+                )
+            ],
+        }
+
+    def _build(self, business_map: BusinessMap, placement: _Placement) -> ChangeReport:
+        workspace, diff = self.workspace, self.diff
         assessments = self.assessments()
         flows = {flow.flow_id: flow for flow in business_map.flows}
         step_of_finding = {
@@ -979,7 +1202,7 @@ class ChangeAnalysis:
         report = self.build(business_map)
         assessments = self.assessments()
         placed = [item for item in report.changes if item.projection.status != "unassigned"]
-        waiting = [item for item in placed if item.change_id not in assessments]
+        waiting = [item for item in report.owed() if item.change_id not in assessments]
         shown = (waiting or report.changes)[:CONTEXT_LIMIT]
         return {
             "task_id": CHANGE_TASK,
@@ -998,18 +1221,27 @@ class ChangeAnalysis:
 
     def summary(self, business_map: BusinessMap) -> dict:
         """The whole change report in a compact form, readable without an agent."""
-        report = self.build(business_map)
+        placement = _Placement(self, business_map)
+        report = self._build(business_map, placement)
+        closest = self._closest(report, placement)
         flows = {flow.flow_id: flow.name for flow in business_map.flows}
         placed = [item for item in report.changes if item.projection.status != "unassigned"]
         return {
             "analysis_status": report.analysis_status,
             "changes_total": len(report.changes),
             "changes_placed": len(placed),
-            "changes_waiting": sum(1 for item in placed if item.explanation is None),
+            "changes_waiting": sum(1 for item in report.owed() if item.explanation is None),
             "changes": self._views(report.changes, business_map, for_task=False),
             "possibly_affected": [
                 {"flow": flows[item.flow_id], "changes": list(item.change_ids)}
                 for item in report.possibly_affected
+            ],
+            # Changes whose function no flow has expanded yet, under the one flow that
+            # reaches each through the fewest calls: the flow to describe that code on.
+            "closest_flow": [
+                {"flow": flow.name, "changes": closest[flow.flow_id]}
+                for flow in business_map.flows
+                if flow.flow_id in closest
             ],
             # Uncalled functions that lead to the changes and have no flow.
             "possible_entries": [item.symbol_id for item in report.possible_entries],
