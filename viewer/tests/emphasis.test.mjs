@@ -11,7 +11,7 @@ const server = await createServer({
   appType: "custom",
 })
 after(() => server.close())
-const { DARK, lineLook, litBy, stepLook, walkTimes } =
+const { DARK, changeTiming, lineLook, litBy, stepLook, walkTimes } =
   await server.ssrLoadModule("/src/canvas/emphasis.ts")
 const { buildModel } = await server.ssrLoadModule("/src/model.ts")
 const { buildAtlas } = await server.ssrLoadModule("/src/atlas/build.ts")
@@ -19,17 +19,17 @@ const { STRINGS } = await server.ssrLoadModule("/src/i18n.ts")
 
 const plain = { changed: false, removedFlow: false }
 const solid = { back: false, uncertain: false, skipped: false }
-const resting = { run: 0, plays: false, delay: 0 }
+const timing = changeTiming(150)
+const resting = { run: 0, plays: false, timing }
 /** A change picked on f::b: reached over f::a, leading to f::c and, further on, f::d. */
 const lit = {
   current: "f::b",
-  next: new Set(["f::c"]),
+  impactSteps: new Map([["f::c", 1], ["f::d", 2]]),
+  impactLines: new Map([["f::b>c", 0], ["f::b>x", 0], ["f::c>d", 1]]),
   far: new Set(["f::d"]),
   routeSteps: new Set(["f::a"]),
   routeLines: new Set(["f::a>b"]),
-  outLines: new Set(["f::b>c", "f::b>x"]),
   loopLines: new Set(["f::c>b"]),
-  dotLines: new Set(["f::b>c"]),
 }
 const picked = (ripple = resting, more = {}) => ({
   focus: true,
@@ -45,13 +45,13 @@ test("with nothing picked, nothing steps back", () => {
   assert.equal(lineLook(spot, "f::a>b", solid).dark, false)
 })
 
-test("a picked change quiets unchanged steps off its way in, and nothing else", () => {
+test("a picked change quiets unrelated steps while retaining its route and impact", () => {
   const spot = picked()
   assert.equal(stepLook(spot, "f::z", plain).quiet, true)
-  // The way in, the change itself, what it leads to, and any other changed step stay.
-  for (const id of ["f::a", "f::b", "f::c"])
+  // The way in, the change itself and the downstream steps stay readable.
+  for (const id of ["f::a", "f::b", "f::c", "f::d"])
     assert.equal(stepLook(spot, id, plain).quiet, false, id)
-  assert.equal(stepLook(spot, "f::z", { ...plain, changed: true }).quiet, false)
+  assert.equal(stepLook(spot, "f::z", { ...plain, changed: true }).quiet, true)
   // A flow that is gone is shown whole.
   assert.equal(
     stepLook(spot, "f::z", { ...plain, removedFlow: true }).quiet,
@@ -64,22 +64,22 @@ test("a picked change quiets unchanged steps off its way in, and nothing else", 
 })
 
 test("the ripple: a ring on the change, then the next steps, then the tags", () => {
-  const spot = picked({ run: 3, plays: true, delay: 364 })
+  const spot = picked({ run: 3, plays: true, timing })
   assert.deepEqual(stepLook(spot, "f::b", plain).ring, {
     key: "ring-3",
-    delay: 364,
-    duration: 240,
+    delay: 0,
+    duration: timing.draw,
   })
   const next = stepLook(spot, "f::c", plain)
   assert.equal(next.reached, true)
-  assert.equal(next.delay, 364 + 420)
+  assert.equal(next.delay, timing.beat + timing.draw)
   assert.equal(next.ring, undefined)
   assert.deepEqual(stepLook(spot, "f::d", plain).tag, {
     key: "tag-3",
-    enters: 364 + 420,
+    enters: timing.beat * 2 + timing.draw,
   })
   // Once it has played, the end state shows at once.
-  const settled = picked({ run: 3, plays: false, delay: 364 })
+  const settled = picked({ run: 3, plays: false, timing })
   assert.equal(stepLook(settled, "f::b", plain).ring, undefined)
   assert.equal(stepLook(settled, "f::c", plain).delay, 0)
   assert.deepEqual(stepLook(settled, "f::d", plain).tag, {
@@ -88,8 +88,8 @@ test("the ripple: a ring on the change, then the next steps, then the tags", () 
   })
 })
 
-test("lines: the way in is dark and still, the lines out draw themselves", () => {
-  const spot = picked({ run: 3, plays: true, delay: 364 })
+test("lines: the way in is still and downstream branches reveal by distance", () => {
+  const spot = picked({ run: 3, plays: true, timing })
   const wayIn = lineLook(spot, "f::a>b", solid)
   assert.deepEqual(
     [wayIn.dark, wayIn.quiet, wayIn.entering],
@@ -98,10 +98,13 @@ test("lines: the way in is dark and still, the lines out draw themselves", () =>
   const out = lineLook(spot, "f::b>c", solid)
   assert.deepEqual(
     [out.dark, out.draws, out.travels, out.start, out.key],
-    [true, true, true, 364 + 120, "out-3"]
+    [true, true, false, timing.beat, "out-3"]
   )
-  // A line out that is not among the shortest draws without the dot.
-  assert.equal(lineLook(spot, "f::b>x", solid).travels, false)
+  const farther = lineLook(spot, "f::c>d", solid)
+  assert.equal(farther.impact, true)
+  assert.equal(farther.start, timing.beat * 2)
+  assert.equal(farther.quiet, false)
+  assert.equal(lineLook(picked(), "f::c>d", solid).entering, false)
   // A dashed line cannot draw itself: it fades in over the same stretch.
   const unsure = lineLook(spot, "f::b>x", { ...solid, uncertain: true })
   assert.deepEqual(
@@ -127,7 +130,7 @@ test("a walk quiets everything it does not pass, and replaces the ripple", () =>
     new Set(["f::b"]),
     true
   )
-  const spot = picked({ run: 3, plays: true, delay: 364 }, { trail })
+  const spot = picked({ run: 3, plays: true, timing }, { trail })
   assert.equal(stepLook(spot, "f::d", plain).quiet, true)
   assert.equal(lineLook(spot, "f::b>x", solid).quiet, true)
   // The ripple's own lines do not enter while a walk is on.
@@ -200,9 +203,11 @@ test("what a picked change lights is asked of its drawn flow", async () => {
   const drawn = new Set(placed.nodes.map((item) => item.id))
   const lines = new Set(placed.edges.map((item) => item.id))
   for (const id of found.routeSteps) assert.ok(drawn.has(id), id)
-  for (const id of [...found.routeLines, ...found.outLines, ...found.dotLines])
+  for (const id of [...found.routeLines, ...found.impactLines.keys()])
     assert.ok(lines.has(id), id)
   assert.equal(found.routeSteps.has(node), false)
+  assert.ok([...found.impactLines.values()].some((depth) => depth > 0))
+  assert.ok([...found.impactSteps.keys()].every((id) => drawn.has(id)))
   // A flow the change is not drawn on lights nothing.
   assert.equal(litBy(undefined, node), DARK)
 })

@@ -1,0 +1,2 @@
+/* Let the viewer's own base and utility styles win over Graphical's reset. */
+@import "@graphical/editor/styles.css" layer(graphical-editor);

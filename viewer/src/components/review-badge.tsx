@@ -16,7 +16,7 @@ export function ReviewBadge({
 }) {
   if (risky)
     return (
-      <Badge variant="destructive">
+      <Badge variant="destructive" className="text-risk-ink">
         {t.riskLabel}
         {count > 1 ? ` +${count - 1}` : ""}
       </Badge>

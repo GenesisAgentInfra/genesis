@@ -18,7 +18,7 @@ function kept(): Theme {
   }
 }
 
-export function useTheme(): { theme: Theme; toggle: () => void } {
+export function useTheme() {
   const [theme, setTheme] = React.useState(kept)
   React.useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -34,5 +34,5 @@ export function useTheme(): { theme: Theme; toggle: () => void } {
     () => setTheme((before) => (before === "dark" ? "light" : "dark")),
     []
   )
-  return { theme, toggle }
+  return { theme, setTheme, toggle }
 }

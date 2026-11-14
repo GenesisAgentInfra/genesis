@@ -17,17 +17,16 @@ import {
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { ReviewBadge } from "@/components/review-badge"
-import { BaseNode } from "@/components/base-node"
 import { cn } from "@/lib/utils"
 import { statusOf, type TestStatus } from "@/model"
 import type { StepKind } from "@/types"
 import { coverageKind, shortSummary } from "@/presentation"
 import { useCanvas } from "./context"
-import { TAG_MS } from "./emphasis"
 import type { StepNode as StepNodeType } from "./graph"
 
-/** One glyph per kind of step; its pastel pair comes from the tokens (see index.css). */
+/** One glyph per kind of step. */
 const TILE: Record<StepKind, typeof Play> = {
   trigger: Play,
   action: Workflow,
@@ -95,13 +94,11 @@ export function KindTile({
     <span
       className={cn(
         "flex shrink-0 items-center justify-center transition-[filter,opacity] duration-160",
-        small ? "size-7 corner-m" : "size-8 corner-m",
+        "corner-s bg-field text-ink-2",
+        small ? "size-7" : "size-8",
+        kind === "trigger" && "text-select",
         className
       )}
-      style={{
-        background: `var(--tile-${kind}-bg)`,
-        color: `var(--tile-${kind}-ink)`,
-      }}
     >
       <Icon
         aria-hidden
@@ -162,6 +159,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     current: isCurrent,
     selected: isSelected,
     reached,
+    context,
     visited,
     quiet,
   } = look
@@ -183,21 +181,17 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     ? DID[ghost ? "removed" : isNew ? "added" : "modified"]
     : undefined
   const card = cn(
-    "border-line bg-card hover:ring-0",
-    "transition-[box-shadow,border-color,background-color] [transition-delay:var(--lit-delay)] duration-160",
-    quiet
-      ? "shadow-none"
-      : "shadow-[var(--shadow-node)] hover:shadow-[var(--shadow-node-hover)]",
-    tone && "edge-l border-tone/55",
-    reached && "border-edge-strong/45",
+    "relative gap-0 overflow-visible border border-line ring-0",
+    "transition-[box-shadow,border-color,background-color] [transition-delay:var(--lit-delay)] duration-(--motion-duration) ease-(--motion-easing)",
+    !quiet && "hover:shadow-[var(--shadow-node)]",
+    "shadow-none",
+    tone && "border-tone/25",
+    reached && "border-select/55",
     visited && !isCurrent && (tone ? "border-tone" : "border-edge-strong/35"),
     isCurrent && tone && "ring-tone",
-    isSelected && "ring-select",
+    (isSelected || (isCurrent && !tone)) && "ring-select",
     ghost && "border-dashed"
   )
-  // Quiet the surface and icon, not the words needed to read the surrounding path.
-  const content =
-    "transition-opacity [transition-delay:var(--lit-delay)] duration-160"
   const style = {
     width,
     // Every card sits in the middle of its place in the column, whatever its own height,
@@ -206,9 +200,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     display: "flex",
     flexDirection: "column" as const,
     justifyContent: "center",
-    // Outside the module in focus the card steps back.
-    opacity: look.away ? 0.35 : undefined,
-    transition: "opacity 160ms",
+    "--step-opacity": look.away ? 0.35 : quiet ? 0.58 : context ? 0.82 : 1,
     "--lit-delay": `${look.delay}ms`,
   } as React.CSSProperties
   const changed = coupons.length > 0 && !removedFlow
@@ -218,7 +210,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
       aria-hidden
       className={cn(
         "arrive pointer-events-none absolute -inset-px",
-        compact ? "corner-l" : "corner-xl"
+        "corner-m"
       )}
       style={
         {
@@ -260,7 +252,6 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
       style={
         {
           "--tag-delay": `${look.tag.enters ?? 0}ms`,
-          "--tag-duration": `${TAG_MS}ms`,
         } as React.CSSProperties
       }
     >
@@ -297,13 +288,13 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
   // Steps left out after this point: a dotted pill that opens the whole flow.
   if (stub) {
     return (
-      <div style={style}>
-        <div
-          data-slot="step-card"
+      <div className="map-step" style={style}>
+        <Card
+          size="sm"
+          data-step-card=""
           title={t.openStub}
           className={cn(
-            "relative flex h-8 items-center gap-xs",
-            "corner-full edge-m border-dashed pr-l pl-m",
+            "relative h-8 flex-row items-center gap-xs overflow-visible rounded-full border border-dashed py-0 pr-l pl-m shadow-none ring-0",
             "text-body-m",
             "border-ink-3/50 bg-card text-ink-2 transition-[color,border-color] duration-160",
             "hover:border-ink-3 hover:text-ink"
@@ -319,21 +310,24 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
           )}
           <Ellipsis aria-hidden className="size-3.5 shrink-0" />
           <span className="whitespace-nowrap">{step.name}</span>
-        </div>
+        </Card>
       </div>
     )
   }
 
   if (compact) {
     return (
-      <div style={style}>
-        <BaseNode
-          data-slot="step-card"
+      <div className="map-step" style={style}>
+        <Card
+          size="sm"
+          data-step-card=""
           data-changed={changed ? "" : undefined}
-          tabIndex={-1}
+          data-highlight={
+            isCurrent ? "current" : reached ? "impact" : undefined
+          }
           className={cn(
             card,
-            "flex h-full items-center gap-m corner-l py-s pr-xl pl-s"
+            "h-full flex-row items-center gap-m rounded-2xl py-0 pr-xl pl-s"
           )}
         >
           {ring}
@@ -356,7 +350,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
               isConnectable={false}
             />
           )}
-          <div className={cn(content, "flex min-w-0 items-center gap-m")}>
+          <div className="flex min-w-0 items-center gap-m">
             <KindTile
               kind={step.kind}
               small
@@ -382,19 +376,20 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
               isConnectable={false}
             />
           )}
-        </BaseNode>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div style={style}>
-      <BaseNode
-        data-slot="step-card"
+    <div className="map-step" style={style}>
+      <Card
+        size="sm"
+        data-step-card=""
         data-changed={changed ? "" : undefined}
+        data-highlight={isCurrent ? "current" : reached ? "impact" : undefined}
         data-tone={tone}
-        tabIndex={-1}
-        className={cn(card, "corner-xl p-l")}
+        className={cn(card, "rounded-3xl p-3")}
       >
         {ring}
         {tag}
@@ -422,8 +417,8 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
             isConnectable={false}
           />
         )}
-        <div className={content}>
-          <div className="flex items-center gap-l">
+        <div>
+          <CardHeader className="flex items-center gap-l px-0">
             <KindTile
               kind={step.kind}
               className={cn(
@@ -432,7 +427,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
               )}
             />
             <div className="min-w-0 flex-1">
-              <div
+              <CardTitle
                 title={title}
                 className={cn(
                   "line-clamp-2 text-body-m font-medium [overflow-wrap:anywhere] text-ink",
@@ -446,22 +441,21 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
                 )}
               >
                 {title}
-              </div>
+              </CardTitle>
               {badges.length > 0 && (
                 <div className="mt-xs flex flex-wrap items-center gap-s text-body-s text-ink-3">
                   {badges}
                 </div>
               )}
             </div>
-          </div>
+          </CardHeader>
 
           {change && (
-            <div className="mt-m edge-t-m border-line/60 pt-m">
+            <div className="mt-m">
               {!(ghost && summary) && (
                 <p
                   className={cn(
-                    "mb-m line-clamp-2 text-body-m",
-                    tone ? "text-tone-ink" : "text-ink-2"
+                    "mb-m line-clamp-2 text-body-m font-medium text-ink"
                   )}
                 >
                   {summary ?? t.changeKind[change.kind]}
@@ -502,7 +496,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
             isConnectable={false}
           />
         )}
-      </BaseNode>
+      </Card>
     </div>
   )
 }

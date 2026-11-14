@@ -6,13 +6,27 @@ import {
   useReactFlow,
   useStore,
   useStoreApi,
+  type OnMove,
 } from "@xyflow/react"
 import { Maximize, Minus, Moon, Play, Plus, Sun } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import {
+  GraphicalProvider,
+  theme as graphicalTheme,
+  useGraphicalTheme,
+} from "@/components/graphical"
+import { motionDuration } from "@/components/graphical/lib/theme-motion"
+import { largeMotionCurve } from "@/components/graphical/lib/theme-model"
+import EditorRoot from "../graphical/editor-root"
+import { GraphicalPreview } from "../graphical/preview-context"
+import { CommitRange } from "@/components/commit-range"
 import { DetailPanel, type PanelSubject } from "@/components/detail-panel"
 import { Headline } from "@/components/headline"
 import { MapMark } from "@/components/map-mark"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   MAX_ZOOM,
   PANEL_W,
@@ -20,6 +34,7 @@ import {
   easeOut,
   readingArea,
   readingSpan,
+  settlePan,
   viewOf,
   type Scene,
   type Shot,
@@ -27,6 +42,7 @@ import {
 import { CanvasContext, type CanvasState } from "@/canvas/context"
 import {
   DARK,
+  changeTiming,
   lineLook,
   litBy,
   stepLook,
@@ -83,6 +99,7 @@ const EDGE_TYPES = {
 const ARROWS = [
   ["arrow", "var(--edge)"],
   ["arrow-strong", "var(--edge-strong)"],
+  ["arrow-impact", "var(--select)"],
   ["arrow-exception", "var(--edge-exception)"],
   ["arrow-exception-strong", "var(--edge-exception-strong)"],
 ] as const
@@ -123,23 +140,55 @@ function usePresence<T>(value: T | undefined, animate: boolean) {
 }
 
 export function App({ model }: { model: Model }) {
+  const { theme, setTheme, toggle } = useTheme()
   return (
-    <ReactFlowProvider>
-      <Viewer model={model} />
-    </ReactFlowProvider>
+    <EditorRoot
+      route={`${location.pathname}${location.search}`}
+      colorMode={theme}
+      onColorModeChange={setTheme}
+    >
+      <ThemedViewer model={model} theme={theme} toggleTheme={toggle} />
+    </EditorRoot>
   )
 }
 
-function Viewer({ model }: { model: Model }) {
+type ViewerProps = {
+  model: Model
+  theme: "light" | "dark"
+  toggleTheme: () => void
+}
+
+function ThemedViewer(props: ViewerProps) {
+  const preview = React.useContext(GraphicalPreview)
+  return (
+    <GraphicalProvider
+      document={preview?.document ?? graphicalTheme}
+      colorMode={props.theme}
+    >
+      <TooltipProvider delay={150}>
+        <ReactFlowProvider>
+          <Viewer {...props} />
+        </ReactFlowProvider>
+      </TooltipProvider>
+    </GraphicalProvider>
+  )
+}
+
+function Viewer({ model, theme, toggleTheme }: ViewerProps) {
   const t = STRINGS[model.lang]
   const reducedMotion = useMedia("(prefers-reduced-motion: reduce)")
+  const { document: themeDocument } = useGraphicalTheme()
+  const smallMotion = motionDuration(themeDocument.theme.animation)
+  const largeMotion = motionDuration(
+    largeMotionCurve(themeDocument.theme.animation)
+  )
+  const timing = changeTiming(smallMotion)
   const narrow = useMedia("(max-width: 767px)")
   const flow = useReactFlow()
   const store = useStoreApi()
   const initialized = useNodesInitialized()
   const width = useStore((state) => state.width)
   const height = useStore((state) => state.height)
-  const { theme, toggle: toggleTheme } = useTheme()
   const focus = model.stops.length > 0
 
   const span = readingSpan(width || window.innerWidth)
@@ -161,6 +210,7 @@ function Viewer({ model }: { model: Model }) {
     now.current = { place, world }
   })
   const opener = React.useRef<HTMLElement | null>(null)
+  const [delayedPanel, setDelayedPanel] = React.useState<number>()
   const go = React.useCallback((action: Act) => {
     const before = now.current.place
     const next = act(before, action, now.current.world)
@@ -171,6 +221,13 @@ function Viewer({ model }: { model: Model }) {
       opener.current = active instanceof HTMLElement ? active : null
     if (before.selected && !next.selected && active?.closest("[data-panel]"))
       opener.current?.focus()
+    if (
+      next.selected !== before.selected &&
+      next.ripple.run !== before.ripple.run
+    )
+      setDelayedPanel(
+        !before.selected && action.do === "change" ? next.ripple.run : undefined
+      )
     now.current = { ...now.current, place: next }
     setPlace(next)
   }, [])
@@ -184,7 +241,7 @@ function Viewer({ model }: { model: Model }) {
   const [ready, setReady] = React.useState(false)
   if (!ready && initialized && width && height) setReady(true)
   const [headlineHeight, setHeadlineHeight] = React.useState(0)
-  const headRef = React.useRef<HTMLDivElement>(null)
+  const headRef = React.useRef<HTMLElement>(null)
   const wrapper = React.useRef<HTMLDivElement>(null)
 
   // Opening details can wrap or compact the headline without resizing the window.
@@ -257,13 +314,45 @@ function Viewer({ model }: { model: Model }) {
       coupons: step.data.coupons,
     }
   }, [selected, shown, nodeById, atlas, model])
-  // The panel keeps its last subject while it slides away.
+  const revealImpact =
+    !reducedMotion && smallMotion > 0 && !place.ripple.settled
+  const panelDelay =
+    revealImpact &&
+    largeMotion > 0 &&
+    delayedPanel === place.ripple.run &&
+    shown.node === lit.current &&
+    lit.impactLines.size > 0
+      ? timing.panel
+      : 0
+
+  const rippleRun = place.ripple.run
+  React.useEffect(() => {
+    if (!panelDelay) return
+    const timer = window.setTimeout(
+      () =>
+        setDelayedPanel((pending) =>
+          pending === rippleRun ? undefined : pending
+        ),
+      panelDelay
+    )
+    return () => window.clearTimeout(timer)
+  }, [panelDelay, rippleRun])
+  const panelReady = panelDelay === 0
+
+  // Keep the last visible subject while the panel slides away.
   const panel = usePresence(
     React.useMemo(
-      () => subject && { subject, key: JSON.stringify(selected) },
-      [subject, selected]
+      () =>
+        panelReady && subject
+          ? {
+              subject,
+              key: JSON.stringify(selected),
+              focus: current?.no,
+            }
+          : undefined,
+      [panelReady, subject, selected, current?.no]
     ),
-    !reducedMotion
+    !reducedMotion && largeMotion > 0
   )
   const focusedTitle = focused
     ? (nodeById.get(focused)?.data as ModuleData | undefined)?.title
@@ -278,14 +367,18 @@ function Viewer({ model }: { model: Model }) {
   }, [focusedTitle])
 
   // Another module opened or closed: the map is redrawn, its cards sliding to their places.
-  const drawn = React.useRef(atlas)
+  const drawn = React.useRef({ atlas, rippleRun })
   React.useLayoutEffect(() => {
-    if (drawn.current === atlas) return
-    drawn.current = atlas
+    const previous = drawn.current
+    drawn.current = { atlas, rippleRun }
+    if (previous.atlas === atlas) return
     flow.setNodes(atlas.nodes)
     flow.setEdges(atlas.edges)
     const element = wrapper.current
-    if (!element || reducedMotion) return
+    // When picking a change outside the open module, its new route needs to be visible
+    // immediately. The usual module transition hides edges until the nodes have moved.
+    const newImpact = revealImpact && previous.rippleRun !== rippleRun
+    if (!element || reducedMotion || newImpact) return
     element.classList.add("is-morphing")
     const done = window.setTimeout(
       () => element.classList.remove("is-morphing"),
@@ -295,7 +388,7 @@ function Viewer({ model }: { model: Model }) {
       window.clearTimeout(done)
       element.classList.remove("is-morphing")
     }
-  }, [atlas, flow, reducedMotion])
+  }, [atlas, flow, reducedMotion, revealImpact, rippleRun])
 
   // The camera. An order from the reader is carried out as given. When the screen or the
   // drawing changes under them instead, a glide still on its way carries on to where it
@@ -315,6 +408,30 @@ function Viewer({ model }: { model: Model }) {
     [atlas, focused, shown, screen]
   )
   const order = place.camera
+  const panOrder = React.useRef(order)
+  const startPan: OnMove = (event) => {
+    if (event) panOrder.current = now.current.place.camera
+  }
+  const endPan: OnMove = (event, ended) => {
+    if (
+      !event ||
+      !ready ||
+      store.getState().paneDragging ||
+      panOrder.current !== now.current.place.camera
+    )
+      return
+    const view = flow.getViewport()
+    // Wheel and drag end notifications are deferred. Let newer movement win.
+    if (view.x !== ended.x || view.y !== ended.y || view.zoom !== ended.zoom)
+      return
+    const settled = settlePan(view, scene)
+    if (Math.hypot(view.x - settled.x, view.y - settled.y) < 1) return
+    void flow.setViewport(settled, {
+      duration: reducedMotion ? 0 : largeMotion,
+      ease: easeOut,
+      interpolate: "linear",
+    })
+  }
   const flown = React.useRef({ no: -1, lands: 0 })
   React.useLayoutEffect(() => {
     if (!ready) return
@@ -355,13 +472,16 @@ function Viewer({ model }: { model: Model }) {
       // Keys typed into Graphical's development editor are the editor's.
       if (isEditorInteraction(event)) return
       const target = event.target instanceof HTMLElement ? event.target : null
+      if (event.defaultPrevented) return
       const escape = event.key === "Escape"
       if (target?.closest("[data-panel]")) {
         if (escape) go({ do: "escape" })
         return
       }
       if (
-        target?.closest("[role=listbox], input, textarea, select") ||
+        target?.closest(
+          "[role=listbox], [data-slot=popover-content], .map-edge-label button[aria-expanded=true], input, textarea, select"
+        ) ||
         target?.isContentEditable
       )
         return
@@ -452,8 +572,8 @@ function Viewer({ model }: { model: Model }) {
     selected: selected?.type === "step" ? selected.node : undefined,
     ripple: {
       run: place.ripple.run,
-      plays: !place.ripple.settled && !reducedMotion,
-      delay: place.ripple.delay,
+      plays: revealImpact,
+      timing,
     },
     trail,
     focusedFlows,
@@ -492,11 +612,15 @@ function Viewer({ model }: { model: Model }) {
     <CanvasContext.Provider value={canvas}>
       <AtlasContext.Provider value={handlers}>
         <div
-          className="relative h-dvh w-full overflow-hidden bg-canvas"
+          className={cn(
+            "relative h-dvh w-full overflow-hidden bg-canvas",
+            atlas.nodes.length > 0 && "map-grid"
+          )}
           style={
             {
               "--panel-w": `${PANEL_W}px`,
               "--morph": `${MORPH_MS}ms`,
+              "--viewer-bar-height": `${headlineHeight}px`,
             } as React.CSSProperties
           }
           onPointerDownCapture={(event) => {
@@ -547,6 +671,8 @@ function Viewer({ model }: { model: Model }) {
                 edgeTypes={EDGE_TYPES}
                 onNodeClick={(_, node) => go({ do: "node", id: node.id })}
                 onPaneClick={() => go({ do: "pane" })}
+                onMoveStart={startPan}
+                onMoveEnd={endPan}
                 nodesDraggable={false}
                 nodesConnectable={false}
                 elementsSelectable={false}
@@ -557,7 +683,7 @@ function Viewer({ model }: { model: Model }) {
                 zoomOnDoubleClick={false}
                 minZoom={0.05}
                 maxZoom={MAX_ZOOM}
-                className={cn(!ready && "opacity-0")}
+                className={!ready ? "opacity-0" : undefined}
               />
             ) : (
               <div
@@ -573,48 +699,53 @@ function Viewer({ model }: { model: Model }) {
             )}
           </div>
 
-          <div
+          <header
             ref={headRef}
+            className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-l pt-l"
+          >
+            <Bubble
+              variant="outline"
+              className="pointer-events-auto max-w-full *:data-[slot=bubble-content]:bg-card"
+            >
+              <BubbleContent className="flex items-center gap-s overflow-visible rounded-full px-l py-xs shadow-md md:gap-m">
+                <MapMark model={model} t={t} />
+                {model.hasReport && (
+                  <>
+                    <Separator
+                      aria-hidden
+                      orientation="vertical"
+                      className="my-1.5"
+                    />
+                    <Headline
+                      model={model}
+                      t={t}
+                      compact={narrow && showPanel}
+                      picked={pickedNo}
+                      walk={walkable}
+                      onPick={
+                        focus ? (no) => go({ do: "change", no }) : undefined
+                      }
+                      onStep={
+                        focus ? (by) => go({ do: "step", by }) : undefined
+                      }
+                    />
+                    <CommitRange model={model} t={t} />
+                  </>
+                )}
+              </BubbleContent>
+            </Bubble>
+          </header>
+
+          <div
             className={cn(
-              "absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col items-start gap-m",
-              "pointer-events-none",
-              "md:top-4 md:left-4"
+              "pointer-events-none absolute inset-x-0 z-10 flex flex-wrap items-center justify-center gap-m px-l",
+              showPanel && narrow
+                ? "bottom-[calc(52dvh+var(--space-xl))]"
+                : "bottom-(--space-xl)",
+              showPanel && !narrow && "right-[calc(var(--panel-w)+24px)]"
             )}
           >
-            {model.hasReport && (
-              <div
-                className={
-                  narrow
-                    ? "w-[calc(100vw-24px)]"
-                    : showPanel
-                      ? "max-w-[calc(100vw-var(--panel-w)-48px)]"
-                      : "max-w-[calc(100vw-32px)]"
-                }
-              >
-                <Headline
-                  model={model}
-                  t={t}
-                  compact={narrow && showPanel}
-                  picked={pickedNo}
-                  walk={walkable}
-                  onPick={focus ? (no) => go({ do: "change", no }) : undefined}
-                  onStep={focus ? (by) => go({ do: "step", by }) : undefined}
-                />
-              </div>
-            )}
-            {!model.hasReport && <MapMark model={model} t={t} />}
-          </div>
-
-          {/* The walk says what it walks, where it is, and how to stop it. */}
-          {walk && (
-            <div
-              className={cn(
-                "pointer-events-none absolute bottom-8 left-3 z-10 flex justify-center",
-                showPanel && !narrow
-                  ? "right-[calc(var(--panel-w)+36px)]"
-                  : "right-16"
-              )}
-            >
+            {walk && (
               <WalkBar
                 t={t}
                 flow={model.flowById.get(walk.flowId)?.flow.name ?? ""}
@@ -624,80 +755,93 @@ function Viewer({ model }: { model: Model }) {
                 done={walk.done}
                 onStop={() => go({ do: "endWalk" })}
               />
-            </div>
-          )}
-
-          {/* The light or dark rendition; under it zoom, for readers without a trackpad, and
-              the way back to the whole map. */}
-          {!(narrow && showPanel) && (
-            <div className="absolute right-3 bottom-8 z-10 flex flex-col gap-m">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={theme === "dark" ? t.toLight : t.toDark}
-                title={theme === "dark" ? t.toLight : t.toDark}
-                className="corner-full bg-card text-ink-2 shadow-[var(--shadow-float)] ring-1 ring-line hover:bg-card hover:text-ink"
-                onClick={toggleTheme}
+            )}
+            <Bubble
+              variant="outline"
+              className="pointer-events-auto max-w-full *:data-[slot=bubble-content]:bg-card"
+            >
+              <BubbleContent
+                role="group"
+                aria-label={t.canvasControls}
+                className="flex items-center gap-xxs overflow-visible rounded-full px-s py-xxs shadow-md"
               >
-                {theme === "dark" ? <Sun /> : <Moon />}
-              </Button>
-              {atlas.nodes.length > 0 && (
-                <div className="flex flex-col overflow-hidden corner-full bg-card shadow-[var(--shadow-float)] ring-1 ring-line">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t.zoomIn}
-                    className="corner-zero text-ink-2"
-                    onClick={() => void flow.zoomIn(zoomBy)}
-                  >
-                    <Plus />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t.zoomOut}
-                    className="corner-zero text-ink-2"
-                    onClick={() => void flow.zoomOut(zoomBy)}
-                  >
-                    <Minus />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t.fitView}
-                    className="corner-zero edge-t-m border-line text-ink-2"
-                    onClick={() => go({ do: "fit" })}
-                  >
-                    <Maximize />
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+                {atlas.nodes.length > 0 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t.zoomOut}
+                      title={t.zoomOut}
+                      onClick={() => void flow.zoomOut(zoomBy)}
+                    >
+                      <Minus />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t.zoomIn}
+                      title={t.zoomIn}
+                      onClick={() => void flow.zoomIn(zoomBy)}
+                    >
+                      <Plus />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t.fitView}
+                      title={t.fitView}
+                      onClick={() => go({ do: "fit" })}
+                    >
+                      <Maximize />
+                    </Button>
+                    <Separator
+                      aria-hidden
+                      orientation="vertical"
+                      className="mx-xs my-1.5"
+                    />
+                  </>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={theme === "dark" ? t.toLight : t.toDark}
+                  title={theme === "dark" ? t.toLight : t.toDark}
+                  onClick={toggleTheme}
+                >
+                  {theme === "dark" ? <Sun /> : <Moon />}
+                </Button>
+              </BubbleContent>
+            </Bubble>
+          </div>
 
           {panel.shown && (
             <aside
               data-panel
+              inert={panel.leaving}
               onAnimationEnd={(event) => {
-                if (panel.leaving && event.target === event.currentTarget)
+                if (
+                  panel.leaving &&
+                  event.animationName === "panel-out" &&
+                  event.target === event.currentTarget
+                )
                   panel.done()
               }}
               className={cn(
-                "absolute z-20 overflow-hidden corner-xl",
+                "absolute z-20",
                 // A stable desktop inspector fits both tabs and leaves controls below it.
                 narrow
-                  ? "inset-x-2 bottom-2 h-[52dvh] [--panel-from:0_24px]"
-                  : "top-4 right-4 h-[min(720px,calc(100dvh-112px))] w-(--panel-w) [--panel-from:20px_0]",
+                  ? "inset-x-2 bottom-2 h-[52dvh] [--panel-from:0_var(--space-xxl)]"
+                  : "top-[calc(var(--viewer-bar-height)+var(--space-xl))] right-4 h-[min(720px,calc(100dvh-var(--viewer-bar-height)-var(--space-xxl)*2))] w-(--panel-w) [--panel-from:var(--space-xl)_0]",
                 panel.leaving ? "panel-out" : "panel-in"
               )}
             >
               <DetailPanel
                 // Each new subject starts at the top with its code folded.
-                key={panel.shown.key}
+                key={`${panel.shown.key}:${panel.shown.focus ?? ""}`}
                 model={model}
                 t={t}
                 subject={panel.shown.subject}
-                focus={current?.no}
+                focus={panel.shown.focus}
                 onWalk={
                   // With a change to read, the page steps through the changes instead.
                   !focus &&
@@ -768,12 +912,7 @@ function WalkBar({
           </span>
         </>
       )}
-      <Button
-        variant="ghost"
-        size="xs"
-        onClick={onStop}
-        className="shrink-0 corner-full px-l text-body-m text-ink-2"
-      >
+      <Button variant="ghost" size="sm" onClick={onStop}>
         {done ? t.endWalk : t.stopWalk}
       </Button>
     </div>

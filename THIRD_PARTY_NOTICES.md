@@ -14,7 +14,7 @@ Apache-2.0 does not relicense third-party code. The lockfiles (`uv.lock`,
 | --- | --- |
 | react, react-dom | MIT |
 | @xyflow/react | MIT |
-| radix-ui | MIT |
+| @base-ui/react | MIT |
 | commit-graph | MIT |
 | clsx | MIT |
 | tailwind-merge | MIT |
@@ -22,3 +22,10 @@ Apache-2.0 does not relicense third-party code. The lockfiles (`uv.lock`,
 | tw-animate-css | MIT |
 | class-variance-authority | Apache-2.0 |
 | lucide-react | ISC |
+
+The viewer embeds [Geist Mono](https://github.com/vercel/geist-font) under the
+SIL Open Font License 1.1. The full license is in
+`viewer/index.html` and in the built page.
+
+The viewer's Base UI Luma components come from [shadcn/ui](https://github.com/shadcn-ui/ui).
+Their MIT notice is in `viewer/index.html` and in the built page.

@@ -1,24 +1,36 @@
 import * as React from "react"
-import { ArrowUpRight, Check, ChevronRight, Copy, Play, X } from "lucide-react"
+import { Check, ChevronRight, Copy, Play, X } from "lucide-react"
 
-import { Button, buttonVariants } from "@/components/ui/button"
+import githubMarkDark from "@/assets/github-mark-dark.svg"
+import githubMarkLight from "@/assets/github-mark-light.svg"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardHeader, CardFooter, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
+import { Button, buttonVariants } from "@/components/ui/button"
+import {
+  Card,
+  CardAction,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+} from "@/components/ui/card"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Evidence } from "@/components/evidence"
 import { ReviewBadge } from "@/components/review-badge"
 import { KindTile, NumberDisc, StatusMark } from "@/canvas/step-node"
 import { localizeNote, type Strings } from "@/i18n"
 import { statusOf, type Coupon, type FlowView, type Model } from "@/model"
 import type { MapFinding, MapStep, StepContract } from "@/types"
-import { categoryOf, coverageKind, sourceLinkOf } from "@/presentation"
+import { coverageKind, sortAlerts, sourceLinkOf } from "@/presentation"
 
 export type PanelSubject =
   | {
@@ -54,6 +66,7 @@ export function DetailPanel({
   const coupons = subject.coupons
   const step = subject.type === "step" ? subject.step : undefined
   const active = coupons.find((coupon) => coupon.no === focus) ?? coupons[0]
+  const others = coupons.filter((coupon) => coupon !== active)
   const findings =
     subject.type === "step" && subject.view
       ? subject.view.findings.filter((finding) =>
@@ -62,6 +75,9 @@ export function DetailPanel({
       : []
   const carried = new Set(
     coupons.flatMap((coupon) => coupon.change.finding_ids ?? [])
+  )
+  const otherFindings = findings.filter(
+    (finding) => !carried.has(finding.finding_id)
   )
   const title =
     subject.type === "step"
@@ -80,30 +96,16 @@ export function DetailPanel({
     ]),
   ]
   const source = sourceLinkOf(model.payload, evidenceIds)
-  const [tab, setTab] = React.useState("overview")
-
+  const sourceLabel = source?.exact ? t.githubCode : t.githubCommitted
   return (
-    <Card className="h-full max-h-[inherit] min-h-0 gap-zero corner-xl py-zero shadow-[var(--shadow-float)]">
-      <CardHeader className="shrink-0 gap-xl p-xxl pb-xl">
+    <Card className="h-full max-h-[inherit] min-h-0 gap-0 py-0">
+      <CardHeader className="shrink-0 gap-m px-xxl pt-xxl pb-l">
         <div className="flex min-w-0 items-start gap-l">
           {step && <KindTile kind={step.kind} small />}
-          <div className="min-w-0 flex-1">
-            <CardTitle>
-              <h2 className="text-body-l [overflow-wrap:anywhere]">{title}</h2>
-            </CardTitle>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label={t.close}
-            className="-mt-xxs -mr-xs text-ink-3"
-          >
-            <X />
-          </Button>
-        </div>
-        <div className="flex items-center justify-between gap-l">
-          <div className="flex flex-wrap items-center gap-m">
+          <CardTitle className="flex min-w-0 flex-1 flex-wrap items-center gap-x-m gap-y-xs">
+            <h2 className="min-w-0 text-body-l [overflow-wrap:anywhere]">
+              {title}
+            </h2>
             {active ? (
               <ReviewBadge
                 risky={active.risky}
@@ -117,65 +119,105 @@ export function DetailPanel({
                 {removed ? t.removed : step ? t.stepKind[step.kind] : t.offMap}
               </Badge>
             )}
-          </div>
-          {source ? (
-            <a
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              {source.exact ? t.githubCode : t.githubCommitted}
-              <ArrowUpRight data-icon="inline-end" />
-            </a>
-          ) : onWalk ? (
+          </CardTitle>
+        </div>
+        <CardAction className="-mt-xxs -mr-xs flex items-center">
+          {source && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <a
+                    aria-label={sourceLabel}
+                    className={buttonVariants({
+                      variant: "ghost",
+                      size: "icon-sm",
+                    })}
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  />
+                }
+              >
+                <img
+                  src={githubMarkDark}
+                  alt=""
+                  className="size-4 object-contain dark:hidden"
+                />
+                <img
+                  src={githubMarkLight}
+                  alt=""
+                  className="hidden size-4 object-contain dark:block"
+                />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{sourceLabel}</TooltipContent>
+            </Tooltip>
+          )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClose}
+            aria-label={t.close}
+          >
+            <X />
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-m px-xxl">
+          <TabsList>
+            <TabsTrigger value="overview">{t.changeOverview}</TabsTrigger>
+            {step && !removed && (
+              <TabsTrigger value="contract">{t.ioContract}</TabsTrigger>
+            )}
+          </TabsList>
+          {!source && onWalk && (
             <Button variant="outline" size="sm" onClick={onWalk}>
               <Play data-icon="inline-start" />
               {t.runFlow}
             </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <Tabs
-        value={tab}
-        onValueChange={setTab}
-        className="min-h-0 flex-1 gap-zero"
-      >
-        <div className="shrink-0 edge-b-m border-line px-xxl">
-          <TabsList variant="line" className="h-10 gap-xxl p-zero">
-            <TabsTrigger value="overview" className="px-zero pb-l">
-              {t.changeOverview}
-            </TabsTrigger>
-            {step && !removed && (
-              <TabsTrigger value="contract" className="px-zero pb-l">
-                {t.ioContract}
-              </TabsTrigger>
-            )}
-          </TabsList>
+          )}
         </div>
         <ScrollArea className="min-h-0 flex-1">
           <div className="min-w-0 p-xxl">
-            <TabsContent value="overview" className="min-w-0 space-y-xxl">
-              {coupons.map((coupon) => (
+            <TabsContent value="overview" className="min-w-0 space-y-xl">
+              {active && (
                 <ChangeDetail
-                  key={`${coupon.no}-${coupon.primary}`}
-                  coupon={coupon}
+                  coupon={active}
                   model={model}
                   t={t}
-                  focused={coupons.length > 1 && focus === coupon.no}
                   evidenceIds={step?.evidence_ids ?? []}
                 />
-              ))}
-              {findings
-                .filter((finding) => !carried.has(finding.finding_id))
-                .map((finding) => (
-                  <FindingDetail
-                    key={finding.finding_id}
-                    finding={finding}
-                    t={t}
-                  />
-                ))}
-              {!coupons.length && (
+              )}
+              <FindingDetails findings={otherFindings} />
+              {others.length > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger
+                    render={<Button variant="secondary" size="sm" />}
+                    className="group/other-changes w-full justify-between"
+                  >
+                    {t.moreChanges(others.length)}
+                    <ChevronRight
+                      aria-hidden
+                      data-icon="inline-end"
+                      className="size-3.5 transition-transform duration-(--motion-duration) group-data-panel-open/other-changes:rotate-90"
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className={COLLAPSIBLE_MOTION}>
+                    <div className="space-y-xxl pt-xl">
+                      {others.map((coupon) => (
+                        <ChangeDetail
+                          key={`${coupon.no}-${coupon.primary}`}
+                          coupon={coupon}
+                          model={model}
+                          t={t}
+                          evidenceIds={step?.evidence_ids ?? []}
+                        />
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+              {!active && (
                 <>
                   <p className="text-body-m [overflow-wrap:anywhere] text-ink-2">
                     {removed ? t.flowGone : (step?.reason ?? t.unchangedStep)}
@@ -195,8 +237,8 @@ export function DetailPanel({
         </ScrollArea>
       </Tabs>
       {onNext && (
-        <CardFooter className="shrink-0 justify-end bg-card px-xxl py-l">
-          <Button variant="ghost" size="sm" onClick={onNext}>
+        <CardFooter className="shrink-0 justify-end px-xxl py-l">
+          <Button variant="secondary" size="sm" onClick={onNext}>
             {t.nextChange}
             <ChevronRight data-icon="inline-end" />
           </Button>
@@ -206,19 +248,14 @@ export function DetailPanel({
   )
 }
 
-function FindingDetail({ finding, t }: { finding: MapFinding; t: Strings }) {
+function FindingDetails({ findings }: { findings: MapFinding[] }) {
+  if (!findings.length) return null
   return (
-    <section className="space-y-m">
-      <div className="flex flex-wrap items-center gap-m">
-        <Badge variant="destructive">{t.category[categoryOf(finding)]}</Badge>
-        <span className="text-body-s text-ink-3">
-          {t.severityLabel} · {t.severity[finding.severity]}
-        </span>
-      </div>
-      <p className="text-body-m [overflow-wrap:anywhere] text-ink-2">
-        {finding.statement}
-      </p>
-    </section>
+    <div className="space-y-s rounded-xl bg-destructive/10 p-l text-body-m font-medium [overflow-wrap:anywhere] text-risk-ink">
+      {sortAlerts(findings).map((finding) => (
+        <p key={finding.finding_id}>{finding.statement}</p>
+      ))}
+    </div>
   )
 }
 
@@ -301,23 +338,20 @@ function JsonBlock({
   )
 }
 
+const COLLAPSIBLE_MOTION =
+  "h-(--collapsible-panel-height) min-w-0 overflow-hidden data-ending-style:h-0 data-starting-style:h-0 motion-safe:transition-[height] motion-safe:duration-(--motion-duration) motion-safe:ease-(--motion-easing)"
+
 function ChangeDetail({
   coupon,
   model,
   t,
-  focused,
   evidenceIds,
 }: {
   coupon: Coupon
   model: Model
   t: Strings
-  focused: boolean
   evidenceIds: string[]
 }) {
-  const ref = React.useRef<HTMLElement>(null)
-  React.useEffect(() => {
-    if (focused) ref.current?.scrollIntoView({ block: "nearest" })
-  }, [focused])
   const { change } = coupon
   const tests = change.tests
   const status = statusOf(tests)
@@ -325,7 +359,7 @@ function ChangeDetail({
     const item = model.payload.report?.finding_changes?.find(
       (item) => item.finding.finding_id === id
     )
-    return item && item.status !== "resolved" ? [item] : []
+    return item && item.status !== "resolved" ? [item.finding] : []
   })
   // A stop may stand for several changes told in the same words: their code shows together.
   const members = coupon.group.length ? coupon.group : [change]
@@ -344,32 +378,23 @@ function ChangeDetail({
     (members.some((member) => member.before || member.after) ||
       where.length > 0)
   return (
-    <section
-      ref={ref}
-      data-tone={coupon.tone}
-      className="min-w-0 scroll-mt-5 space-y-xxl"
-    >
-      <div className="flex items-start gap-l">
-        <NumberDisc no={coupon.no} className="mt-xs" />
-        <h3 className="min-w-0 text-body-l font-medium [overflow-wrap:anywhere]">
-          {change.explanation?.summary ?? t.changeKind[change.kind]}
-        </h3>
+    <section data-tone={coupon.tone} className="min-w-0 space-y-xl">
+      <FindingDetails findings={risks} />
+      <div className="space-y-s">
+        <div className="flex items-start gap-m">
+          <NumberDisc no={coupon.no} className="mt-xxs" />
+          <h3 className="min-w-0 text-body-l font-medium [overflow-wrap:anywhere]">
+            {change.explanation?.summary ?? t.changeKind[change.kind]}
+          </h3>
+        </div>
+        {change.explanation?.effect && (
+          <p className="text-body-m [overflow-wrap:anywhere] text-ink-2">
+            {change.explanation.effect}
+          </p>
+        )}
       </div>
-      {change.explanation?.effect && (
-        <p className="text-body-m [overflow-wrap:anywhere] text-ink-2">
-          {change.explanation.effect}
-        </p>
-      )}
-      {risks.map((item) => (
-        <FindingDetail
-          key={item.finding.finding_id}
-          finding={item.finding}
-          t={t}
-        />
-      ))}
-      <Separator />
-      <section className="space-y-l">
-        <h3 className="text-body-m font-medium">{t.testEvidence}</h3>
+      <section className="space-y-s">
+        <h4 className="text-body-m font-medium">{t.testEvidence}</h4>
         <StatusMark
           status={status}
           label={t.coverage[coverageKind(tests)]}
@@ -384,36 +409,45 @@ function ChangeDetail({
       {hasLocalCode && (
         <Collapsible>
           <CollapsibleTrigger
-            render={
-              <Button variant="ghost" size="sm" className="group -ml-m" />
-            }
+            render={<Button variant="outline" size="sm" />}
+            className="group/code"
           >
-            <ChevronRight className="transition-transform duration-100 group-data-panel-open:rotate-90" />
             {t.localCode}
-          </CollapsibleTrigger>
-          <CollapsibleContent className="min-w-0 space-y-l pt-l">
-            {members
-              .flatMap((member) => [
-                { side: member.before, label: t.before, id: member.change_id },
-                { side: member.after, label: t.after, id: member.change_id },
-              ])
-              .map(
-                ({ side, label, id }) =>
-                  side && (
-                    <section key={`${id}-${label}`} className="space-y-s">
-                      <h4 className="text-body-s text-ink-3">{label}</h4>
-                      <pre className="max-w-full overflow-x-auto corner-m bg-field p-l text-body-s">
-                        <code>{side.text}</code>
-                      </pre>
-                    </section>
-                  )
-              )}
-            <Evidence
-              ids={where}
-              model={model}
-              t={t}
-              skipText={(change.after ?? change.before)?.text}
+            <ChevronRight
+              aria-hidden
+              data-icon="inline-end"
+              className="size-3.5 transition-transform duration-(--motion-duration) group-data-panel-open/code:rotate-90"
             />
+          </CollapsibleTrigger>
+          <CollapsibleContent className={COLLAPSIBLE_MOTION}>
+            <div className="space-y-l pt-l">
+              {members
+                .flatMap((member) => [
+                  {
+                    side: member.before,
+                    label: t.before,
+                    id: member.change_id,
+                  },
+                  { side: member.after, label: t.after, id: member.change_id },
+                ])
+                .map(
+                  ({ side, label, id }) =>
+                    side && (
+                      <section key={`${id}-${label}`} className="space-y-s">
+                        <h4 className="text-body-s text-ink-3">{label}</h4>
+                        <pre className="max-w-full overflow-x-auto corner-m bg-field p-l text-body-s">
+                          <code>{side.text}</code>
+                        </pre>
+                      </section>
+                    )
+                )}
+              <Evidence
+                ids={where}
+                model={model}
+                t={t}
+                skipText={(change.after ?? change.before)?.text}
+              />
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}

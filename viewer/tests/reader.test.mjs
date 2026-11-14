@@ -49,7 +49,7 @@ test("a change from the list opens its details on its step, and the step rings",
   const place = doing(refund, { do: "change", no: 1 })
   assert.deepEqual(place.selected, { type: "step", node: PAY })
   assert.deepEqual(place.current, { node: PAY, no: 1 })
-  assert.deepEqual(place.ripple, { run: 1, settled: false, delay: 364 })
+  assert.deepEqual(place.ripple, { run: 1, settled: false })
   assert.deepEqual(place.camera, { no: 1, shot: { of: "place" }, ms: 520 })
   assert.equal(pickedOf(place, refund.model), 1)
   assert.deepEqual(panelOf(place.selected, refund.atlasOf()), {
@@ -59,7 +59,6 @@ test("a change from the list opens its details on its step, and the step rings",
   // For a reader who asked for less motion nothing glides and nothing waits.
   const calm = act(START, { do: "change", no: 1 }, still(refund))
   assert.equal(calm.camera.ms, 0)
-  assert.equal(calm.ripple.delay, 0)
   // A number the report does not have changes nothing.
   assert.equal(act(START, { do: "change", no: 99 }, refund), START)
 })
