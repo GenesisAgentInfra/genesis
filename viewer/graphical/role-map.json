@@ -13,10 +13,6 @@
       "background": "--sidebar",
       "border": "--sidebar-border"
     },
-    "cards": {
-      "selector": "[data-slot=\"card\"]",
-      "background": "--card"
-    },
     "initial": {
       "navigation": "blended",
       "grouping": "cards",
@@ -95,27 +91,8 @@
       }
     },
     {
-      "variable": "--flow-top",
-      "token": {
-        "light": "neutral-1",
-        "dark": "neutral-2"
-      },
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--flow-bottom",
+      "variable": "--flow",
       "token": "neutral-2",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--flow-rim",
-      "token": "neutral-10-transparent",
       "defined": {
         "path": "src/index.css",
         "selector": ":root"
@@ -145,17 +122,6 @@
     },
     {
       "variable": "--muted",
-      "token": {
-        "light": "neutral-3",
-        "dark": "neutral-4"
-      },
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-result-bg",
       "token": {
         "light": "neutral-3",
         "dark": "neutral-4"
@@ -249,14 +215,6 @@
     },
     {
       "variable": "--muted-foreground",
-      "token": "neutral-8",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-result-ink",
       "token": "neutral-8",
       "defined": {
         "path": "src/index.css",
@@ -400,70 +358,6 @@
       }
     },
     {
-      "variable": "--tile-action-ink",
-      "token": "color-2",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-action-bg",
-      "token": "color-2-transparent",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-trigger-ink",
-      "token": "color-3",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-trigger-bg",
-      "token": "color-3-transparent",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-decision-ink",
-      "token": "color-4",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-decision-bg",
-      "token": "color-4-transparent",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-external-ink",
-      "token": "color-5",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
-      "variable": "--tile-external-bg",
-      "token": "color-5-transparent",
-      "defined": {
-        "path": "src/index.css",
-        "selector": ":root"
-      }
-    },
-    {
       "variable": "--shadow-node",
       "token": "shadow.s",
       "defined": {
@@ -522,7 +416,6 @@
     }
   ],
   "fixed": [
-    "--shadow-flow",
     "--change-ink",
     "--risk-ink"
   ]

@@ -1,10 +1,21 @@
 import * as React from "react"
 import { EdgeLabelRenderer, type EdgeProps } from "@xyflow/react"
+import { ChevronDown } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { useCanvas } from "./context"
 import { DRAW_MS, HEAD_EARLY, HEAD_MS } from "./emphasis"
-import type { FlowEdge as FlowEdgeType } from "./graph"
+import {
+  EDGE_LABEL_LIMIT,
+  isLongEdgeLabel,
+  type FlowEdge as FlowEdgeType,
+} from "./graph"
 import { orthogonal } from "./path"
 
 /** How round the corners of a step back are. */
@@ -12,8 +23,8 @@ const LOOP_R = 14
 
 /**
  * A thin curve. The way in to the current change is dark and still; the edges leaving it
- * carry the ripple: they draw themselves outward while a small dot rides the tip. Loops on
- * the change stay in view; everything else steps back.
+ * carry the ripple across the visible downstream branches. A walk uses a travelling dot.
+ * Loops retain their dashed stroke and unrelated edges step back.
  */
 export function FlowEdge({
   id,
@@ -34,6 +45,8 @@ export function FlowEdge({
   const path = back ? orthogonal(points, LOOP_R, true) : orthogonal(points)
   const labelX = data?.labelAt?.x ?? (sourceX + targetX) / 2
   const labelY = data?.labelAt?.y ?? (sourceY + targetY) / 2
+  const label = data?.label
+  const longLabel = Boolean(label && isLongEdgeLabel(label))
   // A line that stands for steps left out is dotted, like an ellipsis.
   const skipped = Boolean(data?.skipped)
   const look = canvas.line(id, {
@@ -41,7 +54,7 @@ export function FlowEdge({
     uncertain: Boolean(data?.uncertain),
     skipped,
   })
-  const { dark, dashed, draws, travels, start } = look
+  const { dark, impact, dashed, draws, travels, start, duration } = look
   const motionRef = React.useRef<SVGAnimateMotionElement>(null)
   const fadeRef = React.useRef<SVGAnimateElement>(null)
 
@@ -51,14 +64,25 @@ export function FlowEdge({
     fadeRef.current?.beginElementAt(start / 1000)
   }, [travels, start, look.key])
 
-  const stroke = data?.exception
-    ? dark
-      ? "var(--edge-exception-strong)"
-      : "var(--edge-exception)"
-    : dark
-      ? "var(--edge-strong)"
-      : "var(--edge)"
-  const marker = `arrow${data?.exception ? "-exception" : ""}${dark ? "-strong" : ""}`
+  const edge = data?.exception ? "edge-exception" : "edge"
+  const arrow = data?.exception ? "arrow-exception" : "arrow"
+  const stroke =
+    impact && !data?.exception
+      ? "var(--select)"
+      : `var(--${edge}${dark ? "-strong" : ""})`
+  const marker =
+    impact && !data?.exception
+      ? "arrow-impact"
+      : `${arrow}${dark ? "-strong" : ""}`
+  const quietOpacity = 0.38
+  const opacity = (look.quiet ? quietOpacity : 1) * (look.away ? 0.35 : 1)
+  const overlay = impact && look.entering
+  const drawBase = draws && !impact
+  const dash = skipped ? "1.5 5" : dashed ? "4 4" : undefined
+  const timed = {
+    "--edge-delay": `${start}ms`,
+    "--edge-duration": `${duration}ms`,
+  } as React.CSSProperties
   return (
     <>
       <path
@@ -69,33 +93,45 @@ export function FlowEdge({
         strokeWidth={16}
       />
       <path
-        key={look.entering ? look.key : "rest"}
         d={path}
         fill="none"
-        pathLength={draws ? 1 : undefined}
-        // A line that is drawing itself gets its arrowhead once it has arrived.
-        markerEnd={draws ? undefined : `url(#${marker})`}
+        pathLength={drawBase ? 1 : undefined}
+        markerEnd={drawBase ? undefined : `url(#${overlay ? arrow : marker})`}
+        data-impact={impact ? "" : undefined}
         className={cn(
-          "react-flow__edge-path transition-[opacity,stroke,stroke-width] duration-160",
-          draws && "edge-draw",
-          look.entering && dashed && "edge-fade"
+          "react-flow__edge-path map-edge",
+          drawBase && "edge-draw",
+          !impact && look.entering && dashed && "edge-fade"
         )}
+        // Walks restart their own animations; a change always leaves its base path in place.
+        key={!impact && look.entering ? look.key : "rest"}
         style={{
-          stroke,
-          strokeWidth: dark ? 2.5 : 2,
-          strokeDasharray: draws
-            ? undefined
-            : skipped
-              ? "1.5 5"
-              : dashed
-                ? "4 4"
-                : undefined,
+          ...timed,
+          stroke: overlay ? `var(--${edge})` : stroke,
+          strokeWidth: dark && !overlay ? 2.5 : 2,
+          strokeDasharray: dash,
           strokeLinecap: skipped ? "round" : undefined,
-          opacity: (look.quiet ? 0.7 : 1) * (look.away ? 0.35 : 1),
-          ["--edge-delay" as string]: `${start}ms`,
-          ["--edge-duration" as string]: `${DRAW_MS}ms`,
+          opacity: overlay ? opacity * quietOpacity : opacity,
         }}
       />
+      {overlay && (
+        <path
+          key={look.key}
+          d={path}
+          fill="none"
+          pathLength={draws ? 1 : undefined}
+          markerEnd={draws ? undefined : `url(#${marker})`}
+          className={cn("map-impact-edge", draws ? "edge-draw" : "edge-fade")}
+          style={{
+            ...timed,
+            stroke,
+            strokeWidth: 2.5,
+            strokeDasharray: dash,
+            strokeLinecap: skipped ? "round" : undefined,
+            opacity,
+          }}
+        />
+      )}
       {draws && (
         // The arrowhead of a line that draws itself, coming up as the line arrives.
         <path
@@ -104,10 +140,11 @@ export function FlowEdge({
           fill="none"
           stroke="transparent"
           markerEnd={`url(#${marker})`}
-          className="edge-fade"
+          className={cn("edge-fade", impact && "map-impact-edge")}
           style={{
-            ["--edge-delay" as string]: `${start + DRAW_MS - HEAD_EARLY}ms`,
-            ["--edge-duration" as string]: `${HEAD_MS}ms`,
+            opacity,
+            ["--edge-delay" as string]: `${start + duration - (impact ? duration / 3 : HEAD_EARLY)}ms`,
+            ["--edge-duration" as string]: `${impact ? duration / 3 : HEAD_MS}ms`,
           }}
         />
       )}
@@ -140,25 +177,42 @@ export function FlowEdge({
           />
         </circle>
       )}
-      {data?.label && (
+      {label && (
         <EdgeLabelRenderer>
           <div
             className={cn(
-              "nodrag nopan absolute",
-              "corner-full px-m py-xxs",
-              "text-body-s font-medium",
-              "pointer-events-none bg-card shadow-[var(--shadow-node)] ring-1 ring-line",
-              data.exception
-                ? "text-risk"
-                : skipped
-                  ? "text-ink-3"
-                  : "text-ink-2"
+              "map-edge-label nodrag nopan absolute w-max text-body-s font-medium whitespace-nowrap",
+              longLabel ? "pointer-events-auto" : "pointer-events-none px-xs",
+              data?.exception ? "text-risk-ink" : "text-ink-2"
             )}
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            }}
+            style={
+              {
+                transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 2}px)`,
+                maxWidth: longLabel ? EDGE_LABEL_LIMIT : undefined,
+                "--edge-label-opacity": opacity,
+              } as React.CSSProperties
+            }
           >
-            {data.label}
+            {longLabel ? (
+              <Popover>
+                <PopoverTrigger
+                  aria-label={label}
+                  render={<Button variant="ghost" size="xs" />}
+                  className="h-auto max-w-full justify-start gap-xxs rounded-md px-xs py-0 text-body-s text-inherit hover:text-inherit"
+                >
+                  <span className="min-w-0 truncate">{label}</span>
+                  <ChevronDown aria-hidden className="size-3" />
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  className="text-body-m [overflow-wrap:anywhere]"
+                >
+                  {label}
+                </PopoverContent>
+              </Popover>
+            ) : (
+              label
+            )}
           </div>
         </EdgeLabelRenderer>
       )}

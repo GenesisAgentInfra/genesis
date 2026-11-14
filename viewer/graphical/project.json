@@ -1,11 +1,21 @@
 {
   "format": "graphical-project-v1",
-  "active": "graphical",
+  "active": "alloy",
   "themes": [
     {
       "id": "graphical",
       "name": "Genesis",
       "path": "themes/graphical.json"
+    },
+    {
+      "id": "alloy",
+      "name": "Alloy",
+      "path": "themes/alloy.json",
+      "source": {
+        "id": "dacf0062-1b94-44c1-9b7d-ba7ba59cb8cb",
+        "revision": 99,
+        "name": "Alloy"
+      }
     }
   ],
   "id": "27b70c2f-3905-4c94-9835-d2fc88e06503"

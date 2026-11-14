@@ -10,7 +10,7 @@ const server = await createServer({
   appType: "custom",
 })
 after(() => server.close())
-const { MAX_ZOOM, PANEL_W, readingArea, readingSpan, viewOf } =
+const { MAX_ZOOM, PANEL_W, readingArea, readingSpan, settlePan, viewOf } =
   await server.ssrLoadModule("/src/canvas/camera.ts")
 const { buildModel } = await server.ssrLoadModule("/src/model.ts")
 const { atlasDrawer } = await server.ssrLoadModule("/src/atlas/build.ts")
@@ -59,13 +59,13 @@ test("the reading area is clear of the headline, the controls and the panel", ()
   assert.deepEqual(readingArea(desk, false), {
     x: 16,
     y: 76,
-    width: 1364,
-    height: 800,
+    width: 1408,
+    height: 760,
   })
   assert.equal(readingArea(desk, true).width, 1440 - 16 - PANEL_W - 40)
   // A taller headline pushes the map down, and only that.
   const tall = readingArea({ ...desk, headline: 72 }, false)
-  assert.deepEqual([tall.y, tall.height, tall.width], [112, 764, 1364])
+  assert.deepEqual([tall.y, tall.height, tall.width], [112, 724, 1408])
 })
 
 test("a map that reads whole starts right under the headline, filling the screen across", async () => {
@@ -199,4 +199,58 @@ test("there is no shot of what is not on the map", () => {
   assert.equal(viewOf({ of: "step", id: "nowhere" }, scene), undefined)
   assert.equal(viewOf({ of: "steps", ids: ["nowhere"] }, scene), undefined)
   assert.equal(viewOf({ of: "flow", flowId: "nowhere" }, scene), undefined)
+})
+
+test("panning a small map returns it to its reading position without changing zoom", () => {
+  const scene = { ...sceneOf(), atlas: { nodes: [] }, panel: true }
+  const view = { x: -3000, y: 3000, zoom: 0.8 }
+  assert.deepEqual(settlePan(view, scene), view)
+
+  scene.atlas.nodes.push({
+    type: "row",
+    position: { x: 20, y: 40 },
+    width: 300,
+    height: 100,
+  })
+  const area = readingArea(scene.screen, scene.panel)
+  assert.deepEqual(settlePan(view, scene), {
+    x: area.x + (area.width - 240) / 2 - 16,
+    y: area.y - 32,
+    zoom: 0.8,
+  })
+})
+
+test("a long workflow can be panned to either edge and anywhere in between", () => {
+  const scene = {
+    ...sceneOf(),
+    atlas: {
+      nodes: [
+        { type: "row", position: { x: 0, y: 0 }, width: 2000, height: 2000 },
+      ],
+    },
+  }
+  const area = readingArea(scene.screen, false)
+  const inside = { x: -250, y: -350, zoom: 1 }
+  assert.deepEqual(settlePan(inside, scene), inside)
+  assert.deepEqual(settlePan({ x: -4000, y: -4000, zoom: 1 }, scene), {
+    x: area.x + area.width - 2000,
+    y: area.y + area.height - 2000,
+    zoom: 1,
+  })
+})
+
+test("panning into the gap between cards lands on the nearest content", () => {
+  const scene = {
+    ...sceneOf(),
+    atlas: {
+      nodes: [0, 2000].map((y) => ({
+        type: "row",
+        position: { x: 0, y },
+        width: 200,
+        height: 100,
+      })),
+    },
+  }
+  const view = settlePan({ x: 0, y: -250, zoom: 1 }, scene)
+  assert.equal(view.y, readingArea(scene.screen, false).y)
 })

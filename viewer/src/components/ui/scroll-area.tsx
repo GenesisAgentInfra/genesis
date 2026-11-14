@@ -18,26 +18,36 @@ function ScrollArea({
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
-      <ScrollAreaPrimitive.Scrollbar
-        data-slot="scroll-area-scrollbar"
-        orientation="vertical"
-        className={cn(
-          "flex h-full w-2.5",
-          "p-xxs",
-          "touch-none select-none",
-          // The bar shows while the pointer is over the area, or while it scrolls.
-          "pointer-events-none opacity-0 transition-opacity duration-150",
-          "data-hovering:pointer-events-auto data-hovering:opacity-100",
-          "data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0"
-        )}
-      >
-        <ScrollAreaPrimitive.Thumb
-          data-slot="scroll-area-thumb"
-          className="relative flex-1 corner-full bg-ink-3/30 hover:bg-ink-3/50"
-        />
-      </ScrollAreaPrimitive.Scrollbar>
+      <ScrollBar />
+      <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   )
 }
 
-export { ScrollArea }
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}: ScrollAreaPrimitive.Scrollbar.Props) {
+  return (
+    <ScrollAreaPrimitive.Scrollbar
+      data-slot="scroll-area-scrollbar"
+      data-orientation={orientation}
+      orientation={orientation}
+      className={cn(
+        "flex touch-none p-px transition-colors select-none",
+        "data-[orientation=horizontal]:h-2.5 data-[orientation=horizontal]:flex-col data-[orientation=horizontal]:border-t data-[orientation=horizontal]:border-t-transparent",
+        "data-[orientation=vertical]:h-full data-[orientation=vertical]:w-2.5 data-[orientation=vertical]:border-l data-[orientation=vertical]:border-l-transparent",
+        className
+      )}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Thumb
+        data-slot="scroll-area-thumb"
+        className="relative flex-1 rounded-full bg-border"
+      />
+    </ScrollAreaPrimitive.Scrollbar>
+  )
+}
+
+export { ScrollArea, ScrollBar }

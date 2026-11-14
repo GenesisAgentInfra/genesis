@@ -1,8 +1,7 @@
 // Loads the editor and keeps the viewer showing if it fails. Development only.
-import type { ReactNode } from "react"
 import { GraphicalEditorLoader } from "@graphical/editor/loader"
 
-type HostProps = { children: ReactNode; route: string }
+import type { HostProps } from "./editor-root"
 
 const loadEditor = async () => ({
   GraphicalInstalledEditor: (await import("./installed-editor")).default,

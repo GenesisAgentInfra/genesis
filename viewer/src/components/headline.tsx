@@ -6,9 +6,13 @@ import {
   ListChecks,
 } from "lucide-react"
 
-import { CommitRange } from "@/components/commit-range"
 import { ReviewBadge } from "@/components/review-badge"
 import { Button } from "@/components/ui/button"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Tooltip,
   TooltipContent,
@@ -61,70 +65,39 @@ export function Headline({
   const counts = model.counts
   const total = model.stops.length
   const [listOpen, setListOpen] = React.useState(false)
-  const root = React.useRef<HTMLDivElement>(null)
   const trigger = React.useRef<HTMLButtonElement>(null)
-
-  // The list folds away when the reader turns to the map.
-  React.useEffect(() => {
-    if (!listOpen) return
-    const away = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setListOpen(false)
-    }
-    document.addEventListener("pointerdown", away)
-    return () => document.removeEventListener("pointerdown", away)
-  }, [listOpen])
+  const open = listOpen && !compact
+  const pick = (no: number) => {
+    setListOpen(false)
+    trigger.current?.focus()
+    onPick?.(no)
+  }
 
   const at = picked ? walk.indexOf(picked) : -1
 
   return (
-    <div
-      ref={root}
-      className="pointer-events-auto relative"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && listOpen) {
-          event.stopPropagation()
-          setListOpen(false)
-          trigger.current?.focus()
-        }
-      }}
-    >
-      <div className="flex w-fit items-center gap-m">
+    <Popover open={open} onOpenChange={setListOpen}>
+      <div className="flex w-fit items-center">
         {total > 0 && onPick ? (
-          <div className="inline-flex items-center gap-xs corner-full bg-card p-xs shadow-[var(--shadow-node)] ring-1 ring-line">
-            <button
+          <div className="inline-flex items-center gap-1">
+            <PopoverTrigger
               ref={trigger}
-              type="button"
-              aria-expanded={listOpen}
               aria-label={t.openChanges}
-              onClick={() => setListOpen((open) => !open)}
-              className={cn(
-                "inline-flex h-7 items-center gap-s",
-                "corner-full px-l",
-                "text-body-m",
-                "text-ink-2",
-                "hover:bg-field hover:text-ink"
-              )}
+              render={<Button variant="secondary" size="sm" />}
             >
               <ListChecks aria-hidden className="size-3.5" />
               <span>{t.openChanges}</span>
-              <span className="text-ink-3 tabular-nums">{total}</span>
+              <span className="text-ink-2 tabular-nums">{total}</span>
               <ChevronDown
                 aria-hidden
                 className={cn(
-                  "size-3.5 transition-transform duration-160",
-                  listOpen && "rotate-180"
+                  "size-3.5 transition-transform duration-(--motion-duration) ease-(--motion-easing)",
+                  open && "rotate-180"
                 )}
               />
-            </button>
+            </PopoverTrigger>
             {onStep && !compact && (
-              <div
-                className={cn(
-                  "flex items-center gap-xxs",
-                  "edge-l-m pl-xs",
-                  "text-body-s",
-                  "border-line text-ink-2"
-                )}
-              >
+              <div className="flex items-center gap-xxs text-body-s text-ink-2">
                 <StepButton
                   label={t.prevChange}
                   keys="←"
@@ -157,52 +130,45 @@ export function Headline({
             )}
           </div>
         ) : (
-          <span className="corner-full bg-card px-l py-m text-body-m text-ink-2 ring-1 ring-line">
+          <span className="text-body-s text-ink-2">
             {counts.files ? t.filesOnly : t.summaryNoChange}
           </span>
         )}
-        {!compact && <CommitRange model={model} t={t} />}
       </div>
 
-      {listOpen && !compact && onPick && (
-        // Over the map, under the headline: it takes no room from the canvas and folds
-        // away as soon as a change is picked.
-        <div className="fade-in absolute top-full left-0 z-20 mt-m w-[360px] max-w-[calc(100vw-32px)] corner-l bg-card p-s shadow-[var(--shadow-float)] ring-1 ring-line">
+      {onPick && (
+        <PopoverContent
+          aria-label={t.listTitle}
+          align="start"
+          sideOffset={8}
+          className="w-[360px] max-w-(--available-width)"
+          initialFocus={(interaction) => interaction === "keyboard"}
+        >
           <ol
             aria-label={t.listTitle}
             className="flex max-h-[min(52dvh,440px)] [scrollbar-width:thin] flex-col gap-xxs overflow-y-auto"
           >
             {model.stops.map((stop) => (
               <li key={stop.no} data-tone={stop.tone ?? "unsure"}>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   aria-current={picked === stop.no ? "true" : undefined}
-                  onClick={() => {
-                    setListOpen(false)
-                    trigger.current?.focus()
-                    onPick(stop.no)
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-l",
-                    "corner-m px-l py-l",
-                    "text-left",
-                    "transition-colors duration-160",
-                    "hover:bg-field",
-                    picked === stop.no && "bg-field"
-                  )}
+                  onClick={() => pick(stop.no)}
+                  className="h-auto w-full justify-start gap-l rounded-2xl px-l py-l text-left whitespace-normal aria-[current=true]:bg-(--selection-bg)"
                 >
                   <NumberDisc no={stop.no} />
                   <span className="min-w-0 flex-1 text-body-m text-ink">
                     {stopTitle(stop, model, t)}
                   </span>
                   <ReviewBadge risky={stop.risky} status={stop.status} t={t} />
-                </button>
+                </Button>
               </li>
             ))}
           </ol>
-        </div>
+        </PopoverContent>
       )}
-    </div>
+    </Popover>
   )
 }
 
@@ -235,10 +201,7 @@ function StepButton({
       </TooltipTrigger>
       <TooltipContent side="bottom" sideOffset={6}>
         {label}
-        <kbd
-          data-slot="kbd"
-          className="corner-xs bg-background/20 px-xs font-body"
-        >
+        <kbd data-slot="kbd" className="bg-background/20 px-xs font-body">
           {keys}
         </kbd>
       </TooltipContent>

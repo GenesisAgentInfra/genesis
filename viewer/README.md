@@ -40,20 +40,24 @@ uv run python viewer/scripts/fill_template.py viewer/dev/sample-refund.json out.
 | `src/model.ts`, `src/presentation.ts` | The payload turned into what the page shows: flows, changes, their tones. |
 | `src/canvas/` | One flow as a diagram: lane layout (`graph.ts`), step cards, lines. |
 | `src/atlas/` | The whole product on one canvas: modules, flow cards, rows. |
-| `src/components/` | Headline, change list, commit tree, detail panel; `ui/` are shadcn components. |
+| `src/components/` | Headline, change list, commit tree, detail panel. `ui/` holds the shadcn Base UI Luma components. |
 | `src/i18n.ts` | Interface text, Chinese and English; the page follows the content's language. |
 | `graphical/` | The theme (see below). |
 
-Stack: React 19, Vite, Tailwind CSS 4, React Flow for the canvas, Base UI primitives through
-shadcn components. Compose with Base UI's `render` prop (not `asChild`); a link that looks
-like a button takes `buttonVariants` instead of being rendered through `Button`.
+Stack: React 19, Vite, Tailwind CSS 4, React Flow for the canvas, and shadcn Luma
+components built on Base UI. Luma components use the viewer's theme aliases and Geist Mono.
+Compose controls using Base UI's `render` prop.
 
 ## Theme
 
-Styles run on [Graphical](https://www.graphicalui.com/)'s tokens. The theme is
-`graphical/themes/graphical.json`; `graphical/generated/` holds the CSS built from it, which
-`src/index.css` imports. Everything the page needs is in this repository: installing,
-testing and building take nothing from Graphical.
+Styles run on [Graphical](https://www.graphicalui.com/)'s tokens. The active theme is
+selected in `graphical/project.json` from the documents in `graphical/themes/`.
+`graphical/generated/` holds the CSS built from it, which `src/index.css` imports. Installing, testing and building need neither the Graphical
+editor nor a Graphical account.
+
+The Graphical export in `src/components/graphical/` supplies the theme provider and
+motion settings for the canvas. The viewer imports its controls and cards from
+`@/components/ui`. The development editor previews theme and mode changes.
 
 Graphical's editor, for changing the theme, is a paid package and is not in the repository.
 With a licence, put its archive at `graphical/packages/editor-1.0.4.tgz` and run

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "name": "Genesis",
   "theme": {
-    "name": "Genesis",
+    "name": "Base",
     "iconStyle": "outlined",
     "animation": {
       "duration": 150,

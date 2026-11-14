@@ -7,7 +7,7 @@ import {
   type Atlas,
   type AtlasNode,
 } from "@/atlas/build"
-import { GLIDE_ARM, GLIDE_MS, type Shot } from "@/canvas/camera"
+import { GLIDE_MS, type Shot } from "@/canvas/camera"
 import { WALK_LEAD, walkTimes, type Trail } from "@/canvas/emphasis"
 import type { StepNode } from "@/canvas/graph"
 import { wayThrough } from "@/flow-graph"
@@ -53,9 +53,8 @@ export interface Place {
   selected?: Selected
   /** The change picked on the map: its card rings and what it leads to answers. */
   current?: { node: string; no: number }
-  /** The ripple of the change picked: which one it is, whether it has played out, and
-   *  how long after it starts the ring comes (while the camera is still on its way). */
-  ripple: { run: number; settled: boolean; delay: number }
+  /** The ripple of the change picked, and whether the reader interrupted it. */
+  ripple: { run: number; settled: boolean }
   walk?: Walk
   /** The last thing the camera was sent to look at. */
   camera: Order
@@ -63,7 +62,7 @@ export interface Place {
 
 /** The whole map, nothing picked. */
 export const START: Place = {
-  ripple: { run: 0, settled: true, delay: 0 },
+  ripple: { run: 0, settled: true },
   camera: { no: 0, shot: { of: "place" }, ms: 0 },
 }
 
@@ -184,7 +183,7 @@ function focusOn(
 }
 
 /** A change is picked on its step: it rings, and the steps it leads to answer. */
-function pick(place: Place, node: StepNode, world: World, no?: number): Place {
+function pick(place: Place, node: StepNode, no?: number): Place {
   const { coupons } = node.data
   const shown =
     coupons.find((coupon) => coupon.no === (no ?? place.current?.no)) ??
@@ -195,7 +194,6 @@ function pick(place: Place, node: StepNode, world: World, no?: number): Place {
     ripple: {
       run: place.ripple.run + 1,
       settled: false,
-      delay: world.motion ? GLIDE_ARM : 0,
     },
   }
 }
@@ -228,12 +226,7 @@ function toChange(place: Place, no: number, world: World): Place {
         )
       : undefined
   if (!node) return next
-  return pick(
-    open(next, { type: "step", node: node.id }, world),
-    node,
-    world,
-    no
-  )
+  return pick(open(next, { type: "step", node: node.id }, world), node, no)
 }
 
 /** On to the next change, or back to the one before; past either end it wraps. */
@@ -354,7 +347,7 @@ function onNode(place: Place, node: AtlasNode, world: World): Place {
         return home ? focusOn(next, home, world, flowIdOf(node)) : next
       const opened = open(next, { type: "step", node: node.id }, world)
       return node.data.coupons.length && !node.data.removedFlow
-        ? pick(opened, node, world)
+        ? pick(opened, node)
         : opened
     }
   }

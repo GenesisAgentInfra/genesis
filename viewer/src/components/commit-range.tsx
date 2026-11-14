@@ -2,6 +2,7 @@ import * as React from "react"
 import { CommitGraph, type Branch } from "commit-graph"
 import { ArrowRight, ArrowUpRight, GitGraph } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import {
   Popover,
   PopoverContent,
@@ -22,9 +23,9 @@ import type { Model } from "@/model"
 
 /** A commit by its short name, opening on GitHub when the repository is known. */
 function Sha({ sha, repo, t }: { sha: string; repo?: Repo; t: Strings }) {
-  const short = sha.slice(0, 7)
+  const short = sha.startsWith("worktree:") ? "worktree" : sha.slice(0, 7)
   const className =
-    "corner-s px-xs font-data text-body-s text-ink-2 tabular-nums"
+    "corner-s px-xs font-data text-body-m font-medium tabular-nums"
   if (!repo || !isSha(sha))
     return (
       <span title={sha} className={className}>
@@ -39,7 +40,7 @@ function Sha({ sha, repo, t }: { sha: string; repo?: Repo; t: Strings }) {
       title={t.openCommit(short)}
       className={cn(
         className,
-        "underline decoration-line underline-offset-[3px] transition-colors duration-160 hover:text-ink hover:decoration-ink-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-select"
+        "underline decoration-ink-2 underline-offset-[3px] transition-colors duration-160 hover:text-select hover:decoration-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-select"
       )}
     >
       {short}
@@ -80,35 +81,27 @@ export function CommitRange({ model, t }: { model: Model; t: Strings }) {
           setOpen((value) => !value)
         }}
         className={cn(
-          "hidden h-9 items-center gap-xxs",
-          "corner-full py-xs pr-m pl-xs",
-          "cursor-pointer bg-card shadow-[var(--shadow-node)] ring-1 ring-line transition-shadow duration-160",
-          "hover:shadow-[var(--shadow-node-hover)] md:inline-flex",
-          open && "ring-ink-3/40"
+          "hidden h-8 cursor-pointer items-center gap-xxs rounded-full pr-m pl-xs text-ink transition-colors duration-160 hover:bg-field md:inline-flex",
+          open && "bg-field"
         )}
       >
         <PopoverTrigger
           aria-label={t.showHistory}
           title={t.showHistory}
-          className={cn(
-            "inline-flex size-7 items-center justify-center",
-            "corner-full",
-            "text-ink-3 transition-colors duration-160",
-            "hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-select",
-            "data-popup-open:bg-field data-popup-open:text-ink"
-          )}
+          render={<Button variant="ghost" size="icon-xs" />}
         >
           <GitGraph aria-hidden className="size-3.5" />
         </PopoverTrigger>
         <Sha sha={base} repo={repo} t={t} />
-        <ArrowRight aria-hidden className="size-3 shrink-0 text-ink-3" />
+        <ArrowRight aria-hidden className="size-3.5 shrink-0" />
         <Sha sha={head} repo={repo} t={t} />
       </div>
       <PopoverContent
         anchor={anchor}
         align="start"
         sideOffset={8}
-        className="w-[440px] max-w-[calc(100vw-32px)] gap-zero corner-xl p-zero shadow-[var(--shadow-float)] ring-line"
+        aria-label={t.showHistory}
+        className="w-[440px] max-w-[min(var(--available-width),calc(100vw-var(--space-xl)))] gap-zero p-zero"
       >
         <Tree base={base} head={head} repo={repo} t={t} />
       </PopoverContent>

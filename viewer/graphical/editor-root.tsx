@@ -3,7 +3,12 @@
 // `genesis map render` writes never carries it: no editor, no editor styles, no network.
 import { useEffect, useState, type ComponentType, type ReactNode } from "react"
 
-type HostProps = { children: ReactNode; route: string }
+export type HostProps = {
+  children: ReactNode
+  route: string
+  colorMode: "light" | "dark"
+  onColorModeChange: (mode: "light" | "dark") => void
+}
 
 // Named by pattern rather than imported, so a checkout without the package type-checks
 // and builds without ever opening the file that needs it.

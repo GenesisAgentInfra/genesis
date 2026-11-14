@@ -1,4 +1,7 @@
+@layer theme, base, graphical-editor, components, utilities;
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "./fonts/fonts.css";
 /* Graphical's classes, then its theme: the variables every token below aliases. */
 @import "../graphical/generated/tailwind-theme.css";
 @import "../graphical/generated/theme.css";
@@ -9,10 +12,13 @@
    (see theme.ts, which sets data-theme on the root). */
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant data-horizontal (&:where([data-orientation="horizontal"]));
+@custom-variant data-vertical (&:where([data-orientation="vertical"]));
 
 @theme inline {
   --font-sans: var(--font-body);
   --font-mono: var(--font-data);
+  --font-heading: var(--font-display);
 
   --color-canvas: var(--canvas);
   --color-ink: var(--ink);
@@ -49,9 +55,9 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--luma-radius) * 1.4);
+  --radius-3xl: calc(var(--luma-radius) * 2.2);
+  --radius-4xl: calc(var(--luma-radius) * 2.6);
 }
 
 :root {
@@ -79,16 +85,6 @@
   --scrollbar: var(--neutral-5);
   --selection-bg: var(--color-1-transparent);
   --selection-ink: var(--neutral-10);
-  --tile-trigger-bg: var(--color-3-transparent);
-  --tile-trigger-ink: var(--color-3);
-  --tile-action-bg: var(--color-2-transparent);
-  --tile-action-ink: var(--color-2);
-  --tile-decision-bg: var(--color-4-transparent);
-  --tile-decision-ink: var(--color-4);
-  --tile-external-bg: var(--color-5-transparent);
-  --tile-external-ink: var(--color-5);
-  --tile-result-bg: var(--neutral-3);
-  --tile-result-ink: var(--neutral-8);
 
   --background: var(--neutral-3);
   --foreground: var(--neutral-10);
@@ -106,20 +102,13 @@
   --border: var(--neutral-4);
   --input: var(--neutral-4);
   --ring: var(--color-1);
-  --radius: var(--radius-l);
+  --luma-radius: 0.625rem;
 
   --ease-out: var(--motion-easing);
   --shadow-node: var(--shadow-s);
   --shadow-node-hover: var(--shadow-m);
   --shadow-float: var(--shadow-l);
-  /* The card a flow sits on: a half step between the canvas and a step card, lit from
-     above, so the white steps still stand off it. */
-  --flow-top: var(--neutral-1);
-  --flow-bottom: var(--neutral-2);
-  --flow-rim: var(--neutral-10-transparent);
-  --shadow-flow:
-    inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(17 17 19 / 0.03),
-    0 22px 44px -30px rgb(17 17 19 / 0.2);
+  --flow: color-mix(in oklab, var(--card) 36%, var(--canvas));
   color-scheme: light;
 }
 
@@ -149,16 +138,6 @@
   --scrollbar: var(--neutral-6);
   --selection-bg: var(--color-1-transparent);
   --selection-ink: var(--neutral-10);
-  --tile-trigger-bg: var(--color-3-transparent);
-  --tile-trigger-ink: var(--color-3);
-  --tile-action-bg: var(--color-2-transparent);
-  --tile-action-ink: var(--color-2);
-  --tile-decision-bg: var(--color-4-transparent);
-  --tile-decision-ink: var(--color-4);
-  --tile-external-bg: var(--color-5-transparent);
-  --tile-external-ink: var(--color-5);
-  --tile-result-bg: var(--neutral-4);
-  --tile-result-ink: var(--neutral-8);
 
   --card: var(--neutral-3);
   --popover: var(--neutral-3);
@@ -169,12 +148,6 @@
   --shadow-node: var(--shadow-s);
   --shadow-node-hover: var(--shadow-m);
   --shadow-float: var(--shadow-l);
-  --flow-top: var(--neutral-2);
-  --flow-bottom: var(--neutral-2);
-  --flow-rim: var(--neutral-10-transparent);
-  --shadow-flow:
-    inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.3),
-    0 22px 44px -30px rgb(0 0 0 / 0.6);
   color-scheme: dark;
 }
 
@@ -227,7 +200,9 @@
     @apply bg-background text-foreground;
     margin: var(--space-zero);
     font-size: var(--size-m);
+    font-weight: var(--weight-body-regular);
     line-height: 1.5;
+    text-wrap: pretty;
   }
   /* Base UI: the page is its own stacking context, so popups in portals always stand
      above it whatever z-index the canvas uses. */
@@ -254,12 +229,17 @@
 
 /* React Flow, quieted to the canvas. */
 .react-flow {
-  --xy-background-color: var(--canvas);
+  --xy-background-color: transparent;
   --xy-edge-stroke: var(--edge);
   --xy-edge-stroke-width: 1.5;
   --xy-handle-background-color: var(--handle);
   --xy-handle-border-color: var(--handle-rim);
   --xy-attribution-background-color: transparent;
+}
+/* The viewer paints the grid independently of the clipped graph. */
+.map-grid {
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: var(--space-xxl) var(--space-xxl);
 }
 .react-flow__attribution {
   font-size: var(--size-xs);
@@ -287,12 +267,36 @@
 .react-flow__node-step {
   cursor: pointer;
 }
-.react-flow__node:focus-visible [data-slot="step-card"] {
+.react-flow__node:focus-visible [data-step-card] {
   outline: 2px solid var(--select);
   outline-offset: 3px;
 }
 
-/* The ripple from the current change: the edges leaving it draw themselves outward. */
+/* The route stays readable while the color travels along affected edges. */
+.map-step {
+  opacity: var(--step-opacity, 1);
+  transition: opacity var(--motion-duration) var(--motion-easing);
+}
+.map-step:hover,
+.react-flow__node:focus-visible .map-step,
+.map-step:focus-within {
+  opacity: 1;
+}
+.map-edge {
+  transition: opacity var(--motion-duration) var(--motion-easing);
+}
+.map-edge-label {
+  opacity: var(--edge-label-opacity, 1);
+  transition: opacity var(--motion-duration) var(--motion-easing);
+}
+.map-edge-label:focus-within,
+.map-edge-label:hover {
+  opacity: 1;
+}
+.map-impact-edge {
+  pointer-events: none;
+}
+
 @keyframes edge-draw {
   from {
     stroke-dashoffset: 1;
@@ -316,6 +320,9 @@
 .edge-fade {
   animation: edge-fade var(--edge-duration) ease-out both;
   animation-delay: var(--edge-delay, 0ms);
+}
+.map-impact-edge {
+  animation-timing-function: var(--motion-easing);
 }
 
 /* The current change starts the ripple with one soft ring. */
@@ -342,7 +349,7 @@
   }
 }
 .tag-in {
-  animation: tag-in var(--tag-duration) var(--ease-out) both;
+  animation: tag-in var(--motion-duration) var(--motion-easing) both;
   animation-delay: var(--tag-delay, 0ms);
 }
 
@@ -350,9 +357,6 @@
   from {
     opacity: 0;
   }
-}
-.fade-in {
-  animation: fade-in 160ms ease-out both;
 }
 
 /* The detail panel slides in from where it goes back to (--panel-from, set beside its
@@ -370,10 +374,15 @@
   }
 }
 .panel-in {
-  animation: panel-in 260ms var(--ease-out) both;
+  animation: panel-in var(--motion-large-duration) var(--motion-large-easing)
+    both;
+}
+.panel-in > [data-slot="card"] {
+  animation: fade-in var(--motion-duration) var(--motion-easing) both;
 }
 .panel-out {
-  animation: panel-out 260ms var(--ease-out) both;
+  animation: panel-out var(--motion-large-duration) var(--motion-large-easing)
+    both;
   pointer-events: none;
 }
 
@@ -382,15 +391,16 @@
   .edge-fade,
   .arrive,
   .tag-in,
-  .fade-in,
   [data-slot="tooltip-content"],
   .panel-in,
+  .panel-in > [data-slot="card"],
   .panel-out {
     animation: none;
   }
   *,
   *::before,
   *::after {
+    transition-delay: 0ms !important;
     transition-duration: 0ms !important;
   }
 }

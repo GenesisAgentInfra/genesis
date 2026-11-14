@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // Graphical's exported runtime is checked by TypeScript and kept in vendor format.
+  globalIgnores(['dist', 'src/components/graphical/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

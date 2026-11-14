@@ -24,8 +24,9 @@ const P = 0
 /** The room a module's heading takes over its first flow. */
 export const HEAD_H = 60
 /** A drawn flow sits on a card of its own: its name in the head, its steps inset below. */
-export const CARD_HEAD = 52
+export const CARD_HEAD = 48
 const CARD_X = 20
+const CARD_T = 14
 const CARD_B = 20
 const FLOW_GAP = 20
 const MODULE_GAP = 64
@@ -494,7 +495,7 @@ export function buildAtlas(
       for (const flow of drawn) {
         y += gap
         const view = flow.view
-        const height = CARD_HEAD + flow.h + CARD_B
+        const height = CARD_HEAD + CARD_T + flow.h + CARD_B
         nodes.push({
           id: `flow${SEP}${view.flow.flow_id}`,
           type: "flow",
@@ -515,7 +516,7 @@ export function buildAtlas(
         })
         // The flow keeps its drawing in its own coordinates; the card gets a copy in place.
         const dx = P + CARD_X
-        const dy = y + CARD_HEAD
+        const dy = y + CARD_HEAD + CARD_T
         for (const node of [...flow.boxes, ...flow.nodes])
           nodes.push(movedNode(node, dx, dy))
         for (const edge of flow.edges) edges.push(movedEdge(edge, dx, dy))

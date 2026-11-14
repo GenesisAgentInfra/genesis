@@ -19,6 +19,7 @@ import {
 import { NumberDisc, StatusMark } from "@/canvas/step-node"
 import { ReviewBadge } from "@/components/review-badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { useCanvas } from "@/canvas/context"
 import { cn } from "@/lib/utils"
 import { coverageKind, shortSummary } from "@/presentation"
@@ -82,7 +83,7 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
         className="pointer-events-auto absolute left-0 flex origin-bottom-left items-center gap-m"
         style={{ ...LIFT, bottom: `calc(100% - ${HEAD_H - HEAD_CLEAR}px)` }}
       >
-        <h2 className="min-w-0 truncate text-body-xl font-medium text-ink">
+        <h2 className="min-w-0 truncate font-display text-body-xxl font-heavy text-ink">
           {data.title}
         </h2>
         <span
@@ -102,8 +103,8 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
             module that runs the full width it follows the count, so it stays in view when
             the map runs on past the screen. */}
         <Button
-          variant="outline"
-          size="sm"
+          variant="ghost"
+          size="xs"
           type="button"
           aria-expanded={data.open}
           title={data.open ? t.closeModuleHint : t.openModule}
@@ -117,11 +118,7 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
               : undefined
           }
           className={cn(
-            "nodrag nopan h-7 shrink-0 gap-s",
-            "corner-full edge-none px-l",
-            "text-body-s font-medium",
-            "bg-card text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line",
-            "hover:bg-card hover:text-ink hover:shadow-[var(--shadow-node-hover)] dark:bg-card dark:hover:bg-card",
+            "nodrag nopan shrink-0",
             data.wide ? "ml-xs" : "ml-auto",
             data.open ? "cursor-pointer" : "cursor-zoom-in"
           )}
@@ -157,16 +154,17 @@ export function FlowCardView({ data }: NodeProps<FlowCardNode>) {
   const { onRun } = useAtlas()
   const away = canvas.away(data.flowId || OFF_MAP)
   return (
-    <div
+    <Card
       data-tone={data.tone}
       className={cn(
-        "h-full w-full",
-        "corner-xl",
-        "pointer-events-none bg-[linear-gradient(180deg,var(--flow-top),var(--flow-bottom))] shadow-[var(--shadow-flow)] ring-1 ring-[var(--flow-rim)] transition-opacity duration-160",
+        "pointer-events-none h-full w-full gap-0 rounded-3xl bg-(--flow) py-0 shadow-none ring-0 transition-opacity duration-160",
         away && "opacity-35"
       )}
     >
-      <div className="flex items-center px-xxl" style={{ height: CARD_HEAD }}>
+      <CardHeader
+        className="flex shrink-0 items-center"
+        style={{ height: CARD_HEAD }}
+      >
         <div
           className="pointer-events-auto flex min-w-0 origin-left cursor-pointer items-center gap-m"
           style={LIFT}
@@ -178,38 +176,40 @@ export function FlowCardView({ data }: NodeProps<FlowCardNode>) {
               className="size-1.5 shrink-0 corner-full bg-tone"
             />
           )}
-          <span
+          <CardTitle
             title={data.name}
             className={cn(
-              "min-w-0 truncate text-body-m font-medium text-ink",
+              "min-w-0 truncate text-body-m font-heavy text-ink",
               data.code && "font-data text-body-m font-regular",
               data.struck &&
                 "text-ink-2 line-through decoration-ink decoration-[1.5px]"
             )}
           >
             {data.name}
-          </span>
+          </CardTitle>
           {data.code && (
             <span className="shrink-0 corner-s bg-field px-xs pb-xxs text-body-s text-ink-3">
               {t.skeletonTag}
             </span>
           )}
           {data.flowId && !data.struck && !canvas.focus && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
               onClick={(event) => {
                 event.stopPropagation()
                 onRun(data.flowId)
               }}
-              className="nodrag nopan ml-xs inline-flex shrink-0 items-center gap-xs corner-full bg-card px-m py-xxs text-body-s font-medium text-ink-2 shadow-[var(--shadow-node)] ring-1 ring-line transition-colors duration-160 hover:text-ink"
+              className="nodrag nopan ml-xs"
             >
               <Play aria-hidden className="size-3" />
               {t.runFlow}
-            </button>
+            </Button>
           )}
         </div>
-      </div>
-    </div>
+      </CardHeader>
+    </Card>
   )
 }
 
@@ -235,12 +235,11 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
   const status = statusOf(change.tests)
   const picked = canvas.apart === id
   return (
-    <div
+    <Card
+      size="sm"
       data-tone={data.coupon.tone}
       className={cn(
-        "relative flex h-full w-full flex-col justify-between",
-        "corner-xl edge-l border-dashed p-l",
-        "cursor-pointer border-tone/60 bg-card shadow-[var(--shadow-node)] transition-[opacity,box-shadow,border-color] duration-160",
+        "relative h-full w-full cursor-pointer justify-between gap-0 overflow-visible rounded-3xl border border-dashed border-tone/60 p-3 ring-0 transition-[opacity,box-shadow,border-color] duration-160",
         "hover:shadow-[var(--shadow-node-hover)]",
         picked && PICKED,
         away && "opacity-35"
@@ -261,7 +260,7 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
         label={t.coverage[coverageKind(change.tests)]}
         className="text-body-s text-ink-2"
       />
-    </div>
+    </Card>
   )
 }
 
@@ -272,13 +271,12 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
   const away = canvas.away(data.flowId)
   const Icon = (data.entry && ENTRY_ICON[data.entry]) || Workflow
   return (
-    <div
+    <Card
+      size="sm"
       // A flow that is gone carries no verdict: it rings in the plain colour.
       data-tone={data.struck ? "unsure" : undefined}
       className={cn(
-        "relative flex h-full w-full items-center gap-m",
-        "corner-l edge-m py-s pr-xl pl-s",
-        "cursor-pointer border-line bg-card shadow-[var(--shadow-node)] transition-[opacity,box-shadow] duration-160",
+        "relative h-full w-full cursor-pointer flex-row items-center gap-m overflow-visible rounded-2xl border border-line py-0 pr-xl pl-s shadow-none ring-0 transition-[opacity,box-shadow] duration-160",
         "hover:shadow-[var(--shadow-node-hover)]",
         data.struck && "border-dashed",
         canvas.apart === id && PICKED,
@@ -355,7 +353,7 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
                 ? t.skeletonTag
                 : null}
       </span>
-    </div>
+    </Card>
   )
 }
 

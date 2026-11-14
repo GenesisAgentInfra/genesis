@@ -112,8 +112,14 @@ function textWidth(text: string, cjk = 14, latin = 7.7): number {
     width += /[\u3000-\u9fff\uff00-\uffef]/.test(char) ? cjk : latin
   return width
 }
-/** A label on a line: a small pill. */
-const labelWidth = (text: string) => Math.ceil(textWidth(text, 12, 6.7)) + 18
+/** Long conditions can be opened from the edge instead of widening the flow. */
+export const EDGE_LABEL_LIMIT = 144
+const fullLabelWidth = (text: string) =>
+  Math.ceil(textWidth(text, 12, 7.3)) + 12
+const labelWidth = (text: string) =>
+  Math.min(EDGE_LABEL_LIMIT, fullLabelWidth(text))
+export const isLongEdgeLabel = (text: string) =>
+  fullLabelWidth(text) > EDGE_LABEL_LIMIT
 
 function heightOf(data: StepNodeData): number {
   if (data.stub) return PILL_H
@@ -794,21 +800,18 @@ function arrange(
     const back = colX[Math.max(way.ct, 0)] - TURN - (way.right ?? 0) * LANE
     const passes = way.ct - way.cs >= 2
     const half = way.width / 2
+    const nearExit = (x: number, y: number) => ({ x: x + 8 + half, y })
     let points: Point[]
     let label: Point | undefined
     let slide: { from: number; to: number; y: number } | undefined
     if (way.kind === "straight") {
       points = [start, end]
-      label = passes
-        ? { x: cell(way.cs + 1), y: start.y }
-        : { x: (start.x + end.x) / 2, y: start.y }
+      label = nearExit(start.x, start.y)
     } else if (way.kind === "early") {
       points = [start, { x: out, y: start.y }, { x: out, y: end.y }, end]
-      label = passes
-        ? { x: cell(way.cs + 1), y: end.y }
-        : way.hang
-          ? { x: end.x - 14 - half, y: end.y }
-          : { x: out + 8 + half, y: end.y }
+      label = way.hang
+        ? { x: end.x - 14 - half, y: end.y }
+        : nearExit(out, end.y)
     } else if (way.kind === "late") {
       points = [start, { x: back, y: start.y }, { x: back, y: end.y }, end]
       label = passes

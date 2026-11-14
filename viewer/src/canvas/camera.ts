@@ -67,10 +67,8 @@ const STEPS_FLOOR = 0.5
 const WALK_ZOOM = 0.85
 /** A flow this near its module's top is framed with the module's name over it. */
 const NAME_REACH = HEAD_H + 80
-/** The glide from one place to the next; the ripple of a picked change starts at 70 % of
- *  it, as the camera is about to arrive. */
+/** The glide from one place to the next. */
 export const GLIDE_MS = 520
-export const GLIDE_ARM = Math.round(GLIDE_MS * 0.7)
 /** One press of a zoom button. */
 export const ZOOM_MS = 200
 export const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
@@ -79,15 +77,13 @@ export const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
 export const readingSpan = (width: number) =>
   Math.max(Math.floor((width - 84) / READ_ZOOM / 20) * 20, 880)
 
-/** The part of the screen the map is read in: clear of the headline, the panel and the
- *  controls at the right edge. */
+/** The part of the screen the map is read in, between the header, toolbar and panel. */
 export function readingArea(screen: Screen, panel: boolean): Box {
   const { narrow, width, height } = screen
   const inset = narrow ? 12 : 16
   const top = inset + screen.headline + (narrow ? 16 : 24)
-  // The zoom controls stand at the right edge, under the panel when it is up.
-  const right = narrow ? 12 : panel ? PANEL_W + 40 : 60
-  const bottom = narrow && panel ? height * 0.52 + 16 : 24
+  const right = narrow ? 12 : panel ? PANEL_W + 40 : inset
+  const bottom = 64 + (narrow && panel ? height * 0.52 : 0)
   return {
     x: inset,
     y: top,
@@ -116,6 +112,63 @@ function around(boxes: Box[]): Box | undefined {
     width: Math.max(...boxes.map((box) => box.x + box.width)) - x,
     height: Math.max(...boxes.map((box) => box.y + box.height)) - y,
   }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max))
+}
+
+/** Where a manual pan can settle at its current zoom. */
+export function settlePan(view: Viewport, scene: Scene): Viewport {
+  const bounds = around(scene.atlas.nodes.map(boxOf))
+  if (!bounds) return view
+  const area = readingArea(scene.screen, scene.panel)
+  const { zoom } = view
+  const spareX = area.width - bounds.width * zoom
+  const spareY = area.height - bounds.height * zoom
+  const left = area.x - bounds.x * zoom
+  const top = area.y - bounds.y * zoom
+  const x = spareX >= 0 ? left + spareX / 2 : clamp(view.x, left + spareX, left)
+  const y = spareY >= 0 ? top : clamp(view.y, top + spareY, top)
+  const bounded = { x, y, zoom }
+
+  // The outer rectangle can contain empty space between modules. In that case,
+  // bring the closest readable card into view.
+  let nearest = bounded
+  let distance = Infinity
+  for (const node of scene.atlas.nodes) {
+    if (node.type === "module" || node.type === "flow" || node.type === "box")
+      continue
+    const box = boxOf(node)
+    const cardLeft = box.x * zoom
+    const cardTop = box.y * zoom
+    const cardWidth = box.width * zoom
+    const cardHeight = box.height * zoom
+    const visibleWidth =
+      Math.min(x + cardLeft + cardWidth, area.x + area.width) -
+      Math.max(x + cardLeft, area.x)
+    const visibleHeight =
+      Math.min(y + cardTop + cardHeight, area.y + area.height) -
+      Math.max(y + cardTop, area.y)
+    if (
+      visibleWidth >= Math.min(cardWidth / 2, area.width, 48) &&
+      visibleHeight >= Math.min(cardHeight / 2, area.height, 24)
+    )
+      return bounded
+
+    const left = area.x - cardLeft
+    const right = left + area.width - cardWidth
+    const top = area.y - cardTop
+    const bottom = top + area.height - cardHeight
+    const nextX = clamp(x, Math.min(left, right), Math.max(left, right))
+    const nextY = clamp(y, Math.min(top, bottom), Math.max(top, bottom))
+    const offset = Math.hypot(nextX - x, nextY - y)
+    if (offset < distance) {
+      nearest = { x: nextX, y: nextY, zoom }
+      distance = offset
+    }
+  }
+  return nearest
 }
 
 /**
