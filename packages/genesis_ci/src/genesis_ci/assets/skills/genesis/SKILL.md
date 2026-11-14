@@ -191,6 +191,12 @@ The context contains:
 - `other_facts`, further facts of the entry function. They also anchor steps, but
   nothing obliges you to mention them;
 - `callees`, functions you may want to read next;
+- `large_callees`, the called functions with eight or more conditions, loops and
+  results inside. A step that stands for one of them needs `unexpanded_reason`:
+  write it in your first submission instead of learning it from a refusal.
+  `query --symbol` gives the same list for the function it shows;
+- `change`, in a change session: which changes this flow carries and which it is
+  asked to bring onto the map (section 5);
 - `previous`, the result of the accepted version if there is one. `accountable_truncated`
   is true when there are more units than the list holds.
 
@@ -206,9 +212,10 @@ genesis map query --repo /absolute/app --session SESSION_ID --search "text"
 genesis map read  --repo /absolute/app --session SESSION_ID --evidence EVIDENCE_ID
 ```
 
-`query --symbol` lists the facts of that function a step can be anchored on. You may
-also read files with your own tools; the CLI still checks every citation against the
-frozen snapshot.
+`query --symbol` lists the facts of that function a step can be anchored on, and under
+`expands_to` the units that become accountable once a step is anchored inside it. You
+may also read files with your own tools; the CLI still checks every citation against
+the frozen snapshot.
 
 Then write the flow and submit it. This example leaves nothing unaccounted:
 
@@ -281,7 +288,11 @@ contract when the code cannot establish it; never invent example payload values.
 Rules the CLI enforces:
 
 - **Steps.** `kind` is `trigger`, `action`, `decision`, `external` or `result`. One step
-  may cover several lines of code. Do not add a step the code does not show.
+  may cover several lines of code. Do not add a step the code does not show. `kind`
+  is your reading of what the step is, whatever it is anchored on: a loop or a
+  condition may anchor an `action` step that covers the whole of it, such as "save
+  every result". Only make it a `decision` when the map should show its branches,
+  since `branch` edges leave decision steps only.
 - **Evidence.** Each item is either `{"evidence_id": "ev_..."}` taken from the context
   or a query, or a `path` with `start_line`, `end_line` and a short `quote` copied from
   those lines. A wrong quote means you are not looking at the frozen content: read it
@@ -289,9 +300,13 @@ Rules the CLI enforces:
 - **Anchors.** A step is `resolved` only if it rests on analyzer facts. Either list
   fingerprints in `anchors`, or cite a range of at most 12 lines: the facts that start
   inside it become the anchors, so a call written over many lines is cited by its
-  first lines. Calls to built-ins and code that runs at import time, such as a
-  decorator line, are not picked up from a range; a built-in call can still be listed
-  by its fingerprint. Use the entry's `anchor` for a trigger step.
+  first lines. Calls to built-ins, which include methods of built-in types such as
+  `items.append(...)`, are left out of what a range gives a step, unless the range
+  holds nothing else: then they are its anchors. Code that runs at import time, such
+  as a decorator line, is never picked up. A range does pick up the calls written
+  inside a longer statement, such as a helper in the arguments of a `return` that
+  runs over several lines; when you list that function in `omitted`, the step is not
+  taken to stand for it. Use the entry's `anchor` for a trigger step.
 - **Lines without facts.** Facts are conditions, loops, calls, returns and raises. A
   plain assignment has none, so a step that cites only assignments is refused with
   `step_not_anchored`. When the two sides of a condition only assign a value, do not
@@ -304,31 +319,92 @@ Rules the CLI enforces:
   `continue` are not facts a step can stand on, and no fact list shows them. Draw the
   edge that leads to one, usually a branch of the condition around it, to the step
   that follows the loop for `break`, and back to the loop's step for `continue`.
+  The edge from the last step of the body back to the loop's step has
+  `"relation": "loop"`. When a call sits in the loop header, as in
+  `for item in load_items(batch)`, it runs once, before the loop. One step that
+  cites the line is anchored on both and stands for the function. To expand the
+  function instead, give the call and the loop a step each by listing their
+  fingerprints in `anchors`: the call's step enters the function, and the function
+  leads back to the loop's step.
 - **Other edges.** `relation` is `sequence`, `branch`, `loop`, `exception` or `call`,
   and any edge may carry a `label`. The CLI checks an edge against the control
   structure of the code. A `return` or `raise` ends a path, and the two sides of a
   condition do not flow into each other. An edge the code does not support is refused
   unless you set `"resolution": "candidate"` or `"unknown"` and give a `reason`. The
   same applies to a step you cannot ground.
-- **Error handling.** `try` and `except` are not analyzed. Describe a path into an
-  `except` block with `"relation": "exception"`, from the step that can fail to the
-  first step of the handler. The CLI has no fact to check it by, so it accepts the
-  edge as written and keeps it as a `candidate`: do not set `resolution` on it. A
-  `reason` is optional; give one when it is not obvious what raises.
+- **Into a function and back.** When you expand a function, draw the way execution
+  takes. Going in is an edge with `"relation": "call"` from the step that calls the
+  function to the first step inside it. Inside, connect the steps as usual. Coming
+  out is an edge from the place where the function is done to the step the caller
+  runs next: a `sequence` edge from its last step, or the branch of a decision
+  inside it, such as `{"source": "coupon", "target": "save", "relation": "branch",
+  "branch": "false"}`. The CLI checks both: the source of the edge going in must
+  lead to a call of that function, and the edge coming out must lead to code after
+  that call. The function may be several calls down: functions in between that only
+  pass the work on need no step, on the way in or on the way out. A `return` inside
+  a called function is not accountable and needs no step of its own. Do not also
+  draw an edge from the calling step past the function, as if it were skipped, and
+  do not leave the function's last steps as dead ends when the flow goes on.
+  - **Called from several places in one flow.** Draw the inside of the function
+    once. Every step that calls it gets its own `call` edge to the first step
+    inside, and the place where the function is done gets an edge to what each of
+    those callers runs next. Do not give the second caller a plain step instead:
+    the reader could not tell that it runs the same steps.
+  - **Called first thing in a branch or a loop body.** The call needs no step of
+    its own. The edge going in is then the decision's own `branch` edge, pointed
+    at the first step inside the function:
+    `{"source": "each", "target": "reserved", "relation": "branch", "branch": "loop"}`.
+    It is checked the way a `call` edge is. Do not draw a `call` edge from the
+    decision in its place: the decision would be left without that branch, and the
+    reader could not tell which outcome leads into the function. Coming out is as
+    for any call; when the loop body has nothing after the call, the function
+    leads back to the loop's step.
+  - **Handed over, not called** (`"deferred": true`). The `call` edge goes from the
+    step that hands the function over to the first step inside it. When the caller
+    does not wait (a thread is started, a task is queued, a callback is
+    registered), that step also leads on to the caller's own next step, and the
+    last step inside the function ends its path: draw no edge back. When the
+    caller waits for the result (`await asyncio.to_thread(...)`,
+    `future.result()`), draw the way back as for any call. The CLI accepts both,
+    because the code's structure does not show which it is: decide by reading it.
+- **Error handling.** Which statement raises into which `except` block is not
+  analyzed. An `except` block is off the normal path: when nothing is raised, the
+  last step of the `try` body leads straight to the code after the `try`, and that
+  is an ordinary edge. Inside the block connect steps as usual; where the block does
+  not end in `return` or `raise`, its last step leads on to the code after the
+  `try` as well. Describe a path into an `except` block with
+  `"relation": "exception"`, from the step that can fail to the first step of the
+  handler; any other edge into the block is refused. The CLI has no fact to check
+  an `exception` edge by, so it accepts it as written and keeps it as a `candidate`:
+  do not set `resolution` on it. A `reason` is optional; give one when it is not
+  obvious what raises.
 - **Accounting.** Every unit in `accountable` must be an anchor of some step, be the
   condition a branch edge takes, or be listed in `omitted` with a reason: `logging`,
   `input_validation`, `error_handling`, `instrumentation`, `merged_into_step` or
   `out_of_business_scope`. The map is about the business chain, not about every line,
   so the choice for a called function is yours:
   - **Expand it** when it is part of the chain: anchor a step inside it. Its own
-    conditions, loops and results then become accountable, and the functions it calls
-    become units in turn. The result of `submit` lists what that added.
+    conditions, loops and raised errors then become accountable, and the functions it
+    calls become units in turn. `query --symbol` lists them beforehand under
+    `expands_to`: give each a step or an entry in `omitted` in the same submission.
+    The result of `submit` lists whatever is still open.
   - **Let one step stand for it**: anchor a step on the call. Nothing inside it has to
     be mentioned, and the page marks the step as not expanded with what it hides. When
     the function has eight or more conditions, loops and results inside, the step needs
     `unexpanded_reason`: one sentence on why its inside is not part of the chain.
   - **Omit it** with a reason when it is not business behaviour, such as logging or
     formatting a value. One entry covers every call to the same function.
+
+  The three exclude each other. A function you expanded, or one a step is anchored
+  on, must not be listed in `omitted` as well: its steps already account for every
+  call to it. That is refused with `omitted_but_used`, and the error says which of
+  the two it is and names the steps. A call that a cited range merely picks up is
+  different: there the entry in `omitted` wins, and a step left with nothing else
+  in its lines is refused with `step_not_anchored`.
+
+  Only units in `accountable` need a place or an entry in `omitted`. `other_facts`
+  and the inside of a function you did not expand need neither: an entry for one of
+  them is accepted, recorded nowhere and listed under `ignored` in the result.
 
   Read a function with `query --symbol` before choosing; a rule that decides an outcome,
   such as a limit or a duplicate check, belongs on the map even two calls deep. Do not
@@ -338,8 +414,11 @@ Rules the CLI enforces:
 
 Read the result:
 
-- `rejected`: fix what `errors` names, by `path` and `code`, and submit again. Errors can
-  come in rounds: structure first, then citations and anchors, then edges. `rejections`
+- `rejected`: fix what `errors` names, by `path` and `code`, and submit again. `path`
+  gives the position, and `item` says which step, edge or omission that is by its own
+  key: go by `item` when you look for it in your submission. For an omission it
+  adds the code the fingerprint stands for and its line. Errors can come in
+  rounds: structure first, then citations and anchors, then edges. `rejections`
   counts refusals of this task. Stop after three refusals that bring no new kind of
   error, and move on to other tasks. `accepted_version_kept` tells you whether an
   earlier accepted version is still in place.
@@ -401,14 +480,33 @@ same list on the static structure.
 - `possibly_affected` lists flows that can reach changed code without a step on it;
   `removed_flows` the entries that no longer exist; `unanalyzed_changes` the changed
   files Genesis did not analyze, such as other languages. Mention all three.
+- `closest_flow` says where to describe changed code that no flow has expanded yet
+  (see below).
 - `possible_entries` lists functions no code calls that lead to the changed code and
   start no flow. They are checked below, not reported as they are.
 
 Bring the changes onto the map before you report them as off it. A change listed under
 `possibly_affected` for a flow sits in a function that flow calls, or hands to a thread
-or a task runner, with no step on it yet. When you describe that flow, expand the
-functions on the way to the changed code by anchoring steps inside them; `status` shows
-`changes_placed` going up as they land.
+or a task runner, with no step on it yet. Expand the functions on the way to it by
+anchoring steps inside them; `status` shows `changes_placed` going up as they land.
+
+Code that several flows share is expanded on one of them, and the CLI says which.
+`closest_flow` lists every change whose function no flow has expanded yet, whether
+it has no place or sits on a step that only calls the function, under the one flow
+that reaches it through the fewest calls. Plan that flow and expand the functions
+there. In every other flow that reaches or calls the same code, do not expand it
+again, whichever flow you happen to describe first: let one step stand for the
+function. That step may show the change with the reason that it calls the changed
+function, and that is all the flow needs.
+
+The context of a flow task says the same under `change`: `placed` are the changes on
+its steps now, `closest_to` the ones whose code is to be expanded in this flow, and
+`on_other_flows` the ones this flow reaches or calls that another flow describes.
+`expand` names the function each `closest_to` change is in, nearest to the entry
+first; for a changed constant it is the nearest function that reads it. Anchor at
+least one step inside every function listed there, also when all that changed is a
+text or a value and the function decides nothing. Until a step is inside it, the
+change has no place and stays in `closest_to`.
 
 The map only has the entries it knows, so a change can also be reached from a way in
 that has no flow. `status` lists the candidates under `change.possible_entries`, each
@@ -423,10 +521,18 @@ Reformatting, comments and code that only moved are not changes.
 
 Then plan as in section 2 and describe flows as in section 3. Only the flows the changes
 land on are needed: `status` lists them under `change.affected_flows`, and `next_task`
-offers their tasks first. A flow that only reaches changed code, with every one of those
-changes already placed on another flow, needs a name in the plan and nothing more: the
-page shows it as one line with the number of changes on its way. Do not describe it
-unless the user asks. When the affected flows are done, `next_task` is `task_change`:
+offers their tasks first; the flows named under `closest_flow` are among them, before
+and after you plan. A flow that only reaches changed code, with every one of those
+changes placed on another flow or listed under another flow in `closest_flow`, needs a
+name in the plan and nothing more: the page shows it as one line with the number of
+changes on its way. Do not describe it unless the user asks.
+
+Plan no other flows. Leave every other entry out of both `flows` and `skipped`: it is
+counted as not handled, which is expected in a change review, and the map status then
+answers for the flows you planned. Plan the rest of the product only when the user
+also asked for the whole map.
+
+When the affected flows are done, `next_task` is `task_change`:
 
 ```
 genesis map context --repo /absolute/app --session SESSION_ID --task task_change
@@ -479,16 +585,21 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
 - An observation you recorded on a flow is shown as `introduced` when its evidence cites
   code this change added, or when its whole flow is new, and as `persisting` when it
   cites code the change modified. Cite the changed lines when the risk comes from them.
-- Submissions add up. Ask for the context again until `changes_waiting` is 0. An
-  unassigned change may be explained too, but nothing requires it.
+- Submissions add up. Ask for the context again until `changes_waiting` is 0. A
+  change that no step covers but a flow can reach counts in `changes_waiting` from
+  the start, so a session is not done because nothing is on the map yet. Bring such
+  a change onto the map by describing its flow; where that is not worth it, explain
+  it as it is and report it as off the map. A change no entry reaches, such as an
+  import line, may be explained too, but nothing requires it.
 
 Render as in section 4. In a change session the page is the map with the changes on it:
 each change is shown inside the step it belongs to, with both sides, your explanation
 and the test verdict; the flows that changed are open and indexed at the top; and what
 has no step is listed after the map. `summary.md` lists the same changes by flow and
 step, and `change-report.json` holds them as data. Exit code 0 means every change on the
-map is explained and assessed and the flows they sit on are described. The rest of the
-map may still be a static skeleton.
+map is explained and assessed, the flows they sit on are described, and every change a
+flow can reach without a step on it is explained. The rest of the map may still be a
+static skeleton.
 
 Tell the user, in their language: what changed in business terms, flow by flow; for each
 change whether tests cover it and what is missing; the changes with no place on the map;

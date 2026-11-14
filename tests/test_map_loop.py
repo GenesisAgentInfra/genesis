@@ -507,7 +507,7 @@ def test_submissions_cannot_claim_more_than_the_facts_support(workspace):
     ) == [("edges[3].branch", "unknown_branch")]
     assert refused(
         lambda d: d.update(omitted=[{"anchor": "fp_" + "0" * 24, "reason": "logging"}])
-    ) == [("omitted[0].anchor", "not_accountable")]
+    ) == [("omitted[0].anchor", "unknown_anchor")]
     assert refused(lambda d: d["steps"][3].update(resolution="candidate")) == [
         ("steps[3].reason", "reason_required")
     ]
@@ -1025,8 +1025,13 @@ def test_called_functions_and_outside_systems_are_accounted_for_once(source_repo
     )
     assert refused_omission(again) == [("omitted[1].anchor", "already_omitted")]
     inside = workspace.query_symbol("shop/rules.py#check_order")["facts"][0]["fingerprint"]
-    # The inside of a function that one step stands for is not accountable.
-    assert refused_omission(inside) == [("omitted[1].anchor", "not_accountable")]
+    # The inside of a function that one step stands for needs no entry. Leaving it out
+    # is taken as it is, and the result says that nothing was recorded for it.
+    unneeded = copy.deepcopy(flow)
+    unneeded["omitted"].append({"anchor": inside, "reason": "logging"})
+    taken = workspace.submit(task, unneeded)
+    assert taken["status"] == "accepted" and taken["accounting"]["omitted"] == 1
+    assert [(item["path"], item["anchor"]) for item in taken["ignored"]] == [("omitted[1]", inside)]
     # Anchoring a step inside it expands it: its conditions and results now count.
     flow["steps"][1]["evidence"].append(src("shop/rules.py", 2, "order.get('f0') is None", 3))
     expanded = workspace.submit(task, flow)
@@ -1119,3 +1124,15 @@ def test_the_summary_lists_the_outline_with_supporting_flows_last(workspace):
     assert first < second
     page = render_html(workspace.stored_map())
     assert "not described yet" in page and "supporting" in page
+
+
+def test_a_problem_found_before_any_check_of_the_code_is_named_too(workspace):
+    tasks = planned(workspace)
+    flow = submit_flow(workspace, tasks["提交报销"])
+    flow["steps"][2]["anchors"] = ["not a fingerprint"]
+    flow["edges"][3]["relation"] = "branch"
+    refused = workspace.submit(tasks["提交报销"], flow)
+    assert [(item["path"], item["code"], item.get("item")) for item in refused["errors"]] == [
+        ("steps[2].anchors[0]", "invalid_string_pattern_mismatch", "step review"),
+        ("edges[3]", "invalid_value_error", "edge review -> pending"),
+    ]

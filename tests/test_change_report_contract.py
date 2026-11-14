@@ -138,8 +138,19 @@ def test_projection_names_exactly_the_target_its_status_needs():
 def test_complete_report_explains_and_assesses_every_placed_change():
     rejects(
         lambda data: change(data, "chg_review_loop").pop("explanation"),
-        "explains every change placed on the map",
+        "explains every change on the map or within reach of a flow",
     )
+
+    def reached_without_a_step(data):
+        # Off the map, yet a flow gets to it: it is owed an explanation all the same.
+        item = change(data, "chg_review_loop")
+        item.update(projection={"status": "unassigned", "reason": "No step covers this code."})
+        item.pop("explanation")
+        data["possibly_affected"] = [
+            {"flow_id": "flow_approve_report", "change_ids": ["chg_review_loop"], "reason": "x"}
+        ]
+
+    rejects(reached_without_a_step, "explains every change on the map or within reach of a flow")
     rejects(
         lambda data: change(data, "chg_review_loop").pop("tests"),
         "assesses coverage of every placed change",

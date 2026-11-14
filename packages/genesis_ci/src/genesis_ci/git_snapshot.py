@@ -380,14 +380,24 @@ def _collect(
     *,
     live: bool = False,
     untracked: set[str] | None = None,
-    starting_bytes: int = 0,
-    starting_files: int = 0,
+    other: _Selection | None = None,
+    other_oids: dict[str, str | None] | None = None,
 ) -> _Selection:
+    """Select and read the files of one side.
+
+    The file and byte budgets count distinct content. `other` is the side captured
+    before this one: it has used part of the budgets, and a file here with the same
+    content at the same path is already paid for. Two sides of a change are almost
+    the same files, and charging both would let half as large a repository through
+    for a change as for a map.
+    """
     untracked = untracked or set()
     explicit = {item.path for item in spec.inputs}
     selected = _Selection({}, {}, {}, [])
-    total_bytes = starting_bytes
-    total_files = starting_files
+    paid = other.files if other is not None else {}
+    paid_oids = other_oids or {}
+    total_bytes = sum(map(len, paid.values()))
+    total_files = len(paid)
     # An explicit missing input is recorded only if absent on both sides by the caller.
     paths = sorted(entries.keys() | untracked | explicit)
 
@@ -426,28 +436,40 @@ def _collect(
         if not live and entry.mode not in _REGULAR:
             omit(path, "symlink" if entry.mode == "120000" else "special_file", True)
             continue
-        if total_files >= spec.limits.max_files:
-            omit(path, "count_budget", True)
-            continue
-        if not live and entry.size > spec.limits.max_file_bytes:
-            omit(path, "file_budget", True)
-            continue
-        if not live and total_bytes + entry.size > spec.limits.max_total_bytes:
-            omit(path, "total_budget", True)
-            continue
+        full = total_files >= spec.limits.max_files
+        remaining = spec.limits.max_total_bytes - total_bytes
         if live:
-            remaining = spec.limits.max_total_bytes - total_bytes
+            # Whether a file repeats the other side is known only once it is read.
+            known = paid.get(path)
+            if known is None and full:
+                omit(path, "count_budget", True)
+                continue
+            limit = spec.limits.max_file_bytes
             raw, mode, reason = _read_worktree(
-                git.root, path, min(spec.limits.max_file_bytes, remaining)
+                git.root, path, limit if known is not None else min(limit, remaining)
             )
             if reason:
-                if reason == "file_budget" and remaining < spec.limits.max_file_bytes:
+                if reason == "file_budget" and known is None and remaining < limit:
                     reason = "total_budget"
                 omit(path, reason, True)
                 continue
             if raw is None:  # An actual deletion, not a placeholder empty file.
                 continue
+            repeated = raw == known
+            if not repeated and (full or len(raw) > remaining):
+                omit(path, "count_budget" if full else "total_budget", True)
+                continue
         else:
+            repeated = path in paid and paid_oids.get(path) == entry.oid
+            if full and not repeated:
+                omit(path, "count_budget", True)
+                continue
+            if entry.size > spec.limits.max_file_bytes:
+                omit(path, "file_budget", True)
+                continue
+            if entry.size > remaining and not repeated:
+                omit(path, "total_budget", True)
+                continue
             raw = git.run("cat-file", "blob", entry.oid, limit=entry.size + 1)
             if len(raw) != entry.size:
                 raise SnapshotError("object_size_mismatch", "Git object size changed unexpectedly.")
@@ -467,8 +489,9 @@ def _collect(
         selected.files[path] = raw
         selected.kinds[path] = kind
         selected.modes[path] = mode
-        total_bytes += len(raw)
-        total_files += 1
+        if not repeated:
+            total_bytes += len(raw)
+            total_files += 1
     return selected
 
 
@@ -565,14 +588,15 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
         if spec.head is not None
         else None
     )
+    base_entries = git.tree(base_revision) if base_revision is not None else {}
     base = (
-        _collect(git, git.tree(base_revision), spec, BASE)
+        _collect(git, base_entries, spec, BASE)
         if base_revision is not None
         else _Selection({}, {}, {}, [])
     )
     starting = {
-        "starting_bytes": sum(map(len, base.files.values())),
-        "starting_files": len(base.files),
+        "other": base,
+        "other_oids": {path: base_entries[path].oid for path in base.files},
     }
     if spec.head is not None:
         head_revision = resolved_head

@@ -276,13 +276,82 @@ def test_budgets_are_explicit_and_never_invent_file_additions(repo, limits, reas
     assert result.capture.manifest.integrity_status == "partial"
     assert any(item.reason == reason for item in result.capture.omissions)
     assert changes(result) == []
-    assert (
-        sum(
-            len(result.source.read_bytes(item.side, item.path))
-            for item in result.capture.manifest.files
-        )
-        <= limits.max_total_bytes
+    assert distinct_bytes(result) <= limits.max_total_bytes
+
+
+def distinct_bytes(result):
+    """Bytes the capture holds, content that is the same on both sides counted once."""
+    sizes = {
+        item.content_digest: len(result.source.read_bytes(item.side, item.path))
+        for item in result.capture.manifest.files
+    }
+    return sum(sizes.values())
+
+
+def captured(result, side):
+    return sorted(item.path for item in result.capture.manifest.files if item.side == side)
+
+
+ALL = ["src/app.py", "src/helper.py", "tests/test_app.py"]
+# What one side of the fixture weighs, and the file a change replaces.
+ONE_SIDE, HELPER = 118, "def run():\n    return 2\n"
+
+
+def test_a_side_that_repeats_the_other_costs_the_budget_nothing(repo, tmp_path):
+    base = git(repo, "rev-parse", "HEAD").decode().strip()
+    write(repo, "src/helper.py", HELPER)
+    head = commit(repo)
+    # Room for one side and the changed file, far from room for two sides.
+    limits = SnapshotLimits(max_total_bytes=ONE_SIDE + len(HELPER), max_files=4)
+    result = capture_snapshot(repo, SnapshotSpec(base=base, head=head, limits=limits))
+    assert result.capture.manifest.integrity_status == "complete"
+    assert captured(result, BASE) == ALL == captured(result, HEAD)
+    assert changes(result) == [("modified", "src/helper.py", "src/helper.py")]
+    assert distinct_bytes(result) == ONE_SIDE + len(HELPER)
+    # What was captured within the limits can be stored and read back within them.
+    save_snapshot(result, tmp_path / "stored")
+    restored = load_snapshot(tmp_path / "stored", limits=limits)
+    assert restored.capture == result.capture
+    assert all(
+        restored.source.read_bytes(item.side, item.path)
+        == result.source.read_bytes(item.side, item.path)
+        for item in result.capture.manifest.files
     )
+
+
+def test_the_working_tree_is_charged_only_for_what_differs_from_the_base(repo):
+    write(repo, "src/helper.py", HELPER)
+    limits = SnapshotLimits(max_total_bytes=ONE_SIDE + len(HELPER), max_files=4)
+    result = capture_snapshot(repo, SnapshotSpec(base="HEAD", limits=limits))
+    assert result.capture.manifest.integrity_status == "complete"
+    assert captured(result, BASE) == ALL == captured(result, HEAD)
+    assert changes(result) == [("modified", "src/helper.py", "src/helper.py")]
+
+
+@pytest.mark.parametrize("head", ["commit", "worktree"])
+def test_changed_content_that_does_not_fit_is_still_left_out_and_said(repo, head):
+    base = git(repo, "rev-parse", "HEAD").decode().strip()
+    write(repo, "src/helper.py", HELPER)
+    write(repo, "src/new.py", "value = 3\n")
+    revision = commit(repo) if head == "commit" else None
+    if head == "worktree":
+        git(repo, "add", "-A")
+    # One byte short of the changed file, and no file left for the new one.
+    for limits, reason, path in (
+        (
+            SnapshotLimits(max_total_bytes=ONE_SIDE + len(HELPER) - 1),
+            "total_budget",
+            "src/helper.py",
+        ),
+        (SnapshotLimits(max_files=4), "count_budget", "src/new.py"),
+    ):
+        result = capture_snapshot(repo, SnapshotSpec(base=base, head=revision, limits=limits))
+        assert result.capture.manifest.integrity_status == "partial"
+        assert (HEAD, path, reason) in {
+            (item.side, item.path, item.reason) for item in result.capture.omissions
+        }
+        # The unchanged files are there all the same.
+        assert {"src/app.py", "tests/test_app.py"} <= set(captured(result, HEAD))
 
 
 def test_git_metadata_budget_is_bounded(repo):

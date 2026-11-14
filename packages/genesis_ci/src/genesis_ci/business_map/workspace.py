@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -50,10 +51,17 @@ ACCOUNTABLE_LIMIT = 400
 # inside the function on, the submission has to say why one step is enough.
 UNEXPANDED_REASON_FROM = 8
 REACH_DEPTH = 4
+# How many calls an edge may pass through between two steps. Functions that only hand
+# the work on get no step of their own, and the way in and out leads through them.
+FRAME_DEPTH = 6
 # Standard-library modules that do reach outside the process. The rest are helpers,
 # such as reading the clock, and are not outside systems a flow has to account for.
 _EFFECTFUL_STDLIB = {"subprocess", "socket", "urllib", "http", "smtplib", "ftplib", "sqlite3"}
 ANCHOR_RANGE_LINES = 12
+# How many steps a message names before it says how many more there are.
+STEPS_NAMED = 4
+# How much of a fact's source text a message quotes.
+QUOTED_CHARS = 80
 SOURCE_CHARS = 12000
 SEARCH_LIMIT = 40
 CLAIM_SECONDS = 900
@@ -65,6 +73,11 @@ HANDLER_REASON = (
     "try/except is not analyzed; this path into the handler is the agent's reading of the code."
 )
 _ACCOUNTED = {FactKind.condition, FactKind.loop, FactKind.raises}
+# What `submit` says about an omission of something no flow has to account for.
+UNNEEDED = (
+    "This fact needs no entry: it is not among the units this flow has to account for. "
+    "Nothing was recorded for it."
+)
 RULES = (
     "Name steps in business language; one step may cover several code facts.",
     "Cite evidence for every step: an evidence_id, or path + start_line + end_line + quote.",
@@ -75,14 +88,16 @@ RULES = (
     "chain; a `system` is an outside system the chain talks to; an `await` is an awaited call "
     "whose target is not internal.",
     "For each called function choose one: anchor a step inside it to expand it (its own "
-    "conditions, loops and results then become accountable and are reported back), anchor a "
-    "step on the call so that one step stands for it, or list the call in `omitted` with a "
-    "reason. One choice covers every call to the same function.",
+    "conditions, loops and raised errors then become accountable and are reported back), "
+    "anchor a step on the call so that one step stands for it, or list the call in `omitted` "
+    "with a reason. One choice covers every call to the same function.",
     "A step that stands for a function with many conditions, loops and results inside needs "
     "`unexpanded_reason`: one sentence on why its inside is not part of the business chain.",
     "Every unit must be used by a step or branch, or listed in `omitted` with a reason. "
     "Whatever is left is reported as unaccounted.",
     "A branch edge leaves a decision step and names the branch of that condition it takes.",
+    "An expanded function is entered by a `call` edge from the step that calls it, and left "
+    "by an edge from where it is done to the step the caller runs next.",
     "If the code does not show a relation, submit it as candidate or unknown with a reason.",
 )
 
@@ -153,8 +168,54 @@ def _jump_advice(fact: CodeFact) -> str:
     )
 
 
+def _quoted(fact: CodeFact) -> str:
+    """The first line of a fact's source text, short enough to sit inside a sentence."""
+    line = fact.text.strip().splitlines()[0] if fact.text.strip() else ""
+    return line if len(line) <= QUOTED_CHARS else line[: QUOTED_CHARS - 1] + "…"
+
+
 def _problem(path: str, code: str, message: str) -> dict:
     return {"path": path, "code": code, "message": message}
+
+
+_ITEM = re.compile(r"^(steps|edges|omitted|observations|changes)\[(\d+)\]")
+_NAMED_BY = {
+    "steps": ("step {}", ("key",)),
+    "edges": ("edge {} -> {}", ("source", "target")),
+    "omitted": ("omitted {}", ("anchor",)),
+    "observations": ("observation on {}", ("step",)),
+    "changes": ("change {}", ("change_id",)),
+}
+
+
+def _keys(found: list[str]) -> str:
+    """`step 'a'` or `steps 'a', 'b'`, for a message that names steps by their keys."""
+    shown = ", ".join(f"'{key}'" for key in found[:STEPS_NAMED])
+    more = f" and {len(found) - STEPS_NAMED} more" if len(found) > STEPS_NAMED else ""
+    return ("step " if len(found) == 1 else "steps ") + shown + more
+
+
+def _named(problems: list[dict], raw, describe=None) -> list[dict]:
+    """Say which item each problem is about, by the name the submission gives it.
+
+    A path names an item by its position, and among fifty steps a position is easy to
+    misread: `steps[34]` was taken for another step twice in a row. `describe` adds what
+    the name stands for where the name says nothing, as with a fingerprint.
+    """
+    for problem in problems:
+        found = _ITEM.match(problem["path"])
+        items = raw.get(found.group(1)) if found and isinstance(raw, dict) else None
+        if not isinstance(items, list) or int(found.group(2)) >= len(items):
+            continue
+        item = items[int(found.group(2))]
+        wording, fields = _NAMED_BY[found.group(1)]
+        values = [item.get(field) for field in fields] if isinstance(item, dict) else []
+        if values and all(isinstance(value, str) for value in values):
+            problem["item"] = wording.format(*values)
+            about = describe(found.group(1), item) if describe else None
+            if about:
+                problem["item"] += f" ({about})"
+    return problems
 
 
 def _location(parts) -> str:
@@ -284,10 +345,12 @@ class Workspace:
         evidence = {ref.evidence_id: ref for ref in business_map.evidence}
         report = None
         if self.is_change:
-            report = self.changes.build(business_map)
+            report, closest = self.changes.build_with_closest(business_map)
             write_json(
                 self.root / "change-report.json", report.model_dump(mode="json", exclude_none=True)
             )
+            # Kept beside the report for `status`: the flows asked to describe changed code.
+            write_json(self.root / "closest-flows.json", closest)
             evidence.update((ref.evidence_id, ref) for ref in report.evidence)
         bundle = evidence_bundle(self.snapshot, tuple(evidence[key] for key in sorted(evidence)))
         write_json(self.root / "evidence-bundle.json", bundle.model_dump(mode="json"))
@@ -302,6 +365,7 @@ class Workspace:
         except ValidationError as error:
             accepted, problems = {}, _pydantic_problems(error)
         if problems:
+            _named(problems, raw)
             counter = {"rejected": 0}
             if (folder / "attempts.json").is_file():
                 counter = json.loads((folder / "attempts.json").read_text(encoding="utf-8"))
@@ -333,7 +397,7 @@ class Workspace:
             "analysis_status": report.analysis_status,
             "changes": len(report.changes),
             "changes_placed": len(placed),
-            "changes_waiting": sum(1 for item in placed if item.explanation is None),
+            "changes_waiting": sum(1 for item in report.owed() if item.explanation is None),
             "limitations": [item.code for item in report.limitations if item.affects_completeness],
         }
 
@@ -655,7 +719,15 @@ class Workspace:
         return list(dict.fromkeys(resolved))
 
     def _facts_in(self, evidence_ids) -> list[str]:
-        """Fingerprints of facts that start inside short cited ranges, in evaluation order."""
+        """Fingerprints of the facts short cited ranges give a step, in evaluation order."""
+        return [
+            fact.fingerprint
+            for fact in self._starting_in(evidence_ids)
+            if fact.kind not in _JUMPS and fact.boundary != CallBoundary.builtin
+        ]
+
+    def _starting_in(self, evidence_ids) -> list[CodeFact]:
+        """Every fact that starts inside a short cited range, picked up as an anchor or not."""
         found = []
         for evidence_id in evidence_ids:
             ref = self.evidence(evidence_id)
@@ -668,15 +740,92 @@ class Workspace:
                     # A decorator or default value runs at import time, not in the flow.
                     continue
                 found += [
-                    fact.fingerprint
+                    fact
                     for fact in facts
-                    if fact.kind not in _JUMPS
-                    and fact.boundary != CallBoundary.builtin
                     # A fact belongs to the range it starts in. A call written over many
                     # lines is cited by its first lines, not by all of them.
-                    and ref.range.start_line <= fact.range.start_line <= ref.range.end_line
+                    if ref.range.start_line <= fact.range.start_line <= ref.range.end_line
                 ]
         return found
+
+    def _clash(self, unit: _Unit, omitted: str, steps: dict, symbols: dict, expanded) -> str:
+        """Why a unit cannot be left out: which steps expand it, or which step uses it.
+
+        The two call for different repairs, and one sentence for both named neither the
+        function nor the step.
+        """
+        opened = sorted(set(unit.key.split("\0")) & expanded) if unit.kind == "function" else []
+        if opened:
+            inside = [
+                key
+                for key, step in steps.items()
+                if any(symbols.get(anchor) in opened for anchor in step["anchors"])
+            ]
+            if not inside:
+                # An entry function of the flow that the flow also calls.
+                return (
+                    f"{', '.join(opened)} is an entry of this flow, and an entry function is "
+                    "always expanded. No call to it belongs in `omitted`: drop this entry."
+                )
+            return (
+                f"{', '.join(opened)} is expanded: {_keys(inside)} "
+                f"{'is' if len(inside) == 1 else 'are'} anchored inside it. That accounts "
+                "for every call to it, so none of them belongs in `omitted`: drop this entry. "
+                "To leave the function out instead, take out the steps inside it."
+            )
+        target = (
+            unit.key.replace("\0", ", ")
+            if unit.kind == "function"
+            else f"the outside system `{unit.key}`"
+        )
+        holders = [key for key, step in steps.items() if omitted in step["anchors"]]
+        if holders and unit.kind in {"function", "system"}:
+            return (
+                f"This call is in the `anchors` of {_keys(holders)}, and a step anchored on a "
+                f"call stands for {target}. Drop this entry, or take the call out of those "
+                "`anchors`."
+            )
+        if holders:
+            return (
+                f"It is in the `anchors` of {_keys(holders)}. A fact is on a step or left "
+                "out, not both: drop this entry, or take it out of those `anchors`."
+            )
+        # Another call to the same function or system: one unit, so one choice.
+        other = min(
+            (
+                (self.by_fingerprint[anchor], key)
+                for key, step in steps.items()
+                for anchor in step["anchors"]
+                if anchor in unit.members
+            ),
+            key=lambda found: (found[0].symbol_id, found[0].range.start_line),
+        )
+        return (
+            f"Step '{other[1]}' is anchored on another call to {target}, on line "
+            f"{other[0].range.start_line}, and one choice covers every call to the same "
+            f"{'function' if unit.kind == 'function' else 'system'}. Drop this entry, or take "
+            "that call out of the step's `anchors`."
+        )
+
+    def _about(self, kind: str, item: dict) -> str | None:
+        """What an item of a submission is, where its own name is only a fingerprint."""
+        fact = self.by_fingerprint.get(item.get("anchor")) if kind == "omitted" else None
+        if fact is None:
+            return None
+        path = fact.symbol_id.partition("#")[0]
+        return f"`{_quoted(fact)}` on line {fact.range.start_line} of {path}"
+
+    def _unit_key(self, fact: CodeFact) -> tuple[str, str]:
+        """The unit a fact is accounted for by: a function, an outside system, or itself."""
+        if fact.kind == FactKind.call:
+            entered = self._entered(fact.target.targets)
+            if entered:
+                return ("function", "\0".join(sorted(set(entered))))
+            if not fact.awaited or fact.boundary == CallBoundary.builtin:
+                system = external_system(fact)
+                if system is not None:
+                    return ("system", system)
+        return ("fact", fact.fingerprint)
 
     # ----- context and queries -----------------------------------------------------
 
@@ -717,6 +866,22 @@ class Workspace:
                 view["note"] = fact.target.reason
         return view
 
+    def _expands_to(self, symbol_id: str) -> list[dict]:
+        """The units a step anchored inside this function adds to what a flow accounts for."""
+        facts = self.by_symbol.get(symbol_id, ())
+        if not facts:
+            return []
+        units, _ = self._units([], {facts[0].fingerprint})
+        return [self._unit_view(unit) for unit in units[:OTHER_FACT_LIMIT]]
+
+    def _large(self, symbol_ids) -> list[str]:
+        """Called functions that one step can stand for only with a reason why."""
+        return [
+            callee
+            for callee in self._callees(symbol_ids)
+            if sum(self._inside(callee).values()) >= UNEXPANDED_REASON_FROM
+        ]
+
     def _callees(self, symbol_ids) -> list[str]:
         found = []
         for symbol in symbol_ids:
@@ -746,6 +911,13 @@ class Workspace:
         used = set(accepted["used"]) if accepted and "used" in accepted else set()
         units, _ = self._units(symbols, used)
         listed = {fingerprint for unit in units for fingerprint in unit.members}
+        # Code several flows share is described on one of them: which changes this flow
+        # carries, which it is asked to bring onto the map, and which other flows take.
+        change = (
+            {"change": self.changes.for_flow(self.stored_map(), task["flow_id"])}
+            if self.is_change
+            else {}
+        )
         return {
             "task_id": task_id,
             "kind": task["kind"],
@@ -776,6 +948,9 @@ class Workspace:
                 and fact.boundary != CallBoundary.builtin
             ][:OTHER_FACT_LIMIT],
             "callees": self._callees(symbols),
+            # Of those, the ones too big inside to fold into one step without saying why.
+            "large_callees": self._large(symbols),
+            **change,
             "previous": accepted["result"] if accepted else None,
             "rules": list(RULES),
         }
@@ -807,6 +982,9 @@ class Workspace:
             ],
             "callers": callers,
             "callees": self._callees([symbol_id]),
+            "large_callees": self._large([symbol_id]),
+            # Known before a submission expands it, not from what that leaves unaccounted.
+            "expands_to": self._expands_to(symbol_id),
         }
 
     def search(self, text: str) -> dict:
@@ -869,12 +1047,37 @@ class Workspace:
                     pending.append(target)
         return seen
 
+    def _runs(self, symbol: str) -> set[str]:
+        """The definitions the calls written in one definition run."""
+        cache = self.__dict__.setdefault("_run_by", {})
+        if symbol not in cache:
+            cache[symbol] = {
+                callee
+                for fact in self.by_symbol.get(symbol, ())
+                if fact.kind == FactKind.call
+                for callee in self._entered(fact.target.targets)
+            }
+        return cache[symbol]
+
+    def _leads_to(self, fact: CodeFact) -> set[str]:
+        """The definitions a call gets to: the ones it runs, and theirs, a few calls deep."""
+        cache = self.__dict__.setdefault("_led", {})
+        if fact.fingerprint not in cache:
+            frontier = set(self._entered(fact.target.targets))
+            seen = set(fact.target.targets) | frontier
+            for _ in range(FRAME_DEPTH - 1):
+                frontier = {callee for symbol in frontier for callee in self._runs(symbol)} - seen
+                seen |= frontier
+            cache[fact.fingerprint] = seen
+        return cache[fact.fingerprint]
+
     def _passes(self, starts: dict[str, set[str]], targets: list[str], symbols: dict) -> bool:
         """Whether control can pass from `starts` (facts by symbol) to any target fact.
 
         Inside one function the target must be reachable in its control structure. Across
         functions, a reachable call must lead into the target's function, or the target
-        must come after a call into the function control is leaving.
+        must come after a call that leads into the function control is leaving. Either
+        way the call may get there through functions in between that have no step.
         """
         goals: dict[str, set[str]] = {}
         for fingerprint in targets:
@@ -887,14 +1090,14 @@ class Workspace:
                 if (
                     fact.kind == FactKind.call
                     and fact.fingerprint in reached
-                    and set(fact.target.targets) & goals.keys()
+                    and self._leads_to(fact) & goals.keys()
                 ):
                     return True
             for callee_of, wanted in goals.items():
                 returns_to = {
                     fact.fingerprint
                     for fact in self.by_symbol.get(callee_of, ())
-                    if fact.kind == FactKind.call and symbol in fact.target.targets
+                    if fact.kind == FactKind.call and symbol in self._leads_to(fact)
                 }
                 if returns_to and self._reach(callee_of, returns_to) & wanted:
                     return True
@@ -918,13 +1121,21 @@ class Workspace:
         try:
             submission = FlowSubmission.model_validate(raw)
         except ValidationError as error:
-            return self._reject(task, _pydantic_problems(error))
+            return self._reject(task, _pydantic_problems(error), raw)
         entries = self.entries()
         chosen = [entries[item] for item in task["entry_ids"]]
         anchor_symbols = {fp: fact.symbol_id for fp, fact in self.by_fingerprint.items()}
         entry_anchors = {self.entry_anchor(entry) for entry in chosen}
         anchor_symbols.update((self.entry_anchor(entry), entry.symbol_id) for entry in chosen)
         problems: list[dict] = []
+        # What the submission leaves out, by the unit each entry stands for. A call that
+        # a cited range merely picks up, such as a helper in the arguments of a `return`,
+        # is no anchor of the step when its unit is left out: saying so outranks it.
+        left_out_units = {
+            self._unit_key(self.by_fingerprint[item.anchor])
+            for item in submission.omitted
+            if item.anchor in self.by_fingerprint
+        }
         steps, by_key, cited, taken_ids = [], {}, set(), set()
         # Steps whose citations failed: report that once, not every consequence of it.
         broken: set[str] = set()
@@ -958,10 +1169,24 @@ class Workspace:
                 dict.fromkeys(
                     [
                         *(fp for fp in step.anchors if fp in anchor_symbols and fp not in jumps),
-                        *self._facts_in(evidence),
+                        *(
+                            fp
+                            for fp in self._facts_in(evidence)
+                            if self._unit_key(self.by_fingerprint[fp]) not in left_out_units
+                        ),
                     ]
                 )
             )
+            if not anchors:
+                # Calls to built-ins are kept out of what a range gives, or `len(...)`
+                # would sit in every step. Where the cited lines hold nothing else, they
+                # are what the step rests on: refusing it only had the same call sent
+                # again by its fingerprint.
+                anchors = [
+                    fact.fingerprint
+                    for fact in self._starting_in(evidence)
+                    if fact.boundary == CallBoundary.builtin
+                ]
             if step.key in broken:
                 pass
             elif step.resolution == "resolved" and not anchors:
@@ -970,21 +1195,34 @@ class Workspace:
                     < ANCHOR_RANGE_LINES
                     for item in evidence
                 )
-                problems.append(
-                    _problem(
-                        where,
-                        "step_not_anchored",
-                        (
-                            "No analyzer fact starts in the cited lines; a plain assignment has "
-                            "none. Fold this into a neighbouring step, list the fingerprint of a "
-                            "fact in `anchors`, or submit the step as candidate with a reason."
-                            if evidence and short
-                            else "A resolved step needs an analyzer fact: list anchors, cite a "
-                            f"range of at most {ANCHOR_RANGE_LINES} lines that contains one, or "
-                            "submit the step as candidate with a reason."
-                        ),
+                # What the cited lines do hold, set aside because the submission leaves
+                # it out. Told that no fact starts there, an agent looks for a missing
+                # fact; what it has to undo is its own omission.
+                set_aside = [
+                    fact
+                    for fact in self._starting_in(evidence)
+                    if fact.kind not in _JUMPS and self._unit_key(fact) in left_out_units
+                ]
+                if set_aside:
+                    message = (
+                        "The cited lines hold nothing but "
+                        + ", ".join(f"`{_quoted(fact)}`" for fact in set_aside[:STEPS_NAMED])
+                        + ", which this submission lists in `omitted`. A step cannot rest on "
+                        "what is left out: drop that entry, or drop this step."
                     )
-                )
+                elif evidence and short:
+                    message = (
+                        "No analyzer fact starts in the cited lines; a plain assignment has "
+                        "none. Fold this into a neighbouring step, list the fingerprint of a "
+                        "fact in `anchors`, or submit the step as candidate with a reason."
+                    )
+                else:
+                    message = (
+                        "A resolved step needs an analyzer fact: list anchors, cite a "
+                        f"range of at most {ANCHOR_RANGE_LINES} lines that contains one, or "
+                        "submit the step as candidate with a reason."
+                    )
+                problems.append(_problem(where, "step_not_anchored", message))
             if (
                 step.key not in broken
                 and (step.resolution != "unknown" or step.contract is not None)
@@ -1159,26 +1397,25 @@ class Workspace:
             if unit.members & used
             or (unit.kind == "function" and set(unit.key.split("\0")) & expanded)
         }
-        omitted, left_out = [], set()
+        omitted, left_out, ignored = [], set(), []
         for index, item in enumerate(submission.omitted):
             where = f"omitted[{index}].anchor"
             unit = unit_of.get(item.anchor)
-            if unit is None:
-                problems.append(
-                    _problem(
-                        where,
-                        "not_accountable",
-                        "Nothing this flow has to account for has that anchor. Only the entry "
-                        "functions and the functions a step is anchored in are expanded; the "
-                        "inside of any other function needs no entry.",
-                    )
+            if unit is None and item.anchor in anchor_symbols:
+                # A real fact that nothing had to account for, such as a logging call or
+                # the inside of a function one step stands for. Leaving it out claims
+                # nothing false, and a refusal could only be answered by deleting the line.
+                ignored.append(
+                    {"path": f"omitted[{index}]", "anchor": item.anchor, "message": UNNEEDED}
                 )
+            elif unit is None:
+                problems.append(_problem(where, "unknown_anchor", "No fact has this fingerprint."))
             elif id(unit) in covered:
                 problems.append(
                     _problem(
                         where,
                         "omitted_but_used",
-                        "A step or branch already uses it, or its function is expanded.",
+                        self._clash(unit, item.anchor, by_key, anchor_symbols, expanded),
                     )
                 )
             elif id(unit) in left_out:
@@ -1292,7 +1529,7 @@ class Workspace:
             except ValidationError as error:
                 problems = _pydantic_problems(error)
         if problems:
-            return self._reject(task, problems)
+            return self._reject(task, problems, raw)
         result = {
             "task_id": task_id,
             "status": "accepted",
@@ -1302,6 +1539,8 @@ class Workspace:
             "unaccounted": [self._unit_view(unit) for unit in open_units],
             "errors": [],
         }
+        if ignored:
+            result["ignored"] = ignored
         accepted = self._task_file(task_id, "accepted.json")
         previous = accepted.read_text(encoding="utf-8") if accepted.is_file() else None
         write_json(
@@ -1323,12 +1562,13 @@ class Workspace:
                 accepted.unlink()
             else:
                 accepted.write_text(previous, encoding="utf-8")
-            return self._reject(task, _pydantic_problems(error))
+            return self._reject(task, _pydantic_problems(error), raw)
         self._task_file(task_id, "rejected.json").unlink(missing_ok=True)
         return {**result, "analysis_status": assembled.analysis_status}
 
-    def _reject(self, task: dict, problems: list[dict]) -> dict:
+    def _reject(self, task: dict, problems: list[dict], raw=None) -> dict:
         """Keep the last accepted version; record why this attempt was refused."""
+        _named(problems, raw, self._about)
         counter = self._stored(task["task_id"], "attempts.json") or {"rejected": 0}
         counter["rejected"] += 1
         write_json(self._task_file(task["task_id"], "attempts.json"), counter)
@@ -1482,23 +1722,30 @@ class Workspace:
         change, affected = {}, set()
         report = self.stored_report()
         if report is not None:
+            closest = (
+                self._read("closest-flows.json")
+                if (self.root / "closest-flows.json").is_file()
+                else {}
+            )
+            # The flows this report needs described: those the changes are on, and those
+            # closest to changed code that no flow has expanded yet.
             affected = {
                 target.flow_id
                 for item in report.changes
                 for target in (item.projection, *item.other_projections)
                 if target.flow_id
-            }
+            } | closest.keys()
             change = {
                 "change": {
                     "task_id": CHANGE_TASK,
                     **self._change_progress(report),
-                    # The flows the changes land on: the only ones this report needs described.
                     "affected_flows": [
                         {
                             "flow_id": flow.flow_id,
                             "name": flow.name,
                             "stage": flow.stage.value,
                             "entry_ids": [entry.entry_id for entry in flow.entries],
+                            "closest_to": closest.get(flow.flow_id, []),
                         }
                         for flow in stored.flows
                         if flow.flow_id in affected

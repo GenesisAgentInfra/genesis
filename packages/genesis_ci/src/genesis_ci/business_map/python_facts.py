@@ -142,6 +142,7 @@ class _Frame:
     loop_ids: list[str] = field(default_factory=list)
     guards: list[GuardRef] = field(default_factory=list)
     loops: list[str] = field(default_factory=list)
+    handlers: list[str] = field(default_factory=list)
 
 
 class _Collector(cst.CSTVisitor):
@@ -211,6 +212,7 @@ class _Collector(cst.CSTVisitor):
                 evidence_ids=(ref.evidence_id,),
                 guards=tuple(self.frame.guards) if in_scope else (),
                 loops=tuple(self.frame.loops) if in_scope else (),
+                handlers=tuple(self.frame.handlers) if in_scope else (),
                 **call,
             )
         )
@@ -326,6 +328,18 @@ class _Collector(cst.CSTVisitor):
     visit_For_body = visit_While_body
     leave_For_body = leave_While_body
     leave_For = leave_While
+
+    def visit_ExceptHandler_body(self, node) -> None:
+        # Which exception gets here, and from which statement, is not analyzed. What is
+        # known is that this block is not what follows the `try` body when nothing is raised.
+        start = self.get_metadata(PositionProvider, node).start
+        self.frame.handlers.append(f"{start.line}:{start.column}")
+
+    def leave_ExceptHandler_body(self, node) -> None:
+        self.frame.handlers.pop()
+
+    visit_ExceptStarHandler_body = visit_ExceptHandler_body
+    leave_ExceptStarHandler_body = leave_ExceptHandler_body
 
     def visit_Call(self, node) -> None:
         span = self.span(node)

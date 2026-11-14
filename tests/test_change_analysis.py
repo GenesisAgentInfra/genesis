@@ -459,15 +459,44 @@ def test_a_flow_that_only_reaches_changed_code_is_listed_apart(source_repo):
         "app/core.py": "def outer():\n    return inner()\n\n\ndef inner():\n    return 1\n",
     }
     head = {**base, "app/core.py": base["app/core.py"].replace("return 1", "return 2")}
-    _, report = diff(source_repo, base, head)
+    workspace, _ = two_commits(
+        source_repo, {"app/__init__.py": "", **base}, {"app/__init__.py": "", **head}
+    )
+    report = workspace.stored_report()
     item = by_kind(report, "result_modified")
     assert item.projection.status == "unassigned"
     assert "possibly affected" in item.projection.reason
     assert [(entry.change_ids, bool(entry.reason)) for entry in report.possibly_affected] == [
         ((item.change_id,), True)
     ]
-    # Nothing is placed, so nothing needs an explanation.
-    assert report.analysis_status == "complete"
+    # A flow gets to it, so it is work to do although nothing is on the map yet: a
+    # report that had placed nothing used to call itself complete right after `prepare`.
+    assert report.analysis_status == "partial"
+    status = workspace.status()["change"]
+    assert (status["changes_placed"], status["changes_waiting"]) == (0, 1)
+    assert [flow["name"] for flow in status["affected_flows"]] == ["GET /a · a"]
+    waiting = workspace.context(CHANGE_TASK)
+    assert waiting["state"] == "pending"
+    assert [view["change_id"] for view in waiting["changes"]] == [item.change_id]
+    # Explained as it is, off the map, the report is done.
+    explained = workspace.submit(
+        CHANGE_TASK,
+        {"changes": [{"change_id": item.change_id, "summary": "内部函数的返回值从 1 改为 2。"}]},
+    )
+    assert explained["status"] == "accepted"
+    assert (explained["changes_waiting"], explained["analysis_status"]) == (0, "complete")
+
+
+def test_a_change_no_entry_reaches_asks_for_nothing(source_repo):
+    base = {
+        "app/api.py": "from fastapi import APIRouter\n\n"
+        'router = APIRouter()\n\n\n@router.get("/a")\ndef a():\n    return 1\n',
+        "app/core.py": "def unused():\n    return 1\n",
+    }
+    head = {**base, "app/core.py": base["app/core.py"].replace("return 1", "return 2")}
+    _, report = diff(source_repo, base, head)
+    assert by_kind(report, "result_modified").projection.status == "unassigned"
+    assert report.possibly_affected == () and report.analysis_status == "complete"
 
 
 def test_a_removed_function_points_at_the_flows_that_called_it(source_repo):

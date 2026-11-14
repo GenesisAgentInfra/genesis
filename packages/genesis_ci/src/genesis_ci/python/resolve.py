@@ -917,6 +917,24 @@ class Resolver:
 
     def _called(self, expr, side, path, seen, *, awaited):
         """The value of a call: an instance of the class, or what the function declares."""
+        callee = expr.children[0]
+        if callee.kind == "attribute" and callee.attribute == "__new__" and expr.arguments:
+            # `object.__new__(Cls)` or `Cls.__new__(Cls)`: an instance made without running
+            # its initializer, the way tests get at one method of a class.
+            first = expr.arguments[0]
+            made = (
+                self.resolve(first.value, side, path, seen).targets
+                if first.name is None and not first.spread
+                else ()
+            )
+            classes = sorted(item for item in made if self.kinds.get((side, item)) == {"class"})
+            if classes:
+                return Resolution(
+                    status="candidate",
+                    targets=tuple("instance:" + item for item in classes),
+                    reason="Instance of a local class; subclasses and dynamic dispatch are not "
+                    "modelled",
+                )
         constructor = self.resolve(expr.children[0], side, path, seen)
         # Only official SDK client constructors have a known returned client family.
         allowed = {
