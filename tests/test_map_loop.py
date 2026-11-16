@@ -363,6 +363,8 @@ def test_context_lists_what_the_flow_has_to_account_for(workspace):
         "expense/review.py#review_with_model",
         "expense/store.py#save_status",
     ]
+    # One step stands for a function only while no step is anchored inside it.
+    assert "anchor a step on the call and none inside the function" in " ".join(context["rules"])
     assert workspace.status()["tasks"][0]["state"] == "claimed"
     with pytest.raises(LoopError, match="holds this task"):
         workspace.context(tasks["提交报销"], claim=True)
@@ -1040,6 +1042,32 @@ def test_called_functions_and_outside_systems_are_accounted_for_once(source_repo
         expanded["accounting"]["accountable"] == 14 and expanded["accounting"]["unaccounted"] == 8
     )
     assert {item["symbol_id"] for item in expanded["unaccounted"]} == {"shop/rules.py#check_order"}
+    # A step on the call and a step of its own inside the function, joined by a `call`
+    # edge. The function is expanded however large it is: the step on the call needs no
+    # reason, and no step is marked as standing for it.
+    split = copy.deepcopy(flow)
+    del split["steps"][1]["unexpanded_reason"]
+    split["steps"][1]["evidence"].pop()
+    split["steps"].insert(
+        2,
+        {
+            "key": "f0",
+            "name": "检查必填项",
+            "kind": "decision",
+            "evidence": [src("shop/rules.py", 2, "order.get('f0') is None")],
+        },
+    )
+    split["edges"][1:2] = [
+        {"source": "check", "target": "f0", "relation": "call"},
+        {"source": "f0", "target": "pay", "relation": "branch", "branch": "false"},
+    ]
+    entered = workspace.submit(task, split)
+    assert entered["status"] == "accepted", entered.get("errors")
+    assert entered["accounting"]["accountable"] == 14
+    steps = workspace.stored_map().flows[0].steps
+    check = next(step for step in steps if step.name == "校验订单")
+    assert check.anchors == (by_name["check_order"]["fingerprint"],)
+    assert not any(step.unexpanded for step in steps)
 
 
 def outlined(workspace, **approve):

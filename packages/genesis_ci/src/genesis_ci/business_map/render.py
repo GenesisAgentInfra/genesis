@@ -588,6 +588,14 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
         lines += ["", "## Uncalled functions that lead to changed code, not on the map", ""]
         lines += [
             f"- {item.symbol_id}: {len(item.change_ids)} changes"
+            + (
+                ". Left out without checking (budget)"
+                if item.skipped == "budget"
+                else f". Checked and left out ({item.skipped.replace('_', ' ')})"
+                + (f": {item.note}" if item.note else "")
+                if item.skipped
+                else ""
+            )
             for item in report.possible_entries
         ]
     if report.removed_flows:

@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+from collections import Counter
 from functools import cached_property
 from pathlib import PurePosixPath
 
@@ -37,6 +38,8 @@ from .skeleton import _evaluation_order, _short, shown_facts, skeleton_flow
 
 CHANGE_TASK = "task_change"
 CONTEXT_LIMIT = 30
+# How many possible entries `status` and `diff` list at a time.
+POSSIBLE_ENTRY_LIMIT = 20
 REACH_DEPTH = 6
 TEST_DEPTH = 4
 MAX_PROJECTIONS = 6
@@ -74,13 +77,28 @@ _HTTP_CALL = re.compile(
 )
 _PATH_PARAMETER = re.compile(r"^(\{.*\}|<.*>|:\w+)$")
 RULES = (
-    "Read both sides of a change with `genesis map read --evidence <id>` before explaining it.",
+    "`before` and `after` are the frozen text of each side: read both before explaining a "
+    "change. A side marked `excerpt` is shorter than its lines (a definition's header, a "
+    "block cut at 800 characters, a statement put on one line): read it in full with "
+    "`genesis map read --evidence <id>`. For the code around a change, read the files at the "
+    "two revisions of the session or a diff between them; when the head side is the working "
+    "tree, check what you quote against the frozen text.",
     "`summary` says in business terms what is different; `effect` says what that means for "
     "the flow. Do not describe line edits.",
     "Give a `verdict` only after reading the listed tests. covered: a test's input takes the "
     "changed path and the test asserts on the result. reached_only: tests call the code but "
     "miss the changed path or do not assert on it; say what is missing in `note`. "
     "not_reached: no test reaches it. unknown: you could not tell; say why.",
+    "For removed code, the changed path is the input the removed code used to handle. "
+    "covered: a test gives such an input and asserts on what happens now. reached_only: "
+    "tests run the function but never with such an input. Code that replaces it is a change "
+    "of its own: do not copy the verdict from one to the other. The same holds when another "
+    "function now does what the removed code did: the input still has to go through the "
+    "function the code was removed from. A test that calls only the other function is a "
+    "near miss: describe it in `note`.",
+    "One `source_*` change can hold several values, such as two limits set on neighbouring "
+    "lines of a function. covered needs a test that asserts on the effect of each. When "
+    "tests assert on only some, use reached_only and name the others in `note`.",
     "`test_ids` names the tests your verdict is about. You may name a test static analysis "
     "did not link, for example one that goes through an HTTP client.",
     "No test was run. Never state that a test passed or that a path executed.",
@@ -118,6 +136,306 @@ def _distances(starts, graph: dict[str, set[str]], depth: int) -> dict[str, int]
 
 def _unassigned(reason: str) -> dict:
     return {"status": "unassigned", "reason": reason}
+
+
+def checked(item) -> bool:
+    """Whether a possible entry was looked at: left out of the plan for any reason but budget."""
+    return item.skipped is not None and item.skipped != "budget"
+
+
+def unchecked_entries(report: ChangeReport) -> dict:
+    """The possible entries still to check, as `status` and `diff` both list them.
+
+    One the plan left out for a reason other than budget has been checked: the report
+    keeps it, and it is no longer listed. Each item has the `entry_id` a plan skips or uses it by and
+    the `symbol_id` a plan proposes it by.
+    """
+    undecided = [item for item in report.possible_entries if not checked(item)]
+    return {
+        "possible_entries": [
+            item.model_dump(mode="json", exclude_none=True)
+            for item in undecided[:POSSIBLE_ENTRY_LIMIT]
+        ],
+        "possible_entries_total": len(undecided),
+    }
+
+
+def _bound(targets) -> list[str]:
+    """The plain names an assignment binds, also inside tuples and lists."""
+    found = []
+    for target in targets:
+        if isinstance(target, ast.Name):
+            found.append(target.id)
+        elif isinstance(target, ast.Tuple | ast.List):
+            found += _bound(target.elts)
+        elif isinstance(target, ast.Starred):
+            found += _bound([target.value])
+    return found
+
+
+def _assigned(nodes) -> list[tuple[int, int, tuple[str, ...]]]:
+    """The assignments among `nodes` that bind plain names: first line, last line, names."""
+    found = []
+    for node in nodes:
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign | ast.AugAssign):
+            targets = [node.target]
+        else:
+            continue
+        names = tuple(dict.fromkeys(_bound(targets)))
+        if names:
+            found.append((node.lineno, node.end_lineno or node.lineno, names))
+    return found
+
+
+class _ModuleScope(ast.NodeVisitor):
+    """Names a module binds, and names it reads while it is imported.
+
+    Function bodies run later and are skipped; decorators, defaults, annotations, base
+    classes and class bodies run at import and count.
+    """
+
+    def __init__(self):
+        self.bound: Counter = Counter()
+        self.read: set[str] = set()
+        # Names read inside functions, which run at import only when something is called.
+        self.read_later: set[str] = set()
+        self.calls = False
+        self.star = False
+        self.classes = 0
+
+    def _bind(self, name: str) -> None:
+        if not self.classes:
+            self.bound[name] += 1
+
+    def _later(self, nodes) -> None:
+        """Code that runs when a function is called: what it reads and rebinds."""
+        for node in nodes:
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Name) and isinstance(inner.ctx, ast.Load):
+                    self.read_later.add(inner.id)
+                elif isinstance(inner, ast.Global):
+                    for name in inner.names:
+                        self.bound[name] += 1
+
+    def visit_FunctionDef(self, node) -> None:
+        self._bind(node.name)
+        for item in node.decorator_list:
+            self.visit(item)
+        self.visit(node.args)
+        if node.returns is not None:
+            self.visit(node.returns)
+        self._later(node.body)
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_Lambda(self, node) -> None:
+        self.visit(node.args)
+        self._later([node.body])
+
+    def visit_Call(self, node) -> None:
+        self.calls = True
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node) -> None:
+        if node.name:
+            self._bind(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchAs(self, node) -> None:
+        if node.name:
+            self._bind(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node) -> None:
+        if node.name:
+            self._bind(node.name)
+
+    def visit_MatchMapping(self, node) -> None:
+        if node.rest:
+            self._bind(node.rest)
+        self.generic_visit(node)
+
+    def visit_ClassDef(self, node) -> None:
+        self._bind(node.name)
+        for item in (*node.decorator_list, *node.bases, *node.keywords):
+            self.visit(item)
+        self.classes += 1
+        for item in node.body:
+            self.visit(item)
+        self.classes -= 1
+
+    def visit_Name(self, node) -> None:
+        if isinstance(node.ctx, ast.Load):
+            self.read.add(node.id)
+        else:
+            self._bind(node.id)
+
+    def visit_Import(self, node) -> None:
+        for alias in node.names:
+            self._bind((alias.asname or alias.name).partition(".")[0])
+
+    def visit_ImportFrom(self, node) -> None:
+        for alias in node.names:
+            if alias.name == "*":
+                self.star = True
+            else:
+                self._bind(alias.asname or alias.name)
+
+
+def _order_free(node, bound) -> bool:
+    """Whether an assignment gives the same result wherever it stands in its module.
+
+    It binds plain names, and its value calls nothing and reads no name the module binds.
+    """
+    if not isinstance(node, ast.Assign):
+        return False
+    for target in node.targets:
+        for part in ast.walk(target):
+            if isinstance(part, ast.Attribute | ast.Subscript):
+                return False
+    for part in ast.walk(node.value):
+        if isinstance(part, ast.Call | ast.Await | ast.Yield | ast.YieldFrom | ast.NamedExpr):
+            return False
+        if isinstance(part, ast.Lambda | ast.ListComp | ast.SetComp | ast.DictComp):
+            return False
+        if isinstance(part, ast.GeneratorExp):
+            return False
+        if isinstance(part, ast.Name) and part.id in bound:
+            return False
+    return True
+
+
+def _lines(text: str) -> list[str]:
+    """The non-blank lines of a text, stripped: what a side shows, line by line."""
+    return [line.strip() for line in text.split("\n") if line.strip()]
+
+
+def _terminal(statements) -> bool:
+    """Whether a list of statements always leaves by `return` or `raise`."""
+    if not statements:
+        return False
+    last = statements[-1]
+    if isinstance(last, ast.Return | ast.Raise):
+        return True
+    if isinstance(last, ast.If):
+        return _terminal(last.body) and _terminal(last.orelse)
+    return False
+
+
+def _shadowed(node) -> set[str]:
+    """The names a function, lambda or comprehension binds for itself."""
+    found = set()
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+        arguments = node.args
+        every = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+        every += [item for item in (arguments.vararg, arguments.kwarg) if item]
+        found |= {item.arg for item in every}
+        declared = set()
+        body = node.body if isinstance(node.body, list) else [node.body]
+        for statement in body:
+            for inner in ast.walk(statement):
+                if isinstance(inner, ast.Global | ast.Nonlocal):
+                    declared |= set(inner.names)
+                elif isinstance(inner, ast.Name) and not isinstance(inner.ctx, ast.Load):
+                    found.add(inner.id)
+        found -= declared
+    elif isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+        for generator in node.generators:
+            for inner in ast.walk(generator.target):
+                if isinstance(inner, ast.Name):
+                    found.add(inner.id)
+    return found
+
+
+def _loads(tree, holder):
+    """Each load of a plain name inside one function, with whether it sits in a function
+    written inside it and the line ranges of the loops around it."""
+    if tree is None:
+        return
+    name = holder.symbol_id.rpartition("#")[2].rpartition(".")[2]
+    first, last = holder.range.start_line, holder.range.end_line
+    functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+    found = next(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, functions)
+            and node.name == name
+            and first <= node.lineno <= (node.end_lineno or node.lineno) <= last
+        ),
+        None,
+    )
+    if found is None:
+        return
+
+    scopes = (*functions, ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+    def walk(node, inner, loops, hidden):
+        children = list(ast.iter_child_nodes(node))
+        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+            # The first iterable is read where the comprehension stands, outside it.
+            first = node.generators[0].iter
+            yield from walk_one(first, inner, loops, hidden - _shadowed(node))
+            children = [child for child in children if child is not node.generators[0]]
+            children += [
+                part for part in ast.iter_child_nodes(node.generators[0]) if part is not first
+            ]
+        for child in children:
+            yield from walk_one(child, inner, loops, hidden)
+
+    def walk_one(child, inner, loops, hidden):
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+            if child.id not in hidden:
+                yield child, inner, loops
+            return
+        if isinstance(child, scopes):
+            hidden = hidden | _shadowed(child)
+        deeper = inner or isinstance(child, (*functions, ast.Lambda))
+        around = loops
+        if isinstance(child, ast.For | ast.AsyncFor | ast.While):
+            around = (*loops, (child.lineno, child.end_lineno or child.lineno))
+        yield from walk(child, deeper, around, hidden)
+
+    yield from walk(found, False, (), frozenset())
+
+
+def _exit_after(tree, holder, line: int) -> int | None:
+    """The last line from which code after it can no longer see an assignment on `line`.
+
+    When the assignment sits in a block that always ends in `return` or `raise`, code
+    after that block runs only when the block did not, so it reads another value.
+    """
+    if tree is None:
+        return None
+    name = holder.symbol_id.rpartition("#")[2].rpartition(".")[2]
+    function = next(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.name == name
+            and holder.range.start_line <= node.lineno <= holder.range.end_line
+        ),
+        None,
+    )
+    if function is None:
+        return None
+    ends = []
+    for node in ast.walk(function):
+        for field in ("body", "orelse", "finalbody", "handlers"):
+            block = getattr(node, field, None)
+            if node is function or not isinstance(block, list) or not block:
+                continue
+            statements = [item for item in block if isinstance(item, ast.stmt)]
+            if not statements:
+                continue
+            start = statements[0].lineno
+            end = statements[-1].end_lineno or statements[-1].lineno
+            if start <= line <= end and _terminal(statements):
+                ends.append(end)
+    return min(ends, default=None)
 
 
 class _Placement:
@@ -200,7 +518,8 @@ class _Placement:
             | {symbol for _, symbol, _ in self._readers(change)}
         )
         if users:
-            return tuple(users)
+            own = () if change.module_level else (change.symbol_id,)
+            return tuple(dict.fromkeys((*users, *own)))
         if change.module_level:
             # A decorator or default value belongs to the function it is written on.
             functions = [
@@ -214,19 +533,33 @@ class _Placement:
         return (change.symbol_id,)
 
     def _names(self, change: RawChange) -> tuple[str, ...]:
-        """Module-level names a change defines, or sits inside the definition of.
+        """Names a change defines, or sits inside the definition of.
 
         A word added to a set that runs over several lines, or a sentence changed in a
         long string, does not show the name it belongs to. The assignment around it does.
+        Inside a function only an added or modified source line counts: a changed
+        condition, call or block is placed by its own facts.
         """
-        if not change.module_level or change.is_test:
+        if change.is_test:
+            return ()
+        # A function's own name is followed only while the assignment is still there:
+        # once it is removed, the code that reads the name reads another definition.
+        if not change.module_level and (
+            change.kind not in _SOURCE_KINDS or change.after is None or self._holder(change) is None
+        ):
             return ()
         part = change.after or change.before
         found = _ASSIGNED.findall(part.text) if change.kind in _SOURCE_KINDS else []
-        for first, last, names in self.analysis.assignments(part.side, part.path):
+        assigned = self.analysis.assignments(part.side, part.path, local=not change.module_level)
+        for first, last, names in assigned:
             if first <= part.end[0] and part.start[0] <= last:
                 found += names
         return tuple(dict.fromkeys(found))
+
+    def _holder(self, change: RawChange):
+        """The head function a change is written inside, when it is inside one."""
+        symbol = self.analysis.workspace.symbols.get(change.symbol_id)
+        return symbol if symbol is not None and symbol.kind == "function" else None
 
     def _reading(self, change: RawChange) -> tuple[list, list]:
         """Where head code reads a name the change defines: by facts, and by lines."""
@@ -234,7 +567,11 @@ class _Placement:
         if change.change_id not in cache:
             analysis, part = self.analysis, change.after or change.before
             facts, lines = [], []
-            for name in self._names(change):
+            names = self._names(change)
+            if names and not change.module_level:
+                facts, lines = self._reading_inside(change, names)
+                names = ()
+            for name in names:
                 word = re.compile(rf"\b{re.escape(name)}\b")
                 for path in analysis.readers(part.path, name):
                     facts += [
@@ -253,8 +590,51 @@ class _Placement:
             cache[change.change_id] = (facts, lines)
         return cache[change.change_id]
 
+    def _reading_inside(self, change: RawChange, names) -> tuple[list, list]:
+        """Where a function reads a name it assigns itself: by facts, and by lines.
+
+        The name is the function's own, so only its body counts, with the functions
+        written inside it. A line reads the name where the code loads it, not where the
+        word stands in a string or a key. It sees this assignment when it comes after
+        it, sits in a function written inside, or sits in a loop around the assignment.
+        """
+        analysis, part = self.analysis, change.after
+        holder = self._holder(change)
+        nested = holder.symbol_id + "."
+        functions = [
+            item
+            for item in analysis.symbols_in(HEAD, holder.path)
+            if item.kind == "function"
+            and (item.symbol_id == holder.symbol_id or item.symbol_id.startswith(nested))
+        ]
+        own = {item.symbol_id for item in functions}
+        first, last = part.start[0], part.end[0]
+        tree = analysis.tree(HEAD, holder.path)
+        stop = _exit_after(tree, holder, first)
+        loads = []
+        for node, inner, loops in _loads(tree, holder):
+            line = node.lineno
+            if first <= line <= last or (stop is not None and line > stop and not inner):
+                continue
+            if line > last or inner or any(start <= first and last <= end for start, end in loops):
+                loads.append((node.id, line))
+        facts, lines = [], []
+        for name in names:
+            seen = sorted({line for found, line in loads if found == name})
+            facts += [
+                (name, fact)
+                for fact in analysis.facts_in(HEAD, holder.path)
+                if fact.symbol_id in own
+                and any(fact.range.start_line <= line <= fact.range.end_line for line in seen)
+            ]
+            for line in seen:
+                reader = _innermost(functions, line)
+                if reader is not None:
+                    lines.append((name, reader.symbol_id, line))
+        return facts, lines
+
     def _users(self, change: RawChange) -> list[tuple[str, CodeFact]]:
-        """Head facts that refer to a name a module-level change defines."""
+        """Head facts that refer to a name a change defines."""
         return self._reading(change)[0]
 
     def _readers(self, change: RawChange) -> list[tuple[str, str, int]]:
@@ -433,6 +813,8 @@ class ChangeAnalysis:
             test_paths=tests,
             renames=renames,
             canonical={"python": canonical_python},
+            assignments=self.assignments,
+            movable=self.movable,
         )
         self.workspace.adopt_evidence(found.evidence)
         return found
@@ -465,27 +847,68 @@ class ChangeAnalysis:
     def facts_in(self, side, path: str) -> list[CodeFact]:
         return self._by_path["facts"].get((side, path), [])
 
-    def assignments(self, side, path: str) -> list[tuple[int, int, tuple[str, ...]]]:
-        """Module-level assignments of a Python file: first line, last line, names."""
-        cache = self.__dict__.setdefault("_assigned", {})
+    def tree(self, side, path: str) -> ast.Module | None:
+        """The parsed source of a Python file, or None when it is not one or does not parse."""
+        cache = self.__dict__.setdefault("_trees", {})
         if (side, path) not in cache:
-            found = []
             try:
                 source = self.workspace.snapshot.source.read_text(side, path)
-                body = ast.parse(source).body if path.endswith(".py") else []
-            except (SyntaxError, ValueError, KeyError):
-                body = []
-            for node in body:
-                if isinstance(node, ast.Assign):
-                    targets = node.targets
-                elif isinstance(node, ast.AnnAssign | ast.AugAssign):
-                    targets = [node.target]
-                else:
-                    continue
-                names = tuple(item.id for item in targets if isinstance(item, ast.Name))
-                if names:
-                    found.append((node.lineno, node.end_lineno or node.lineno, names))
-            cache[(side, path)] = found
+                parsed = ast.parse(source.removeprefix("\ufeff")) if path.endswith(".py") else None
+            except (SyntaxError, ValueError, KeyError, RecursionError):
+                parsed = None
+            cache[(side, path)] = parsed
+        return cache[(side, path)]
+
+    def assignments(
+        self, side, path: str, *, local: bool = False
+    ) -> list[tuple[int, int, tuple[str, ...]]]:
+        """Assignments of a Python file: first line, last line, names.
+
+        The module's own by default; with `local`, those written anywhere below it.
+        """
+        if local:
+            cache = self.__dict__.setdefault("_assigned_below", {})
+            if (side, path) not in cache:
+                tree = self.tree(side, path)
+                top = {id(node) for node in tree.body} if tree is not None else set()
+                nodes = [node for node in ast.walk(tree) if id(node) not in top] if tree else []
+                cache[(side, path)] = _assigned(nodes)
+            return cache[(side, path)]
+        return self._module(side, path)[0]
+
+    def movable(self, side, path: str) -> set[int]:
+        """First lines of the module-level assignments that may move without changing what
+        the module does.
+
+        Such an assignment binds plain names to a value that reads and calls nothing of
+        the module: literals, and names the module does not bind. Each name it binds is
+        bound only there, and nothing reads it while the module is imported. That rules
+        out decorators, defaults, class bodies and other assignments that read it, and,
+        when the module calls anything at import, every function that reads it. An
+        `import *` could rebind any name, so then no assignment qualifies.
+        """
+        return self._module(side, path)[1]
+
+    def _module(self, side, path: str) -> tuple[list, set[int]]:
+        cache = self.__dict__.setdefault("_module_names", {})
+        if (side, path) not in cache:
+            tree = self.tree(side, path)
+            if tree is None:
+                cache[(side, path)] = ([], set())
+            else:
+                scope = _ModuleScope()
+                scope.visit(tree)
+                read = scope.read | (scope.read_later if scope.calls else set())
+                free = {
+                    node.lineno
+                    for node in tree.body
+                    if not scope.star
+                    and _order_free(node, scope.bound)
+                    and all(
+                        scope.bound[name] == 1 and name not in read for name in _bound(node.targets)
+                    )
+                }
+                cache[(side, path)] = (_assigned(tree.body), free)
         return cache[(side, path)]
 
     def readers(self, path: str, name: str) -> list[str]:
@@ -552,6 +975,8 @@ class ChangeAnalysis:
                 for symbol in placement._symbols(change):
                     changed.setdefault(symbol, []).append(change.change_id)
         leading = _closure(changed, self._called_by, REACH_DEPTH)
+        # A candidate the plan left out has been looked at: it stays listed, with the reason.
+        decided = {item.entry_id: item for item in business_map.coverage.skipped_entries}
         found = []
         for entry in sorted(workspace.entries().values(), key=lambda item: item.symbol_id):
             if (
@@ -569,6 +994,14 @@ class ChangeAnalysis:
                     "change_ids": [
                         change.change_id for change in self.diff.changes if change.change_id in ids
                     ],
+                    **(
+                        {
+                            "skipped": decided[entry.entry_id].reason,
+                            "note": decided[entry.entry_id].note,
+                        }
+                        if entry.entry_id in decided
+                        else {}
+                    ),
                 }
             )
         return found
@@ -1127,15 +1560,24 @@ class ChangeAnalysis:
     # ----- the change task -----------------------------------------------------------
 
     def _side(self, part) -> dict | None:
+        """One side of a change. `excerpt` marks a text shorter than the lines it cites.
+
+        A definition shows its header, a long block is cut, and a statement written over
+        several lines is shown on one: then `genesis map read` gives the full lines.
+        """
         if part is None:
             return None
-        return {
+        view = {
             "text": part.text,
             "path": part.path,
             "start_line": part.start[0],
             "end_line": part.end[0],
             "evidence_id": part.evidence_ids[0],
         }
+        full = self.workspace.read(part.evidence_ids[0])
+        if full["truncated"] or _lines(full["text"]) != _lines(part.text):
+            view["excerpt"] = True
+        return view
 
     def _views(self, items, business_map: BusinessMap, *, for_task: bool = True) -> list[dict]:
         """Changes as an agent or a script reads them: both sides, the place, the tests.
@@ -1168,6 +1610,9 @@ class ChangeAnalysis:
                 "after": self._side(change.after),
                 "placement": place(item.projection),
             }
+            # Two sides that read the same cannot show what changed: read both in full.
+            if view["before"] and view["after"] and change.before.text == change.after.text:
+                view["before"]["excerpt"] = view["after"]["excerpt"] = True
             if for_task:
                 view["previous"] = assessments.get(item.change_id)
             else:
@@ -1243,8 +1688,9 @@ class ChangeAnalysis:
                 for flow in business_map.flows
                 if flow.flow_id in closest
             ],
-            # Uncalled functions that lead to the changes and have no flow.
-            "possible_entries": [item.symbol_id for item in report.possible_entries],
+            # Uncalled functions that lead to the changes and have no flow, as `status`
+            # lists them: a plan needs the entry id to skip one or give it a flow.
+            **unchecked_entries(report),
             "removed_flows": [flow.name for flow in report.removed_flows],
             # Observations an agent recorded on the map, as far as this change touches them.
             "risk_findings": [

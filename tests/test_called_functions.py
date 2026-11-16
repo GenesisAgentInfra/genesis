@@ -135,6 +135,14 @@ def test_a_called_function_is_entered_by_a_call_edge_and_left_for_the_callers_ne
         ("call", "static_fact", "resolved"),
         ("branch", "static_fact", "resolved"),
     }
+    # The step on the call is where the `call` edge starts. With steps inside the
+    # function it does not stand for it: the function is expanded and counts once.
+    price = next(step for step in flow.steps if step.name == "为订单计价")
+    assert [workspace.by_fingerprint[anchor].text for anchor in price.anchors] == [
+        "price_order(order)"
+    ]
+    assert not price.unexpanded
+    assert result["accounting"]["accountable"] == result["accounting"]["covered"] == 5
 
 
 def test_the_way_back_must_lead_to_code_after_the_call(quoting):

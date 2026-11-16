@@ -1,9 +1,11 @@
 """Change analysis: the fact diff, its placement on the map, and the change task."""
 
 import json
+import re
 
 import pytest
 from genesis_ci.business_map.changes import CHANGE_TASK, CITED, NEAREST_REMOVED
+from genesis_ci.business_map.fact_diff import MAX_HUNK_PARTS
 from genesis_ci.business_map.session import prepare
 from genesis_ci.business_map.workspace import LoopError, Workspace
 from genesis_ci.cli import app
@@ -262,6 +264,114 @@ def test_source_that_is_not_a_fact_is_still_listed(source_repo):
     assert changes == [
         ("source_modified", "def run(x, retries=1):", "def run(x, retries=3):"),
         ("source_modified", "limit = 10", "limit = 20\ntotal = x"),
+    ]
+
+
+def test_module_constants_changed_together_are_listed_one_by_one(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": 'LIMIT = 10\nWORDS = ["a", "b"]\nOLD = 1\n'},
+        {"app/core.py": 'LIMIT = 20\nWORDS = [\n    "a",\n    "b",\n]\nFIRST = 2\nSECOND = 3\n'},
+    )
+    # Each constant has its own readers and its own tests. A name is paired with the same
+    # name on the other side; one that went is not an edit of one that came; a list laid
+    # out differently is no change.
+    assert changes == [
+        ("source_modified", "LIMIT = 10", "LIMIT = 20"),
+        ("source_removed", "OLD = 1", None),
+        ("source_added", None, "FIRST = 2"),
+        ("source_added", None, "SECOND = 3"),
+    ]
+
+
+def test_an_import_changed_beside_constants_stays_one_edit(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": "import os\nLIMIT = 1\n"},
+        {"app/core.py": "import sys\nLIMIT = 2\nEXTRA = 3\n"},
+    )
+    assert changes == [
+        ("source_modified", "import os", "import sys"),
+        ("source_modified", "LIMIT = 1", "LIMIT = 2"),
+        ("source_added", None, "EXTRA = 3"),
+    ]
+
+
+def test_class_attributes_changed_together_stay_one_change(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": "KEEP = 0\n\n\nclass Rules:\n    limit = 10\n"},
+        {"app/core.py": "KEEP = 0\n\n\nclass Rules:\n    limit = 20\n    extra = 3\n"},
+    )
+    # Only assignments at the top of a module are listed one by one.
+    assert changes == [("source_modified", "limit = 10", "limit = 20\nextra = 3")]
+
+
+@pytest.mark.parametrize("count", [MAX_HUNK_PARTS, MAX_HUNK_PARTS + 1])
+def test_a_long_run_of_constants_stays_one_change(source_repo, count):
+    added = "".join(f"NAME_{index} = {index}\n" for index in range(count))
+    changes, _ = diff(
+        source_repo, {"app/core.py": "KEEP = 0\n"}, {"app/core.py": "KEEP = 0\n" + added}
+    )
+    # A rewritten table does not fill the list of changes.
+    assert [kind for kind, _, _ in changes] == ["source_added"] * (
+        count if count <= MAX_HUNK_PARTS else 1
+    )
+
+
+def test_module_constants_that_only_moved_are_not_changes(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": "FEE = 5\nFREE_FROM = 100\n\nTIMEOUT = 10\nRETRIES = 2\n"},
+        {"app/core.py": "TIMEOUT = 10\nRETRIES = 2\n\nFEE = 5\nFREE_FROM = 100\n"},
+    )
+    assert changes == []
+
+
+def test_a_statement_rewrapped_beside_changed_constants_is_not_listed(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/a.py": "x = 1\ny = 2\n", "app/core.py": "from .a import (x, y)\nLIMIT = 1\n"},
+        {
+            "app/a.py": "x = 1\ny = 2\n",
+            "app/core.py": "from .a import (\n    x,\n    y,\n)\nLIMIT = 2\nEXTRA = 3\n",
+        },
+    )
+    assert changes == [
+        ("source_modified", "LIMIT = 1", "LIMIT = 2"),
+        ("source_added", None, "EXTRA = 3"),
+    ]
+
+
+def test_removed_code_that_moved_keeps_the_tests_of_the_function_it_left(source_repo):
+    test = "from app.core import export_rows\n\n\ndef test_export_keeps_values():\n"
+    test += "    assert export_rows([1, 2]) == [1, 2]\n"
+    base = {
+        "app/core.py": "def export_rows(rows):\n    kept = []\n    for value in rows:\n"
+        "        if value is None:\n            continue\n        kept.append(value)\n"
+        "    return kept\n",
+        "tests/test_export.py": test,
+    }
+    head = {
+        "app/core.py": "def present(values):\n    for value in values:\n"
+        "        if value is not None:\n            yield value\n\n\n"
+        "def export_rows(rows):\n    kept = []\n    for value in present(rows):\n"
+        "        kept.append(value)\n    return kept\n",
+        "tests/test_export.py": test.replace("import export_rows", "import export_rows, present")
+        + "\n\ndef test_present_drops_missing_values():\n"
+        "    assert list(present([1, None])) == [1]\n",
+    }
+    _, report = diff(source_repo, base, head)
+
+    def linked(item):
+        return [case.test_id.rsplit("#", 1)[-1] for case in item.tests.items]
+
+    # The check went into another function. The removal is still judged where it was:
+    # only the tests that run `export_rows` are about it.
+    assert linked(by_kind(report, "condition_removed")) == ["test_export_keeps_values"]
+    assert linked(by_kind(report, "symbol_added")) == [
+        "test_export_keeps_values",
+        "test_present_drops_missing_values",
     ]
 
 
@@ -539,9 +649,21 @@ def test_cli_runs_a_change_session_end_to_end(source_repo, tmp_path, monkeypatch
     assert listed["removed_flows"] == ["GET /version · version"]
     assert [item["path"] for item in listed["unanalyzed_changes"]] == ["docs/guide.md"]
     static = next(item for item in listed["changes"] if item["kind"] == "condition_modified")
+    # A side that shows all its lines needs no second read; a definition shows its header.
+    assert "excerpt" not in static["after"]
+    removed = [item for item in listed["changes"] if item["kind"] == "symbol_removed"]
+    assert removed and all(item["before"]["excerpt"] is True for item in removed)
     assert static["tests"]["verdict"] == "reached_only" and static["explanation"] is None
     assert "other_changed_files" not in listed and "previous" not in static
     assert static["placement"]["step"] == "amount >= THRESHOLD"
+    # An uncalled function that holds a change is listed as `status` lists it, with the
+    # entry id a plan refers to it by.
+    code, out = run("status")
+    assert listed["possible_entries"] == json.loads(out)["change"]["possible_entries"]
+    assert [item["symbol_id"] for item in listed["possible_entries"]] == [
+        "expense/store.py#nightly_cleanup"
+    ]
+    assert listed["possible_entries_total"] == 1
     tasks = planned(workspace)
     workspace.submit(tasks["提交报销"], submit_flow(workspace, tasks["提交报销"]))
     workspace.submit(tasks["经理审批"], approve_flow(workspace, tasks["经理审批"]))
@@ -951,3 +1073,220 @@ def test_removed_steps_and_reaching_flows_are_shown_on_their_flows(source_repo):
     summary = render_summary(stored, report)
     assert "- removed: def audit():" in summary
     assert "## Flows that can reach changed code" in summary
+
+
+def test_the_change_task_says_what_to_read_and_how_to_judge_removed_code(change):
+    rules = " ".join(change.context(CHANGE_TASK)["rules"])
+    # Both sides are already in the task; only a side shorter than its lines is read again.
+    assert "`before` and `after` are the frozen text of each side" in rules
+    assert "A side marked `excerpt` is shorter than its lines" in rules
+    # Removed code is judged by the input it used to handle, not by what replaced it.
+    assert "the changed path is the input the removed code used to handle" in rules
+    assert "do not copy the verdict" in rules
+    # Also when another function now does what the removed code did.
+    assert "the input still has to go through the function the code was removed from" in rules
+    # One source change that sets several values is covered only when each is asserted on.
+    assert "When tests assert on only some, use reached_only" in rules
+
+
+def test_a_copy_of_an_assignment_added_or_removed_is_listed(source_repo):
+    # Text that also stands elsewhere in the module is not "only moved": the copies count.
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": "RETRIES = 3\nRETRIES = 5\n"},
+        {"app/core.py": "RETRIES = 3\nRETRIES = 5\nRETRIES = 3\n"},
+    )
+    assert changes == [("source_added", None, "RETRIES = 3")]
+
+
+def test_an_override_removed_beside_a_copy_of_it_is_listed(source_repo):
+    settings = 'import os\nDEBUG = False\nif os.environ.get("LOCAL"):\n    DEBUG = True\n'
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": settings + "DEBUG = False\n"},
+        {"app/core.py": settings},
+    )
+    assert changes == [("source_removed", "DEBUG = False", None)]
+
+
+def test_an_edited_copy_of_an_assignment_is_an_edit(source_repo):
+    middle = "".join(f"OTHER_{index} = {index}\n" for index in range(8))
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": "X = 1\n" + middle + "X = 1\n"},
+        {"app/core.py": "X = 1\n" + middle + "X = 2\n"},
+    )
+    assert changes == [("source_modified", "X = 1", "X = 2")]
+
+
+@pytest.mark.parametrize(
+    "base, head",
+    [
+        # A default reads the constant when the function is defined.
+        (
+            "LIMIT = 5\n\n\ndef check(x, limit=LIMIT):\n    return x < limit\n\n\nLIMIT = 10\n",
+            "LIMIT = 5\nLIMIT = 10\n\n\ndef check(x, limit=LIMIT):\n    return x < limit\n",
+        ),
+        # A decorator reads it when the module is imported.
+        (
+            "def limit(value):\n    return lambda f: f\n\n\nRATE = 5\n\n\n@limit(RATE)\n"
+            "def handler():\n    return 1\n",
+            "def limit(value):\n    return lambda f: f\n\n\n@limit(RATE)\n"
+            "def handler():\n    return 1\n\n\nRATE = 5\n",
+        ),
+        # Above a star import, the import overrides it.
+        (
+            "from .base import *\n\nDEBUG = True\n",
+            "DEBUG = True\n\nfrom .base import *\n",
+        ),
+        # Its value reads another constant.
+        ("RATE = 10\nLIMIT = RATE * 2\n", "LIMIT = RATE * 2\nRATE = 10\n"),
+        # Its value calls something.
+        (
+            "import os\n\nBASE_DIR = os.path.dirname(__file__)\n"
+            'DATA_DIR = os.path.join(BASE_DIR, "data")\n',
+            'import os\n\nDATA_DIR = os.path.join(BASE_DIR, "data")\n'
+            "BASE_DIR = os.path.dirname(__file__)\n",
+        ),
+        # A call before the definition it needs.
+        (
+            "def f():\n    return 1\n\n\nX = f()\n",
+            "X = f()\n\n\ndef f():\n    return 1\n",
+        ),
+        # Another statement adds to what it reads.
+        (
+            'APPS = ["a", "b"]\nAPPS += ["c"]\nCOUNT = len(APPS)\n',
+            'APPS = ["a", "b"]\nCOUNT = len(APPS)\nAPPS += ["c"]\n',
+        ),
+        # A key is stored in what it reads.
+        (
+            'CONFIG = {}\nCONFIG["a"] = 1\nLIMIT = len(CONFIG)\n',
+            'CONFIG = {}\nLIMIT = len(CONFIG)\nCONFIG["a"] = 1\n',
+        ),
+        # A function called at import reads it.
+        (
+            'URL = "sqlite://"\n\n\ndef engine():\n    return URL\n\n\nENGINE = engine()\n',
+            'def engine():\n    return URL\n\n\nENGINE = engine()\nURL = "sqlite://"\n',
+        ),
+        # A function called at import rebinds it.
+        (
+            "def setup():\n    global X\n    X = 2\n\n\nX = 1\nsetup()\n",
+            "def setup():\n    global X\n    X = 2\n\n\nsetup()\nX = 1\n",
+        ),
+        # An `except ... as` with the same name unbinds it.
+        (
+            "try:\n    import missing\nexcept ImportError as FALLBACK:\n    pass\nFALLBACK = 1\n",
+            "FALLBACK = 1\ntry:\n    import missing\nexcept ImportError as FALLBACK:\n    pass\n",
+        ),
+    ],
+)
+def test_an_assignment_moved_across_code_that_runs_on_import_is_listed(source_repo, base, head):
+    files = {"app/base.py": "DEBUG = False\n"}
+    changes, _ = diff(source_repo, {**files, "app/core.py": base}, {**files, "app/core.py": head})
+    # Where it stands changes what the module does, so the move is shown.
+    assert changes and {kind for kind, _, _ in changes} <= {"source_added", "source_removed"}
+
+
+def test_statements_rewrapped_on_both_sides_of_an_edited_constant_are_not_listed(source_repo):
+    head_calls = 'register(\n    "a",\n    1,\n)\nA = 2\nregister(\n    "b",\n    2,\n)\n'
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": REGISTER + 'register("a", 1)\nA = 1\nregister("b", 2)\n'},
+        {"app/core.py": REGISTER + head_calls},
+    )
+    assert changes == [("source_modified", "A = 1", "A = 2")]
+
+
+REGISTER = "def register(*args):\n    return args\n\n\nCONF = {}\n"
+
+
+def test_statements_edited_on_both_sides_of_a_constant_are_edits(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": REGISTER + 'CONF["a"] = 1\nUPLOAD = "x"\nCONF["b"] = 2\n'},
+        {"app/core.py": REGISTER + 'CONF["a"] = 10\nUPLOAD = "y"\nCONF["b"] = 20\n'},
+    )
+    assert changes == [
+        ("source_modified", 'CONF["a"] = 1', 'CONF["a"] = 10'),
+        ("source_modified", 'UPLOAD = "x"', 'UPLOAD = "y"'),
+        ("source_modified", 'CONF["b"] = 2', 'CONF["b"] = 20'),
+    ]
+
+
+def test_assignments_to_several_names_are_paired_by_name(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": "A, B = 1, 2\nC = 3\nD, E = 4, 5\n"},
+        {"app/core.py": "A, B = 1, 20\nC = 30\nD, E = 4, 50\n"},
+    )
+    assert changes == [
+        ("source_modified", "A, B = 1, 2", "A, B = 1, 20"),
+        ("source_modified", "C = 3", "C = 30"),
+        ("source_modified", "D, E = 4, 5", "D, E = 4, 50"),
+    ]
+
+
+def test_a_changed_condition_is_kept_when_cut_up_constants_fill_the_list(source_repo):
+    groups = []
+    for group in range(26):
+        groups.append("".join(f"C_{group}_{index} = {index}\n" for index in range(12)))
+        groups.append(f"\n\ndef helper_{group}():\n    return {group}\n\n\n")
+    constants = "".join(groups)
+    logic = "def handle(x):\n    if x > 10:\n        return 1\n    return 0\n"
+    base = {"app/a_consts.py": constants, "app/z_logic.py": logic}
+    head = {
+        "app/a_consts.py": re.sub(
+            r"= (\d+)$", lambda m: f"= {int(m[1]) + 1}", constants, flags=re.M
+        ),
+        "app/z_logic.py": logic.replace("x > 10", "x > 20"),
+    }
+    changes, report = diff(source_repo, base, head)
+    # Cut apart, the constants would not fit: each run of them stays one change, and the
+    # list is complete.
+    assert len(changes) == 27
+    assert ("condition_modified", "x > 10", "x > 20") in changes
+    assert not any(item.code == "changes_truncated" for item in report.limitations)
+
+
+def test_a_changed_condition_is_kept_when_the_list_is_cut(source_repo):
+    # Every other constant changes, so each is a run of its own: more than the list holds.
+    constants = "".join(f"C_{index} = {index}\nK_{index} = 0\n" for index in range(320))
+    logic = "def handle(x):\n    if x > 10:\n        return 1\n    return 0\n"
+    base = {"app/a_consts.py": constants, "app/z_logic.py": logic}
+    head = {
+        "app/a_consts.py": re.sub(
+            r"^(C_\d+) = (\d+)$", lambda m: f"{m[1]} = {int(m[2]) + 1}", constants, flags=re.M
+        ),
+        "app/z_logic.py": logic.replace("x > 10", "x > 20"),
+    }
+    changes, report = diff(source_repo, base, head)
+    # The list is full, and says so, but the changed condition is on it.
+    assert len(changes) == 300
+    assert ("condition_modified", "x > 10", "x > 20") in changes
+    assert any(item.code == "changes_truncated" for item in report.limitations)
+
+
+def test_a_statement_that_moved_past_an_edited_constant_is_listed(source_repo):
+    changes, _ = diff(
+        source_repo,
+        {"app/core.py": REGISTER + "A = 0\nregister(\n    A\n)\nA = 1\n"},
+        {"app/core.py": REGISTER + "A = 0\nA = 2\nregister(A)\n"},
+    )
+    # The call now runs after the new value, so it is part of what changed.
+    assert any("register" in (before or "") + (after or "") for _, before, after in changes)
+
+
+def test_a_change_that_only_reflows_a_text_is_shown_as_an_excerpt(source_repo):
+    base = 'def handle(ask):\n    return ask(\n        """You are a helper.\nAnswer briefly."""\n    )\n'
+    head = base.replace("helper.\nAnswer", "helper.  Answer")
+    workspace, _ = two_commits(
+        source_repo,
+        {"app/__init__.py": "", "app/core.py": base},
+        {
+            "app/__init__.py": "",
+            "app/core.py": head,
+        },
+    )
+    (view,) = workspace.change_summary()["changes"]
+    # Shown on one line, both sides read the same: they are marked to be read in full.
+    assert view["before"]["excerpt"] is True and view["after"]["excerpt"] is True

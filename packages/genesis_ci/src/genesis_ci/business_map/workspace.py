@@ -25,14 +25,20 @@ from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, S
 from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet, Language
 from genesis_contracts.fingerprint import fact_fingerprint
-from genesis_contracts.map_tasks import EvidenceCite, FlowSubmission, MapPlan, place
+from genesis_contracts.map_tasks import (
+    EvidenceCite,
+    FlowSubmission,
+    MapPlan,
+    SkipReason,
+    place,
+)
 from genesis_contracts.models import EvidenceRef, EvidenceSide, ReferenceRange
 from pydantic import ValidationError
 
 from genesis_ci.snapshot import slice_source
 from genesis_ci.snapshot_store import load_snapshot
 
-from .changes import CHANGE_TASK, ChangeAnalysis
+from .changes import CHANGE_TASK, ChangeAnalysis, unchecked_entries
 from .python_entries import entry_id
 from .session import evidence_bundle, session_root, write_json
 from .skeleton import (
@@ -67,7 +73,6 @@ SEARCH_LIMIT = 40
 CLAIM_SECONDS = 900
 OTHER_FACT_LIMIT = 80
 ROOT_CANDIDATE_LIMIT = 40
-POSSIBLE_ENTRY_LIMIT = 20
 # What the map says about a path into an exception handler the agent gave no reason for.
 HANDLER_REASON = (
     "try/except is not analyzed; this path into the handler is the agent's reading of the code."
@@ -89,8 +94,9 @@ RULES = (
     "whose target is not internal.",
     "For each called function choose one: anchor a step inside it to expand it (its own "
     "conditions, loops and raised errors then become accountable and are reported back), "
-    "anchor a step on the call so that one step stands for it, or list the call in `omitted` "
-    "with a reason. One choice covers every call to the same function.",
+    "anchor a step on the call and none inside the function so that one step stands for it, "
+    "or list the call in `omitted` with a reason. One choice covers every call to the same "
+    "function.",
     "A step that stands for a function with many conditions, loops and results inside needs "
     "`unexpanded_reason`: one sentence on why its inside is not part of the business chain.",
     "Every unit must be used by a step or branch, or listed in `omitted` with a reason. "
@@ -599,6 +605,15 @@ class Workspace:
                 problems.append(
                     _problem(
                         f"skipped[{index}].entry_id", "unknown_entry", f"No entry {item.entry_id}."
+                    )
+                )
+            if item.reason == SkipReason.not_an_entry and not item.note:
+                problems.append(
+                    _problem(
+                        f"skipped[{index}].note",
+                        "note_required",
+                        "Say in `note` what you found: what shows that nothing outside the "
+                        "code starts this function.",
                     )
                 )
         if problems:
@@ -1751,12 +1766,9 @@ class Workspace:
                         if flow.flow_id in affected
                     ],
                     # Uncalled functions that lead to the changes and start no flow: ways
-                    # in the map may lack.
-                    "possible_entries": [
-                        item.model_dump(mode="json")
-                        for item in report.possible_entries[:POSSIBLE_ENTRY_LIMIT]
-                    ],
-                    "possible_entries_total": len(report.possible_entries),
+                    # in the map may lack. Those the plan left out with a reason have been
+                    # checked and are not listed.
+                    **unchecked_entries(report),
                 }
             }
         if self.plan is None:

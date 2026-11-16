@@ -88,6 +88,8 @@ class SkipReason(StrEnum):
     duplicate = "duplicate"
     out_of_scope = "out_of_scope"
     budget = "budget"
+    # Looked like a way in and is not one: a helper, or code nothing uses.
+    not_an_entry = "not_an_entry"
 
 
 class EvidenceCite(ContractModel):

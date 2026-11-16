@@ -184,12 +184,13 @@ def map_render(
     session: str = typer.Option(..., "--session"),
     repo: Path = typer.Option(Path("."), "--repo"),
     share: bool = typer.Option(False, "--share", help="Leave source excerpts out"),
-    open_browser: bool = typer.Option(False, "--open", help="Open the page in a browser"),
+    open_browser: bool = typer.Option(False, "--open", help="Open the viewer page in a browser"),
 ) -> None:
-    """Write graph.html and summary.md for a session. Exit 2 means a usable partial result.
+    """Write view.html, graph.html and summary.md for a session.
 
-    In a change session the page is the head map with each change shown on the step it
-    belongs to; `change-report.json` holds the same changes as data.
+    Exit 2 means a usable partial result. In a change session both pages are the head
+    map with each change shown on the step it belongs to; `change-report.json` holds
+    the same changes as data.
     """
     from .business_map.render import render_html, render_summary
     from .business_map.session import load, load_report, publish, session_root

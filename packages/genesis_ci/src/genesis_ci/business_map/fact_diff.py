@@ -7,7 +7,11 @@ removed otherwise.
 
 Facts cover conditions, calls, loops and results. Everything else that changed
 (assignments, defaults, decorators, docstrings) is found by a line comparison of each
-changed file and reported as a source change, so no edit goes unlisted.
+changed file and reported as a source change, so no edit goes unlisted. Lines that
+changed together are one source change. Assignments at the top level of a module are
+listed one by one, up to MAX_HUNK_PARTS of them, unless cutting would take the list
+past MAX_CHANGES. One that only moved is no change when moving it cannot change what
+the module does, which `movable` decides; any other move is listed as removed and added.
 
 A fact that repeats inside one function shares its text with its repeats, and its
 fingerprint only counts them. Repeats are therefore matched by where they are: the ones
@@ -20,6 +24,7 @@ reported as removed and added.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import re
 from collections import Counter
@@ -48,12 +53,17 @@ _KINDS = {
     FactKind.raises: ("result_added", "result_removed", "result_modified"),
 }
 _CALL_KINDS = {ChangeKind.call_added, ChangeKind.call_removed, ChangeKind.call_modified}
+_SOURCE = {ChangeKind.source_added, ChangeKind.source_removed, ChangeKind.source_modified}
 # A branch or loop that came or went as a whole, by the side it exists on.
 _BLOCK_KINDS = {
     EvidenceSide.head: {ChangeKind.condition_added, ChangeKind.loop_added},
     EvidenceSide.base: {ChangeKind.condition_removed, ChangeKind.loop_removed},
 }
 HEADER_LINES = 8
+# Changed lines that hold several module-level assignments are cut into one change per
+# assignment, up to this many on a side. More than that, such as a rewritten table,
+# stays one change.
+MAX_HUNK_PARTS = 12
 _COMMENT = {"python": "#", "typescript": "//"}
 # Lines that only open or close a block say nothing by themselves.
 _STRUCTURAL = re.compile(r"^(?:[^\w]|\b(?:else|try|finally|pass|do)\b)*$")
@@ -546,8 +556,18 @@ def _plain(text: str) -> str:
     return " ".join(text.split())
 
 
-def _source_changes(path, by_path, covered, sources, comment, canonical) -> list[RawChange]:
-    """Changed lines of one file that no reported fact change accounts for."""
+def _source_changes(
+    path, by_path, covered, sources, comment, canonical, assignments=None, movable=None
+) -> list[RawChange]:
+    """Changed lines of one file that no reported fact change accounts for.
+
+    Lines that changed together are one change. Where they hold several module-level
+    assignments, each assignment is a change of its own, because every constant has its
+    own readers and its own tests. `assignments(side, path)` lists them as first line,
+    last line and names; without it nothing is cut. `movable(side, path)` gives the first
+    lines of the module-level assignments that may move without changing what the module
+    does; one of those that reads the same on both sides is no change.
+    """
     old_lines, new_lines = sources.lines(BASE, path), sources.lines(HEAD, path)
     opcodes = sources.aligned(path)
     if opcodes is None:
@@ -581,20 +601,85 @@ def _source_changes(path, by_path, covered, sources, comment, canonical) -> list
             end=(numbers[-1], 10**9),
         )
 
+    texts, owner, moved = {}, {}, {}
+
+    def prepare() -> None:
+        """Module-level assignments by side, each with its text, read once per file.
+
+        One that only moved is no change when its text occurs once on each side and
+        `movable` lets it move on both: then where it stands cannot change what the module
+        does. Wherever else it moved, it is listed as removed and added.
+        """
+        if texts:
+            return
+        for side, lines in ((BASE, old_lines), (HEAD, new_lines)):
+            texts[side] = {
+                item: canonical("\n".join(lines[item[0] - 1 : item[1]]))
+                for item in assignments(side, path)
+            }
+            owner[side] = {
+                number: item for item in texts[side] for number in range(item[0], item[1] + 1)
+            }
+        counts = {side: Counter(texts[side].values()) for side in texts}
+        free = {side: movable(side, path) if movable else set() for side in texts}
+        single = {
+            side: {text: item for item, text in texts[side].items() if counts[side][text] == 1}
+            for side in texts
+        }
+        for side, other in ((BASE, HEAD), (HEAD, BASE)):
+            moved[side] = {
+                item
+                for text, item in single[side].items()
+                if text in single[other]
+                and item[0] in free[side]
+                and single[other][text][0] in free[other]
+            }
+
+    def at_module(side, numbers) -> bool:
+        """Whether any of these lines stands at the top level of the module."""
+        for number in numbers:
+            symbol = _innermost(by_path[side], number)
+            if symbol is not None and symbol.kind == "module":
+                return True
+        return False
+
+    def runs(side, numbers):
+        """Changed lines of one side, cut where a module-level assignment begins or ends."""
+        found = []
+        for number in numbers:
+            item = owner[side].get(number)
+            if found and found[-1][0] == item:
+                found[-1][1].append(number)
+            else:
+                found.append((item, [number]))
+        return [run for run in found if run[0] not in moved[side]]
+
+    def slots(lines, first, last, side, common) -> list[str]:
+        """The other lines of a range, cut at each assignment both sides make.
+
+        Lines that no assignment holds and no reported change covers are joined between
+        those cut points, so that a statement that moved past such an assignment reads
+        differently, while one that was only laid out anew does not.
+        """
+        found, current, last_item = [], [], None
+        for number in range(first + 1, last + 1):
+            item = owner[side].get(number)
+            if item is not None:
+                if item not in moved[side] and set(item[2]) & common and item != last_item:
+                    found.append(canonical("\n".join(current)))
+                    current, last_item = [], item
+                continue
+            if number not in covered[side]:
+                current.append(lines[number - 1])
+        return [*found, canonical("\n".join(current))]
+
     changes, seen = [], Counter()
-    for tag, i1, i2, j1, j2 in opcodes:
-        if tag == "equal":
-            continue
-        gone, fresh = left(old, i1, i2, BASE), left(new, j1, j2, HEAD)
-        if not gone and not fresh:
-            continue
-        # The same tokens laid out differently are not a change.
-        if canonical("\n".join(old_lines[i1:i2])) == canonical("\n".join(new_lines[j1:j2])):
-            continue
+
+    def add(gone, fresh) -> None:
         side, line = (HEAD, fresh[0]) if fresh else (BASE, gone[0])
         symbol = _innermost(by_path[side], line)
         if symbol is None:
-            continue
+            return
         kind = (
             "source_modified" if gone and fresh else ("source_added" if fresh else "source_removed")
         )
@@ -612,6 +697,66 @@ def _source_changes(path, by_path, covered, sources, comment, canonical) -> list
                 module_level=symbol.kind != "function",
             )
         )
+
+    for tag, i1, i2, j1, j2 in opcodes:
+        if tag == "equal":
+            continue
+        gone, fresh = left(old, i1, i2, BASE), left(new, j1, j2, HEAD)
+        # Only lines at the top level of a module are cut by assignment. Edits inside
+        # functions and classes stay one change per run of lines, as they always were.
+        if assignments and (at_module(BASE, gone) or at_module(HEAD, fresh)):
+            prepare()
+            was, now = runs(BASE, gone), runs(HEAD, fresh)
+            gone = [number for _, numbers in was for number in numbers]
+            fresh = [number for _, numbers in now for number in numbers]
+        else:
+            was, now = [(None, gone)] if gone else [], [(None, fresh)] if fresh else []
+        if not gone and not fresh:
+            continue
+        # The same tokens laid out differently are not a change.
+        if canonical("\n".join(old_lines[i1:i2])) == canonical("\n".join(new_lines[j1:j2])):
+            continue
+        if not 1 < max(len(was), len(now)) <= MAX_HUNK_PARTS:
+            add(gone, fresh)
+            continue
+        # Lines outside assignments that read the same on both sides, in the same place
+        # among the assignments both sides make, were only laid out differently beside a
+        # real edit: they are no change.
+        common = {name for item, _ in was if item for name in item[2]} & {
+            name for item, _ in now if item for name in item[2]
+        }
+        if slots(old_lines, i1, i2, BASE, common) == slots(new_lines, j1, j2, HEAD, common):
+            was = [run for run in was if run[0] is not None]
+            now = [run for run in now if run[0] is not None]
+        # An assignment is paired with the one of the same name on the other side. Runs of
+        # other lines are paired in order when both sides have as many; otherwise nothing
+        # tells which goes with which, and they stay one change together. What finds no
+        # partner came or went.
+        plain = [[run for run in side if run[0] is None] for side in (was, now)]
+        partner = {}
+        if len(plain[0]) == len(plain[1]):
+            partner = {id(after): before for before, after in zip(*plain)}
+        elif plain[0] and plain[1]:
+            add(
+                [number for _, numbers in plain[0] for number in numbers],
+                [number for _, numbers in plain[1] for number in numbers],
+            )
+            was = [run for run in was if run[0] is not None]
+            now = [run for run in now if run[0] is not None]
+        for run in now:
+            item, lines = run
+            if item is None:
+                match = partner.get(id(run))
+            else:
+                match = next(
+                    (other for other in was if other[0] and set(other[0][2]) & set(item[2])),
+                    None,
+                )
+            if match is not None:
+                was.remove(match)
+            add(match[1] if match else [], lines)
+        for _, lines in was:
+            add(lines, [])
     return changes
 
 
@@ -622,11 +767,17 @@ def diff_facts(
     test_paths: frozenset[tuple[EvidenceSide, str]] = frozenset(),
     renames: dict[str, str] | None = None,
     canonical: dict[str, object] | None = None,
+    assignments=None,
+    movable=None,
 ) -> FactDiff:
     """Every change between the two sides of `facts`, in a stable order.
 
     `canonical` maps a language to a function that renders source so that layout does
-    not matter; without one, only whitespace is ignored.
+    not matter; without one, only whitespace is ignored. `assignments(side, path)` lists
+    the module-level assignments of a file, so that each changed one is listed apart, and
+    `movable(side, path)` the names whose assignment may move without being a change.
+    When there are more changes than MAX_CHANGES, those to conditions, calls, loops and
+    results are kept before source lines.
     """
     renames = renames or {}
     canonical = canonical or {}
@@ -855,35 +1006,53 @@ def diff_facts(
         for symbol in symbols[side].values():
             by_path[side].setdefault(symbol.path, []).append(symbol)
     analyzed = {(item.side, item.path) for item in facts.files if item.status == "analyzed"}
-    skipped = []
-    for path in sorted(path for side, path in analyzed if side == HEAD):
-        if (BASE, path) not in analyzed or (HEAD, path) in test_paths:
-            continue
-        if source.read_text(BASE, path) == source.read_text(HEAD, path):
-            continue
-        try:
-            changes.extend(
-                _source_changes(
-                    path,
-                    {side: by_path[side].get(path, []) for side in (BASE, HEAD)},
-                    {side: covered[side].get(path, set()) for side in (BASE, HEAD)},
-                    sources,
-                    _COMMENT.get(languages[(HEAD, path)], "#"),
-                    canonical.get(languages[(HEAD, path)], _plain),
-                )
-            )
-        except OverflowError:
-            skipped.append(path)
 
-    changes = _fold_blocks(changes, by_symbol, sources)
+    def lines_changed(cut: bool) -> tuple[list[RawChange], list[str]]:
+        found, skipped = [], []
+        for path in sorted(path for side, path in analyzed if side == HEAD):
+            if (BASE, path) not in analyzed or (HEAD, path) in test_paths:
+                continue
+            if source.read_text(BASE, path) == source.read_text(HEAD, path):
+                continue
+            try:
+                found.extend(
+                    _source_changes(
+                        path,
+                        {side: by_path[side].get(path, []) for side in (BASE, HEAD)},
+                        {side: covered[side].get(path, set()) for side in (BASE, HEAD)},
+                        sources,
+                        _COMMENT.get(languages[(HEAD, path)], "#"),
+                        canonical.get(languages[(HEAD, path)], _plain),
+                        assignments if cut else None,
+                        movable if cut else None,
+                    )
+                )
+            except OverflowError:
+                skipped.append(path)
+        return found, skipped
+
+    lines, skipped = lines_changed(cut=assignments is not None)
+    if assignments is not None and len(changes) + len(lines) > MAX_CHANGES:
+        # Cutting constants apart must not make a list that fits incomplete. When the
+        # cut-up list would not fit, each run of changed lines stays one change, as
+        # before. Folding changes the objects it is given, so it is tried on copies.
+        trial = _fold_blocks(copy.deepcopy(changes) + copy.deepcopy(lines), by_symbol, sources)
+        if len(trial) > MAX_CHANGES:
+            lines, skipped = lines_changed(cut=False)
+    changes = _fold_blocks(changes + lines, by_symbol, sources)
 
     def order(change: RawChange):
         part = change.after or change.before
         return (change.is_test, part.path, part.start, change.kind.value, change.symbol_id)
 
     changes.sort(key=order)
+    kept = changes
+    if len(changes) > MAX_CHANGES:
+        # A file of many cut-up constants must not push a changed condition off the list.
+        kept = sorted(changes, key=lambda change: (change.kind in _SOURCE, order(change)))
+        kept = sorted(kept[:MAX_CHANGES], key=order)
     return FactDiff(
-        changes=changes[:MAX_CHANGES],
+        changes=kept,
         evidence=sources.minted,
         moved=moved,
         same=stayed,
