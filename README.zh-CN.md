@@ -18,7 +18,9 @@
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <strong>简体中文</strong></p>
 
 <p align="center">
-  <img src="assets/readme/change-review.png" alt="网店下单流程上的四处改动：改到的步骤有编号，标出有没有测试检查；扣款一步被标为风险" width="900">
+  <a href="assets/readme/genesis-demo.mp4"><img src="assets/readme/flow-demo.webp" alt="下单流程一步步画出来，然后四处改动带着测试结论落上去；扣款一步被标为风险" width="900"></a>
+  <br>
+  <a href="assets/readme/genesis-demo.mp4"><b>▶ 观看 37 秒演示视频</b></a>
 </p>
 
 ---

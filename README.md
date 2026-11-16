@@ -18,7 +18,9 @@
 <p align="center"><strong>English</strong> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <img src="assets/readme/change-review.png" alt="An online shop checkout flow with four changes on it: each changed step is numbered and shows whether a test checks it; the card charge is marked as a risk" width="900">
+  <a href="assets/readme/genesis-demo.mp4"><img src="assets/readme/flow-demo.webp" alt="A checkout flow drawing itself step by step, then its four changes landing with test verdicts; the card charge is marked as a risk" width="900"></a>
+  <br>
+  <a href="assets/readme/genesis-demo.mp4"><b>▶ Watch the 37-second demo</b></a>
 </p>
 
 ---
