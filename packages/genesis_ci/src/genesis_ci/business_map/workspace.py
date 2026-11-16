@@ -1046,10 +1046,16 @@ class Workspace:
     def _root(self, symbol: str) -> str:
         return fact_fingerprint(symbol=symbol, kind="entry", text="<enter>")
 
+    def _done(self, symbol: str) -> str:
+        """Stands for a symbol having ended normally: returned, or run off its end."""
+        return fact_fingerprint(symbol=symbol, kind="exit", text="<return>")
+
     def _graph(self, symbol: str) -> dict:
         cache = self.__dict__.setdefault("_graphs", {})
         if symbol not in cache:
-            cache[symbol] = control_edges(self.by_symbol.get(symbol, ()), self._root(symbol))
+            cache[symbol] = control_edges(
+                self.by_symbol.get(symbol, ()), self._root(symbol), self._done(symbol)
+            )
         return cache[symbol]
 
     def _reach(self, symbol: str, starts) -> set[str]:
@@ -1086,13 +1092,45 @@ class Workspace:
             cache[fact.fingerprint] = seen
         return cache[fact.fingerprint]
 
-    def _passes(self, starts: dict[str, set[str]], targets: list[str], symbols: dict) -> bool:
+    def _flow_runs(self, chosen) -> set[str]:
+        """The definitions a flow's entries run, through any number of calls."""
+        found = {entry.symbol_id for entry in chosen}
+        frontier = set(found)
+        while frontier:
+            frontier = {callee for symbol in frontier for callee in self._runs(symbol)} - found
+            found |= frontier
+        return found
+
+    def _callers(self, symbol: str) -> set[str]:
+        """The definitions whose calls get to `symbol`, a few calls up."""
+        cache = self.__dict__.setdefault("_callers_of", {})
+        if not cache:
+            direct: dict[str, set[str]] = {}
+            for caller in self.by_symbol:
+                for callee in self._runs(caller):
+                    direct.setdefault(callee, set()).add(caller)
+            cache[None] = direct
+        if symbol not in cache:
+            direct, found, frontier = cache[None], set(), {symbol}
+            for _ in range(FRAME_DEPTH):
+                frontier = {caller for item in frontier for caller in direct.get(item, ())} - found
+                found |= frontier
+            cache[symbol] = found
+        return cache[symbol]
+
+    def _passes(
+        self, starts: dict[str, set[str]], targets: list[str], symbols: dict, scope: set[str]
+    ) -> bool:
         """Whether control can pass from `starts` (facts by symbol) to any target fact.
 
         Inside one function the target must be reachable in its control structure. Across
         functions, a reachable call must lead into the target's function, or the target
-        must come after a call that leads into the function control is leaving. Either
-        way the call may get there through functions in between that have no step.
+        must come after a call that leads into the function control is leaving. Leaving a
+        function also returns to its caller, where a call after the one that got here may
+        lead into the target's function: one function done, the next one the caller calls.
+        Each way the calls may get there through functions in between that have no step.
+        Leaving a function needs a way out of it from the start that is not a `raise`, and
+        a caller to return to among the definitions `scope` holds: the ones this flow runs.
         """
         goals: dict[str, set[str]] = {}
         for fingerprint in targets:
@@ -1108,6 +1146,9 @@ class Workspace:
                     and self._leads_to(fact) & goals.keys()
                 ):
                     return True
+            # Past this point control leaves the function, which a `raise` does not.
+            if self._done(symbol) not in reached:
+                continue
             for callee_of, wanted in goals.items():
                 returns_to = {
                     fact.fingerprint
@@ -1116,6 +1157,26 @@ class Workspace:
                 }
                 if returns_to and self._reach(callee_of, returns_to) & wanted:
                     return True
+            # Only a caller in this flow that also gets to a target's function can vouch.
+            meeting = set().union(*(self._callers(goal) for goal in goals))
+            for caller in self._callers(symbol) & meeting & scope:
+                graph = self._graph(caller)
+                returns_to = {
+                    fact.fingerprint
+                    for fact in self.by_symbol.get(caller, ())
+                    if fact.kind == FactKind.call and symbol in self._leads_to(fact)
+                }
+                # What runs after those calls, the calls themselves only when a loop runs
+                # them again: a call into both functions says nothing about their order.
+                following = {target for start in returns_to for target, _ in graph.get(start, ())}
+                after = self._reach(caller, following) if following else set()
+                for fact in self.by_symbol.get(caller, ()):
+                    if (
+                        fact.kind == FactKind.call
+                        and fact.fingerprint in after
+                        and self._leads_to(fact) & goals.keys()
+                    ):
+                        return True
         return False
 
     def _nodes(self, anchors: list[str], symbols: dict, entry_anchors: set[str]) -> dict:
@@ -1142,6 +1203,7 @@ class Workspace:
         anchor_symbols = {fp: fact.symbol_id for fp, fact in self.by_fingerprint.items()}
         entry_anchors = {self.entry_anchor(entry) for entry in chosen}
         anchor_symbols.update((self.entry_anchor(entry), entry.symbol_id) for entry in chosen)
+        runs = self._flow_runs(chosen)
         problems: list[dict] = []
         # What the submission leaves out, by the unit each entry stands for. A call that
         # a cited range merely picks up, such as a helper in the arguments of a `return`,
@@ -1327,7 +1389,10 @@ class Workspace:
                 if not (
                     target["anchors"]
                     and self._passes(
-                        {anchor_symbols[conditions[0]]: taken}, target["anchors"], anchor_symbols
+                        {anchor_symbols[conditions[0]]: taken},
+                        target["anchors"],
+                        anchor_symbols,
+                        runs,
                     )
                 ):
                     problems.append(
@@ -1364,6 +1429,7 @@ class Workspace:
                             **anchor_symbols,
                             **{self._root(s): s for s in set(anchor_symbols.values())},
                         },
+                        runs,
                     )
                 )
                 if not supported:

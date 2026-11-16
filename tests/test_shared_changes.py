@@ -411,3 +411,52 @@ def test_a_constant_another_flow_reads_first_leaves_the_closest_flow_and_is_name
     flows = {flow.flow_id: flow.name for flow in workspace.stored_map().flows}
     assert flows[item.projection.flow_id] == "post_digest"
     assert [flows[target.flow_id] for target in item.other_projections] == ["post_job"]
+
+
+LEGACY = (
+    BASE[SERVICE].replace("digest = build_digest(user)", "digest = legacy(build_digest(user))")
+    + "\n\ndef legacy(digest):\n    return digest\n"
+)
+
+
+def test_a_removed_function_stays_on_the_flow_that_draws_its_caller(source_repo):
+    base = {**BASE, SERVICE: LEGACY}
+    workspace, _ = two_commits(source_repo, base, {**base, SERVICE: BASE[SERVICE]})
+    # The job flow is described first, with a step inside the function that called it.
+    tasks = planned(workspace, "post_job")
+    context = workspace.context(tasks["post_job"])
+    job = {
+        "name": "post_job",
+        "steps": [
+            {
+                "key": "recv",
+                "name": "收到任务请求",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src(API, 14, '@router.post("/jobs")', 15)],
+            },
+            {
+                "key": "run",
+                "name": "执行任务",
+                "kind": "result",
+                "evidence": [src(API, 16, "run_job(user)")],
+            },
+            {
+                "key": "send",
+                "name": "投递摘要",
+                "kind": "action",
+                "evidence": [src(SERVICE, 3, "deliver(digest)")],
+            },
+        ],
+        "edges": [
+            {"source": "recv", "target": "run", "relation": "sequence"},
+            {"source": "run", "target": "send", "relation": "call"},
+        ],
+    }
+    assert workspace.submit(tasks["post_job"], job)["status"] == "accepted"
+    planned(workspace, "post_job", "post_digest")
+    removed = by_kind(workspace.stored_report(), "symbol_removed")
+    flows = {flow.flow_id: flow.name for flow in workspace.stored_map().flows}
+    # The digest flow calls it more directly, but the job flow already draws that code.
+    assert flows[removed.projection.flow_id] == "post_job"
+    assert removed.other_projections == ()
