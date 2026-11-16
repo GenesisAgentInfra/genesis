@@ -6,9 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Genesis: flow maps and change review for agent-written code</h1>
-
-<p align="center"><b>Visualize your agent's changes. See where they can break.</b></p>
+<h1 align="center">Visualize your agent's changes.<br>See where they can break.</h1>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License: Apache-2.0"></a>
@@ -91,3 +89,9 @@ The CLI calls no model, sends nothing anywhere, and never runs your code.
 [Apache-2.0](LICENSE). Bundled components keep their own licenses, listed in
 [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Want to help?
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Star history
+
+<p align="center">
+  <a href="https://star-history.com/#GenesisAgentInfra/genesis&Date"><img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&type=Date" alt="Star history of GenesisAgentInfra/genesis" width="640"></a>
+</p>

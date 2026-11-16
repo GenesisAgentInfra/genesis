@@ -6,9 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">Genesis：给 agent 写的代码画流程图、审改动</h1>
-
-<p align="center"><b>把 agent 的改动画出来，看清哪里会出问题。</b></p>
+<h1 align="center">把 agent 的改动画出来。<br>看清哪里会出问题。</h1>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="许可证：Apache-2.0"></a>
@@ -83,3 +81,9 @@ CLI 不调用任何模型，不往外发任何东西，也不会运行你的代�
 ## 许可证
 
 [Apache-2.0](LICENSE)。随附组件保留各自的许可证，见 [NOTICE](NOTICE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。想参与开发，看 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## Star 增长
+
+<p align="center">
+  <a href="https://star-history.com/#GenesisAgentInfra/genesis&Date"><img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&type=Date" alt="Star 增长曲线： GenesisAgentInfra/genesis" width="640"></a>
+</p>
