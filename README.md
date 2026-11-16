@@ -6,7 +6,15 @@
   </picture>
 </p>
 
-<h3 align="center">See what your agent built.<br>Catch what it left untested.</h3>
+<h1 align="center">Genesis: flow maps and change review for agent-written code</h1>
+
+<p align="center"><b>Visualize your agent's changes. See where they can break.</b></p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/python-3.12-3776AB?style=flat-square" alt="Python 3.12">
+  <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square" alt="GitHub stars"></a>
+</p>
 
 <p align="center"><strong>English</strong> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a></p>
 
@@ -16,9 +24,8 @@
   <a href="assets/readme/genesis-demo.mp4"><b>▶ Watch the 37-second demo</b></a>
 </p>
 
-Coding agents write code faster than you can read it. Genesis turns your repo into a
-flow map in plain language, then shows where each change lands on that map and whether
-a test checks it.
+Genesis turns your codebase into a business flow map and shows which of your agent's
+changes are untested or risky. It runs as a skill inside Claude Code and Codex.
 
 ## Quick start
 

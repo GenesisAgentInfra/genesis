@@ -6,7 +6,15 @@
   </picture>
 </p>
 
-<h3 align="center">看清你的 agent 到底写了什么。<br>找出它没测到的地方。</h3>
+<h1 align="center">Genesis：给 agent 写的代码画流程图、审改动</h1>
+
+<p align="center"><b>把 agent 的改动画出来，看清哪里会出问题。</b></p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="许可证：Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/python-3.12-3776AB?style=flat-square" alt="Python 3.12">
+  <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square" alt="GitHub stars"></a>
+</p>
 
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <strong>简体中文</strong></p>
 
@@ -16,7 +24,7 @@
   <a href="assets/readme/genesis-demo.mp4"><b>▶ 观看 37 秒演示视频</b></a>
 </p>
 
-Agent 写代码比你读代码快得多。Genesis 把你的仓库画成一张大白话的业务流程图，再把每次改动标到图上，告诉你它有没有测试管着。
+Genesis 把你的代码库画成一张业务流程图，告诉你 agent 的哪些改动没测到、哪些有风险。它作为一个 skill 跑在 Claude Code 和 Codex 里。
 
 ## 快速开始
 
