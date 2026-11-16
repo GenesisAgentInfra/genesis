@@ -10,7 +10,7 @@ import pytest
 from genesis_ci.business_map.session import prepare
 from genesis_ci.business_map.workspace import Workspace
 from test_git_snapshot import commit, write
-from test_map_loop import codes, src
+from test_map_loop import codes, entry, src
 
 API = "batch/api.py"
 WORK = "batch/work.py"
@@ -465,3 +465,203 @@ def test_a_call_edge_in_place_of_that_branch_is_taken_but_the_decision_loses_the
         if source == "逐个处理名称" and edge.condition
     }
     assert leaving == {"exit"}
+
+
+SIBLINGS = "report/api.py"
+SIBLING_FILES = {
+    "report/__init__.py": "",
+    SIBLINGS: """from fastapi import APIRouter
+
+from .work import cache_dir, cache_key, collect_sources, collect_notes
+
+router = APIRouter()
+
+
+@router.post("/report")
+def build_report(data):
+    sources = collect_sources(data)
+    notes = collect_notes(data)
+    path = cache_dir() / cache_key(data)
+    return {"sources": sources, "notes": notes, "path": str(path)}
+""",
+    "report/work.py": """from .store import name_of, pick, root
+
+
+def collect_sources(data):
+    return pick(data, "c")
+
+
+def collect_notes(data):
+    return pick(data, "r")
+
+
+def cache_dir():
+    return root()
+
+
+def cache_key(data):
+    return name_of(data)
+""",
+    "report/store.py": "def pick(data, key):\n    return data[key]\n\n\n"
+    "def root():\n    return 1\n\n\ndef name_of(data):\n    return 2\n",
+}
+
+
+@pytest.fixture
+def citing(source_repo):
+    for path, text in SIBLING_FILES.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    return workspace, workspace.save_plan(None)["tasks"][0]["task_id"]
+
+
+def sibling_flow(workspace, task_id, files=SIBLING_FILES):
+    """Four functions called one after the other, each expanded, with no step of their own
+    at the calls after the first."""
+    context = workspace.context(task_id)
+    work = files["report/work.py"]
+
+    def line_of(needle):
+        api = SIBLING_FILES[SIBLINGS].splitlines()
+        return next(i for i, text in enumerate(api, 1) if needle in text)
+
+    def inside(needle):
+        line = next(i for i, text in enumerate(work.splitlines(), 1) if needle in text)
+        return src("report/work.py", line, needle)
+
+    return {
+        "name": "生成报告",
+        "steps": [
+            {
+                "key": "recv",
+                "name": "收到查询请求",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [
+                    src(SIBLINGS, line_of("@router"), '@router.post("/report")', line_of("def "))
+                ],
+            },
+            {
+                "key": "sources",
+                "name": "取出来源",
+                "kind": "action",
+                "evidence": [inside('pick(data, "c")')],
+            },
+            {
+                "key": "notes",
+                "name": "取出笔记",
+                "kind": "action",
+                "evidence": [inside('pick(data, "r")')],
+            },
+            {
+                "key": "dir",
+                "name": "定位缓存目录",
+                "kind": "action",
+                "evidence": [inside("root()")],
+            },
+            {
+                "key": "key",
+                "name": "算出缓存文件名",
+                "kind": "action",
+                "evidence": [inside("name_of(data)")],
+            },
+            {
+                "key": "done",
+                "name": "返回报告",
+                "kind": "result",
+                "evidence": [src(SIBLINGS, line_of("return {"), "return {")],
+            },
+        ],
+        "edges": [
+            {"source": "recv", "target": "sources", "relation": "call"},
+            # Done with one function, straight into the next one the caller calls.
+            {"source": "sources", "target": "notes", "relation": "sequence"},
+            {"source": "notes", "target": "dir", "relation": "sequence"},
+            # The two calls of one expression, in the order Python evaluates them.
+            {"source": "dir", "target": "key", "relation": "sequence"},
+            {"source": "key", "target": "done", "relation": "sequence"},
+        ],
+    }
+
+
+def test_the_end_of_one_called_function_leads_into_the_next_the_caller_calls(citing):
+    workspace, task = citing
+    result = workspace.submit(task, sibling_flow(workspace, task))
+    assert result["status"] == "accepted", result.get("errors")
+    flow = workspace.stored_map().flows[0]
+    assert {(edge.support, edge.resolution) for edge in flow.edges} == {("static_fact", "resolved")}
+
+
+@pytest.mark.parametrize(
+    "source, target", [("notes", "sources"), ("key", "dir"), ("done", "sources")]
+)
+def test_a_function_the_caller_called_before_cannot_come_next(citing, source, target):
+    workspace, task = citing
+    flow = sibling_flow(workspace, task)
+    flow["edges"].append({"source": source, "target": target, "relation": "sequence"})
+    assert codes(workspace.submit(task, flow)) == [("edges[5]", "edge_not_supported")]
+
+
+@pytest.mark.parametrize(
+    "path, text",
+    [
+        # A test that calls the two in the other order.
+        (
+            "tests/test_report.py",
+            "from report.work import collect_sources, collect_notes\n\n\n"
+            "def test_order():\n    collect_notes({'r': 1})\n    collect_sources({'c': 1})\n",
+        ),
+        # A job this flow never runs.
+        (
+            "report/reindex.py",
+            "from .work import collect_sources, collect_notes\n\n\n"
+            "def reindex(data):\n    collect_notes(data)\n    collect_sources(data)\n",
+        ),
+    ],
+)
+def test_only_code_the_flow_runs_says_what_comes_next(source_repo, path, text):
+    for name, source in {**SIBLING_FILES, path: text}.items():
+        write(source_repo, name, source)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    task = next(
+        item["task_id"]
+        for item in workspace.save_plan(None)["tasks"]
+        if entry(workspace, "#build_report").entry_id in item["entry_ids"]
+    )
+    flow = sibling_flow(workspace, task)
+    flow["edges"].append({"source": "notes", "target": "sources", "relation": "sequence"})
+    # Other code calls them in that order; this flow does not.
+    assert codes(workspace.submit(task, flow)) == [("edges[5]", "edge_not_supported")]
+
+
+RAISING = {
+    **SIBLING_FILES,
+    "report/work.py": SIBLING_FILES["report/work.py"].replace(
+        '    return pick(data, "c")',
+        '    if not data:\n        raise ValueError("empty")\n    return pick(data, "c")',
+    ),
+}
+
+
+def test_a_step_that_raises_does_not_lead_into_the_next_function(source_repo):
+    for name, source in RAISING.items():
+        write(source_repo, name, source)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
+    task = workspace.save_plan(None)["tasks"][0]["task_id"]
+    flow = sibling_flow(workspace, task, RAISING)
+    work = RAISING["report/work.py"].splitlines()
+    line = next(i for i, text in enumerate(work, 1) if "raise ValueError" in text)
+    flow["steps"].append(
+        {
+            "key": "empty",
+            "name": "没有数据时报错",
+            "kind": "result",
+            "evidence": [src("report/work.py", line, "raise ValueError")],
+        }
+    )
+    flow["edges"].append({"source": "empty", "target": "notes", "relation": "sequence"})
+    # The function only leaves by raising there, so it never gets to the next call.
+    assert ("edges[5]", "edge_not_supported") in codes(workspace.submit(task, flow))

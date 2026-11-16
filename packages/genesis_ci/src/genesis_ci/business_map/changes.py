@@ -768,16 +768,29 @@ class _Placement:
                 for symbol in change.base_symbols or (change.symbol_id,)
                 for fact in analysis.callers[BASE].get(symbol, ())
             }
-            flows = [flow for flow, reach in self.reach.items() if reach & callers]
-            if flows:
+            # The step is shown on a flow that already draws the code that called it, or
+            # else on the one that calls it most directly, as `closest` picks a flow for
+            # shared code; the others only reached it.
+            drawn = {spot[1] for caller in callers for spot in self.in_symbol.get(caller, ())}
+            ranked = sorted(
+                (
+                    flow not in drawn,
+                    min(calls[caller] for caller in callers & calls.keys()),
+                    self.first_entry[flow],
+                    flow,
+                )
+                for flow, calls in self.calls_to.items()
+                if callers & calls.keys()
+            )
+            if ranked:
                 removed = {
                     "step_id": "step_" + change.before.anchor[3:19],
                     "name": _short(change.before.text.splitlines()[-1], 200),
                 }
-                return [
-                    {"status": "removed_step", "flow_id": flow, "removed_step": removed}
-                    for flow in flows[:MAX_PROJECTIONS]
-                ], set()
+                nearest = ranked[0][-1]
+                return [{"status": "removed_step", "flow_id": nearest, "removed_step": removed}], {
+                    row[-1] for row in ranked[1:]
+                }
         if reaching:
             return [
                 _unassigned(

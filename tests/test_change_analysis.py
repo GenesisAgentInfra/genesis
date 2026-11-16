@@ -1290,3 +1290,35 @@ def test_a_change_that_only_reflows_a_text_is_shown_as_an_excerpt(source_repo):
     (view,) = workspace.change_summary()["changes"]
     # Shown on one line, both sides read the same: they are marked to be read in full.
     assert view["before"]["excerpt"] is True and view["after"]["excerpt"] is True
+
+
+CHAINED = {
+    "app/__init__.py": "",
+    "app/api.py": "from fastapi import APIRouter\n\nfrom .core import build\n\n"
+    'router = APIRouter()\n\n\n@router.get("/summary")\ndef summary():\n    return build()\n\n\n'
+    '@router.get("/batch")\ndef batch():\n    return summary()\n',
+    "app/core.py": "def lookup():\n    return [1]\n\n\n"
+    'def build():\n    found = lookup()\n    return {"found": found}\n',
+}
+
+
+def test_a_removed_function_is_a_removed_step_on_the_flow_closest_to_its_caller(source_repo):
+    head = {
+        **CHAINED,
+        "app/core.py": 'def build():\n    found = [1]\n    return {"found": found}\n',
+    }
+    workspace, _ = two_commits(source_repo, CHAINED, head)
+    report = workspace.stored_report()
+    entry_of = {flow.flow_id: flow.entries[0].symbol_id for flow in workspace.stored_map().flows}
+    removed = by_kind(report, "symbol_removed")
+    # `summary` calls `build` itself; `batch` gets there through `summary`, one call further.
+    assert removed.projection.status == "removed_step"
+    assert entry_of[removed.projection.flow_id] == "app/api.py#summary"
+    assert removed.other_projections == ()
+    # The other flow only reaches it, so it needs a name and nothing more.
+    reaching = {
+        entry_of[item.flow_id]
+        for item in report.possibly_affected
+        if removed.change_id in item.change_ids
+    }
+    assert reaching == {"app/api.py#batch"}

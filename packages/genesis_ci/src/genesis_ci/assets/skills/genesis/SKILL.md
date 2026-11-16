@@ -365,6 +365,10 @@ Rules the CLI enforces:
   a called function is not accountable and needs no step of its own. Do not also
   draw an edge from the calling step past the function, as if it were skipped, and
   do not leave the function's last steps as dead ends when the flow goes on.
+  When what the caller runs next is a call to another function you expand, the
+  edge coming out goes straight to the first step inside that function; the second
+  call needs no step of its own. Two calls in one expression, such as
+  `cache_dir() / cache_key(item_id)`, are taken in the order Python runs them.
   - **Called from several places in one flow.** Draw the inside of the function
     once. Every step that calls it gets its own `call` edge to the first step
     inside, and the place where the function is done gets an edge to what each of

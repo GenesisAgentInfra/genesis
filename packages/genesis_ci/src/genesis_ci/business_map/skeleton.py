@@ -206,23 +206,33 @@ def _entry_fact(entry: CodeEntry, label: str) -> CodeFact:
     )
 
 
-def control_edges(facts, root: str) -> dict[str, list[tuple[str, str | None]]]:
+def control_edges(
+    facts, root: str, done: str | None = None
+) -> dict[str, list[tuple[str, str | None]]]:
     """Control transfers between the facts of one symbol, keyed by fingerprint.
 
     `root` stands for entering the symbol. Each transfer is `(target, branch)`; the
-    branch is set when the transfer leaves a condition or loop on that branch.
+    branch is set when the transfer leaves a condition or loop on that branch. With
+    `done`, every way the symbol ends normally leads there: a `return`, or running off
+    its last statement. A `raise` does not.
     """
     items = sorted(facts, key=_evaluation_order)
     flow = _Flow(CodeFact.model_construct(evidence_ids=()), items)
     start = CodeFact.model_construct(fingerprint=root, evidence_ids=())
     flow.add_step(root, "entry", "trigger", ())
-    flow.block(0, (), [(start, None)])
+    _, ends = flow.block(0, (), [(start, None)])
     by_step = {flow.step_id(fact.fingerprint): fact.fingerprint for fact in items}
     by_step[flow.step_id(root)] = root
     graph: dict[str, list[tuple[str, str | None]]] = {}
     for edge in flow.edges:
         branch = edge["condition"]["branch"] if "condition" in edge else None
         graph.setdefault(by_step[edge["source"]], []).append((by_step[edge["target"]], branch))
+    if done is not None:
+        for fact, branch in ends:
+            graph.setdefault(fact.fingerprint, []).append((done, branch))
+        for fact in items:
+            if fact.kind == FactKind.returns:
+                graph.setdefault(fact.fingerprint, []).append((done, None))
     return graph
 
 
