@@ -1522,19 +1522,21 @@ class ChangeAnalysis:
         waiting = [flows[key].name for key in sorted(touched) if flows[key].stage == "skeleton"]
         if waiting:
             named = ", ".join(waiting[:5]) + (", ..." if len(waiting) > 5 else "")
+            # A session with no plan set out to explain the changes, not to describe flows:
+            # its report is complete once they are explained. A plan takes on its flows.
+            planned = workspace.plan is not None
             limitations.append(
                 {
                     "code": "affected_flow_not_synthesized",
                     "message": (
-                        "No flow was described: changes are placed on flows that are still "
-                        f"a static skeleton: {named}. The explanations of the changes do not "
-                        "depend on it; describe these flows to see the changes in business "
-                        "steps."
-                        if workspace.plan is None
-                        else "Changes are placed on flows that are still a static skeleton: "
-                        f"{named}."
+                        f"Changes are placed on flows that are still a static skeleton: {named}."
+                        if planned
+                        else "No flow was described: changes are placed on flows that are "
+                        f"still a static skeleton: {named}. This does not keep the report "
+                        "from being complete; describe these flows to see the changes in "
+                        "business steps."
                     ),
-                    "affects_completeness": True,
+                    "affects_completeness": planned,
                 }
             )
         if diff.truncated:

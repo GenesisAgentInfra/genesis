@@ -1,5 +1,6 @@
 """A change session with no plan: prepare, diff, explain the changes, render."""
 
+import json
 import os
 import time
 
@@ -8,9 +9,11 @@ import pytest
 from genesis_ci.business_map.changes import CHANGE_TASK
 from genesis_ci.business_map.session import prepare
 from genesis_ci.business_map.workspace import Workspace
+from genesis_ci.cli import app
 from test_change_analysis import BASE, HEAD, SUBMIT_TEST, assessed, by_kind, two_commits
 from test_git_snapshot import commit, git, write
 from test_map_loop import planned
+from typer.testing import CliRunner
 
 SKELETON = "affected_flow_not_synthesized"
 UNTRACKED = "untracked_files_left_out"
@@ -89,18 +92,35 @@ def test_prepare_again_says_it_kept_the_explanations(source_repo):
     assert kept.explanation.summary == summary
 
 
-def test_a_report_without_a_plan_says_no_flow_was_described(change):
+def test_a_report_without_a_plan_is_complete_once_the_changes_are_explained(change, monkeypatch):
+    repo = change.repo
+    session = change.session["session_id"]
+    monkeypatch.setenv("GENESIS_NO_BROWSER", "1")
+
+    def render():
+        result = CliRunner().invoke(
+            app, ["map", "render", "--repo", str(repo), "--session", session]
+        )
+        return result.exit_code, json.loads(result.stdout)["change_status"]
+
+    assert render() == (2, "partial")
     result = change.submit(CHANGE_TASK, assessed(change.stored_report(), SUBMIT_TEST))
-    # Every change is explained; only the flows the changes sit on are not described.
-    assert result["changes_waiting"] == 0 and result["analysis_status"] == "partial"
-    assert result["limitations"] == [SKELETON]
-    message = limitation(change.stored_report(), SKELETON).message
-    assert message.startswith("No flow was described: changes are placed on flows that")
-    assert "POST /reports · submit_report" in message and "do not depend on it" in message
-    # With a plan, the flows it has not described yet are named as before.
+    # Every change is explained; that no flow was described is said, and blocks nothing.
+    assert result["changes_waiting"] == 0 and result["analysis_status"] == "complete"
+    assert result["limitations"] == []
+    found = limitation(change.stored_report(), SKELETON)
+    assert not found.affects_completeness
+    assert found.message.startswith("No flow was described: changes are placed on flows that")
+    assert "POST /reports · submit_report" in found.message
+    assert render() == (0, "complete")
+    # A plan takes on the flows the changes land on: until they are described, the
+    # report is partial again.
     planned(change)
-    message = limitation(change.stored_report(), SKELETON).message
-    assert message.startswith("Changes are placed on flows that are still a static skeleton")
+    found = limitation(change.stored_report(), SKELETON)
+    assert found.affects_completeness
+    assert found.message.startswith("Changes are placed on flows that are still a static skeleton")
+    assert change.stored_report().analysis_status == "partial"
+    assert render() == (2, "partial")
 
 
 def test_the_change_context_lists_unexplained_changes_first(change, monkeypatch):

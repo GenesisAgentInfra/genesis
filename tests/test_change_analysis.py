@@ -154,10 +154,11 @@ def test_prepare_lists_every_change_without_any_agent_work(source_repo):
         ("docs/guide.md", "modified")
     ]
     assert [flow.entries[0].attributes["path"] for flow in report.removed_flows] == ["/version"]
+    # With no plan, the skeleton flows under the changes are said but block nothing.
     limits = {item.code: item.affects_completeness for item in report.limitations}
     assert limits == {
         "changed_files_outside_languages": False,
-        "affected_flow_not_synthesized": True,
+        "affected_flow_not_synthesized": False,
         "no_execution_data": False,
     }
 
