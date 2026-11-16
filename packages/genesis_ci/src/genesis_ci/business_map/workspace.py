@@ -1838,13 +1838,15 @@ class Workspace:
                 }
             }
         if self.plan is None:
+            # Explanations need no plan: with changes waiting, the change task is next.
+            waiting = change and change["change"]["changes_waiting"]
             return {
                 **self.session,
                 "plan": None,
                 **overall,
                 **change,
                 "tasks": [],
-                "next_task": None,
+                "next_task": CHANGE_TASK if waiting else None,
             }
         flows = {flow["key"]: flow for flow in self.plan["plan"].get("flows", [])}
         tasks = []

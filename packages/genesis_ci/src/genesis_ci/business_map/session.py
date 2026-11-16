@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 from collections import Counter
 from pathlib import Path
 
@@ -18,9 +17,15 @@ from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.evidence_bundle import EvidenceBundle, validate_evidence_bundle
 from genesis_contracts.facts import FactSet
 from genesis_contracts.python import PythonOptions
-from genesis_contracts.snapshot import SnapshotSpec
+from genesis_contracts.snapshot import SnapshotLimits, SnapshotSpec
 
-from genesis_ci.git_snapshot import capture_snapshot
+from genesis_ci.git_snapshot import (
+    SnapshotError,
+    capture_snapshot,
+    changed_paths,
+    tracked_paths,
+    untracked_paths,
+)
 from genesis_ci.python import extract_python
 from genesis_ci.python.extract import gc_paused
 from genesis_ci.snapshot import slice_source
@@ -76,12 +81,10 @@ def _keep_private(repo: Path) -> None:
 
 def _tracked_extensions(repo: Path) -> list[str]:
     try:
-        listing = subprocess.run(
-            ["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=True, timeout=30
-        ).stdout.decode("utf-8", "replace")
-    except (OSError, subprocess.SubprocessError):
+        listing = tracked_paths(repo)
+    except SnapshotError:
         return []
-    counts = Counter(Path(name).suffix.lower() for name in listing.split("\0") if name)
+    counts = Counter(Path(name).suffix.lower() for name in listing)
     return [f"{suffix or '(none)'}: {count}" for suffix, count in counts.most_common(5)]
 
 
@@ -96,29 +99,32 @@ def _workers(files) -> int:
     return max(1, min(os.cpu_count() or 1, MAX_WORKERS))
 
 
-def _other_changes(repo: Path, base: str, head: str | None, captured: set[str]) -> list[dict]:
+def _other_changes(
+    repo: Path, base: str, head: str | None, captured: set[str], limits: SnapshotLimits
+) -> list[dict]:
     """Files changed between the two revisions that the snapshot did not capture.
 
-    Only their names are read. They are listed in the change report so that a change
-    outside the analyzed languages is never mistaken for no change.
+    Only their names are read, the way the snapshot reads Git: no hook or fsmonitor
+    runs and the index is not written. They are listed in the change report so that a
+    change outside the analyzed languages is never mistaken for no change.
     """
-    command = ["git", "diff", "--name-status", "--no-renames", "-z", base]
     try:
-        listing = subprocess.run(
-            [*command, *([head] if head else []), "--"],
-            cwd=repo,
-            capture_output=True,
-            check=True,
-            timeout=30,
-        ).stdout.decode("utf-8", "replace")
-    except (OSError, subprocess.SubprocessError):
+        listing = changed_paths(repo, base, head, limits)
+    except SnapshotError:
         return []
-    fields = listing.split("\0")
-    found = []
-    for status, path in zip(fields[::2], fields[1::2], strict=False):
-        if path and path not in captured and not path.startswith(".genesis/"):
-            found.append({"path": path, "change": _GIT_STATUS.get(status[:1], "modified")})
+    found = [
+        {"path": path, "change": _GIT_STATUS.get(status[:1], "modified")}
+        for status, path in listing
+        if path not in captured and not path.startswith(".genesis/")
+    ]
     return sorted(found, key=lambda item: item["path"])
+
+
+def _untracked(repo: Path, spec: SnapshotSpec) -> list[str]:
+    try:
+        return untracked_paths(repo, spec)
+    except SnapshotError:
+        return []
 
 
 def evidence_bundle(snapshot, evidence) -> EvidenceBundle:
@@ -186,18 +192,51 @@ def prepare(
         "head_revision": manifest.head_revision,
         "integrity_status": manifest.integrity_status,
     }
+    left_out = {}
     if base is not None:
+        captured = {item.path for item in manifest.files}
         others = _other_changes(
             repo,
             manifest.base_revision,
             snapshot.capture.head_commit if head is not None else None,
-            {item.path for item in manifest.files},
+            captured,
+            spec.limits,
         )
+        untracked = _untracked(repo, spec) if head is None else []
+        if include_untracked:
+            # New files of the change that are not source: listed as added, by name.
+            listed = {item["path"] for item in others}
+            others = sorted(
+                [
+                    *others,
+                    *(
+                        {"path": path, "change": "added"}
+                        for path in untracked
+                        if path not in captured and path not in listed
+                    ),
+                ],
+                key=lambda item: item["path"],
+            )
+        elif untracked:
+            # Never left out without a word. Those Genesis would analyze come first.
+            readable = {
+                item.path
+                for item in snapshot.capture.omissions
+                if item.reason == "untracked_not_selected"
+            }
+            ordered = sorted(untracked, key=lambda path: (path not in readable, path))
+            left_out = {
+                "untracked": {
+                    "total": len(untracked),
+                    "analyzable": len(readable & set(untracked)),
+                    "files": ordered[:OTHER_CHANGE_LIMIT],
+                }
+            }
         session.update(base_ref=base, head_ref=head)
         # Names only, kept beside the session so they do not crowd every status output.
         write_json(
             root / "changed-files.json",
-            {"total": len(others), "files": others[:OTHER_CHANGE_LIMIT]},
+            {"total": len(others), "files": others[:OTHER_CHANGE_LIMIT], **left_out},
         )
     if not (root / "snapshot").exists():
         # Later commands read source only from this frozen copy, never from the live tree.
@@ -207,9 +246,11 @@ def prepare(
     write_text(root / "facts.json", facts.model_dump_json(exclude_none=True) + "\n")
     from .workspace import Workspace
 
-    resumed = (root / "plan.json").is_file()
-    if resumed:
-        # Same content, same session: keep the plan and every accepted flow.
+    planned = (root / "plan.json").is_file()
+    # Same content, same session: the plan, every accepted flow and every accepted
+    # explanation of a change are kept, and the result says so.
+    resumed = planned or (root / "changes" / "accepted.json").is_file()
+    if planned:
         workspace = Workspace(repo, session_id)
         skeleton = workspace.assemble()
         report = workspace.stored_report()
@@ -229,6 +270,8 @@ def prepare(
             ),
             "changed_files_not_analyzed": len(report.unanalyzed_changes),
         }
+        if left_out:
+            change["untracked_left_out"] = left_out["untracked"]["total"]
     entries = Counter(entry.detection.value for entry in facts.entries if entry.side == "head")
     unsupported = [item.path for item in facts.files if item.status == "unsupported"]
     return {

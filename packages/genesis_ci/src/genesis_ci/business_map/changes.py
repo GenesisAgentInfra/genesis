@@ -1303,6 +1303,26 @@ class ChangeAnalysis:
                     "affects_completeness": False,
                 }
             )
+        untracked = outside.get("untracked")
+        if untracked and untracked["total"]:
+            count, readable = untracked["total"], untracked["analyzable"]
+            names = untracked["files"][:5]
+            more = ", ..." if count > len(names) else ""
+            limits.append(
+                {
+                    "code": "untracked_files_left_out",
+                    "message": f"{count} untracked file{'s' * (count != 1)} left out of the "
+                    "comparison"
+                    + (f", {readable} of them source Genesis analyzes" if readable else "")
+                    + ": "
+                    + ", ".join(names)
+                    + more
+                    + ". If they belong to the change, run `prepare` again with "
+                    "`--include-untracked`; `--exclude PATH` leaves one out on purpose.",
+                    # Source left out may hold changes the report does not show.
+                    "affects_completeness": bool(readable),
+                }
+            )
         return listed[:MAX_UNANALYZED], limits
 
     def _removed_flows(self, business_map: BusinessMap) -> tuple[list[dict], set[str]]:
@@ -1501,12 +1521,19 @@ class ChangeAnalysis:
         unanalyzed, limitations = self._unanalyzed()
         waiting = [flows[key].name for key in sorted(touched) if flows[key].stage == "skeleton"]
         if waiting:
+            named = ", ".join(waiting[:5]) + (", ..." if len(waiting) > 5 else "")
             limitations.append(
                 {
                     "code": "affected_flow_not_synthesized",
-                    "message": "Changes are placed on flows that are still a static skeleton: "
-                    + ", ".join(waiting[:5])
-                    + ".",
+                    "message": (
+                        "No flow was described: changes are placed on flows that are still "
+                        f"a static skeleton: {named}. The explanations of the changes do not "
+                        "depend on it; describe these flows to see the changes in business "
+                        "steps."
+                        if workspace.plan is None
+                        else "Changes are placed on flows that are still a static skeleton: "
+                        f"{named}."
+                    ),
                     "affects_completeness": True,
                 }
             )
@@ -1658,10 +1685,18 @@ class ChangeAnalysis:
     def context(self, business_map: BusinessMap) -> dict:
         """The changes still to explain, with both sides and the tests that reach them."""
         report = self.build(business_map)
-        assessments = self.assessments()
         placed = [item for item in report.changes if item.projection.status != "unassigned"]
-        waiting = [item for item in report.owed() if item.change_id not in assessments]
-        shown = (waiting or report.changes)[:CONTEXT_LIMIT]
+        waiting = [item for item in report.owed() if item.explanation is None]
+        # Then the changes no flow reaches, which need no explanation for the report to
+        # be complete but still say nothing until they have one, then the explained ones.
+        owed = {item.change_id for item in waiting}
+        rest = [
+            item
+            for item in report.changes
+            if item.explanation is None and item.change_id not in owed
+        ]
+        done = [item for item in report.changes if item.explanation is not None]
+        shown = [*waiting, *rest, *done][:CONTEXT_LIMIT]
         return {
             "task_id": CHANGE_TASK,
             "kind": "change",
@@ -1670,7 +1705,9 @@ class ChangeAnalysis:
             "changes_total": len(report.changes),
             "changes_placed": len(placed),
             "changes_waiting": len(waiting),
-            # Up to this many per call; submit them and ask again for the rest.
+            # Every change without an explanation, including those no flow reaches.
+            "changes_unexplained": len(waiting) + len(rest),
+            # Up to this many per call, unexplained first; submit them and ask again.
             "changes_listed": len(shown),
             "changes": self._views(shown, business_map),
             "tests_total": len(self.tests),
