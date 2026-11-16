@@ -38,6 +38,31 @@ Genesis answers both, in a page anyone on the team can read:
 Your coding agent does the reading. A deterministic CLI checks every word of it against
 the code, so the picture cannot drift from what the code says.
 
+## Quick start
+
+Install the CLI outside the project you want to map, and make it available to your agent:
+
+```sh
+git clone https://github.com/GenesisAgentInfra/genesis.git
+cd genesis
+uv sync --python 3.12 --package genesis-ci --no-dev --frozen
+uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
+```
+
+`--agent` takes `codex`, `claude` or `both`.
+
+Then open your project in Claude Code or Codex and ask in plain language, or call the
+skill by name (`/genesis` in Claude Code, `$genesis` in Codex):
+
+```text
+/genesis map the business flows of this project
+/genesis what does my uncommitted work change, and is it tested?
+/genesis review this branch against main
+```
+
+The result lands in `.genesis/` in your project: `view.html` to open in a browser and
+`summary.md` to paste into a pull request.
+
 ## The two jobs
 
 ### 🗺️ 1. Turn code into a business flow map
@@ -117,31 +142,6 @@ flowchart LR
   with the reason, and the agent tries again.
 - **Your code stays put.** The CLI calls no model and no service, and never imports or
   runs the code it reads.
-
-## Quick start
-
-Install the CLI outside the project you want to map, and make it available to your agent:
-
-```sh
-git clone https://github.com/GenesisAgentInfra/genesis.git
-cd genesis
-uv sync --python 3.12 --package genesis-ci --no-dev --frozen
-uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
-```
-
-`--agent` takes `codex`, `claude` or `both`.
-
-Then open your project in Claude Code or Codex and ask in plain language, or call the
-skill by name (`/genesis` in Claude Code, `$genesis` in Codex):
-
-```text
-/genesis map the business flows of this project
-/genesis what does my uncommitted work change, and is it tested?
-/genesis review this branch against main
-```
-
-The result lands in `.genesis/` in your project: `view.html` to open in a browser and
-`summary.md` to paste into a pull request.
 
 ## What works today
 

@@ -36,6 +36,29 @@ Genesis 回答这两个问题，产出一个团队里谁都看得懂的页面：
 
 读代码的是你的 coding agent。一个确定性的 CLI 拿代码逐字核对它写的每一句话，所以图上画的不会偏离代码。
 
+## 快速开始
+
+在你要分析的项目之外安装 CLI，并让你的 agent 能用上它：
+
+```sh
+git clone https://github.com/GenesisAgentInfra/genesis.git
+cd genesis
+uv sync --python 3.12 --package genesis-ci --no-dev --frozen
+uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
+```
+
+`--agent` 可以是 `codex`、`claude` 或 `both`。
+
+然后在 Claude Code 或 Codex 里打开你的项目，直接用大白话问，或者按名字调用技能（Claude Code 里是 `/genesis`，Codex 里是 `$genesis`）：
+
+```text
+/genesis 画出这个项目的业务流程
+/genesis 我还没提交的代码改了什么，有没有测试？
+/genesis 对比 main 审查一下这个分支
+```
+
+结果写在你项目的 `.genesis/` 下：`view.html` 用浏览器打开，`summary.md` 可以直接贴进 PR。
+
 ## 两件事
 
 ### 🗺️ 1. 把代码变成业务流程图
@@ -99,29 +122,6 @@ flowchart LR
 - **不会悄悄漏掉。** 流程里的每个分支、每个被调用的函数、每个外部系统，要么画出来，要么折叠成一步，要么明确写出不画；折叠一个大函数要写原因。做不到的，图就一直标着 `partial`。
 - **要么全收，要么全退。** 跟代码对不上的描述整条退回，附上原因，agent 改了再交。
 - **不动你的代码。** CLI 不调用任何模型和服务，也从不导入或运行它读到的代码。
-
-## 快速开始
-
-在你要分析的项目之外安装 CLI，并让你的 agent 能用上它：
-
-```sh
-git clone https://github.com/GenesisAgentInfra/genesis.git
-cd genesis
-uv sync --python 3.12 --package genesis-ci --no-dev --frozen
-uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
-```
-
-`--agent` 可以是 `codex`、`claude` 或 `both`。
-
-然后在 Claude Code 或 Codex 里打开你的项目，直接用大白话问，或者按名字调用技能（Claude Code 里是 `/genesis`，Codex 里是 `$genesis`）：
-
-```text
-/genesis 画出这个项目的业务流程
-/genesis 我还没提交的代码改了什么，有没有测试？
-/genesis 对比 main 审查一下这个分支
-```
-
-结果写在你项目的 `.genesis/` 下：`view.html` 用浏览器打开，`summary.md` 可以直接贴进 PR。
 
 ## 目前能做什么
 
