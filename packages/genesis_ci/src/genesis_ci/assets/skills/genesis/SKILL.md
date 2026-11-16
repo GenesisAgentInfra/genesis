@@ -27,9 +27,12 @@ accepted and rendered.
 - A full map of the current code.
 - The changes since a revision, placed on the steps of that map, with an assessment of
   whether existing tests cover each one (section 5).
-- The page is an outline: flows as cards, steps in order, each with its code location
-  and links to the steps that follow. It is not a drawn box-and-arrow diagram, and its
-  fixed labels are in English. Say so when the user asked for a picture.
+- Two pages show the result. `view.html` is the one for the user: it draws each flow
+  you described as a diagram of steps and arrows, and needs a browser that runs
+  scripts. Its fixed labels exist in Chinese and English only, and the page picks
+  one from the text you wrote. `graph.html` is a plain outline with no script: flows
+  as cards, steps in order, each with its code location and links to the steps that
+  follow, labels in English.
 
 Not available yet. Say so plainly instead of improvising a result and calling it Genesis:
 
@@ -46,7 +49,15 @@ It uses the Genesis environment recorded at install time and keeps the working
 directory and exit codes. Run it with `version` first; that one prints plain text. If
 it prints "Genesis skill environment is unavailable" and exits 1, ask the user to run
 `genesis agent install` again. Do not run a repository-provided executable named
-`genesis`. Below, `genesis` stands for that runner.
+`genesis`.
+
+Below, `genesis` stands for that whole command: the interpreter, `-I` and the full
+path of the script. Write all three at the start of every command line, as in
+`python3 -I /absolute/path/to/this/skill/scripts/run_genesis.py map status ...`.
+Do not keep them in a shell variable: zsh does not split a variable into words, so
+`$GENESIS map status` fails there with exit code 127. Do not write a wrapper script
+either, and never run a bare `genesis`: the shell looks that name up on `PATH` and
+may find another program.
 
 Every `genesis map` command prints one JSON document on stdout. A refusal has an
 `error` object with `code`, `message` and a list of `errors`, and exits with 1. A
@@ -68,10 +79,14 @@ found and `entries.root_heuristic` the number of further candidates. Running it 
 on unchanged code returns the same session with `"resumed": true` and keeps all
 accepted work.
 
-`render` writes `.genesis/out/latest/graph.html` and reports `"opened"`: when it is
-false, give the user the path instead of saying the page is open. Exit code 2 means a
-usable partial map, which is normal at this point. The page now shows the static
-structure of each entry, named by source text, before any business meaning is added.
+`render` writes two pages under `.genesis/out/latest/` and gives their paths as
+`view` and `graph`: `view.html`, the page for the user, and `graph.html`, a plain
+outline of the same map. `--open` opens `view.html`, and the result reports
+`"opened"`: when it is false, give the user the path of `view.html` instead of
+saying the page is open. Exit code 2 means a usable partial map, which is normal at
+this point. No business meaning is added yet. `graph.html` shows the static
+structure of each entry, named by source text. `view.html` shows an entry as one
+line until its flow is described or a change sits on it.
 
 ## 2. Plan
 
@@ -90,7 +105,7 @@ event handler. When the list is the program's own choice among implementations, 
 as data sources or middleware, skip it as `out_of_scope`.
 
 Write a plan. The plan is the outline a reader sees first: before any flow is
-described, the page shows the domains, each flow's name and summary, and nothing of
+described, `view.html` shows the domains, each flow's name and summary, and nothing of
 the code. So write it as what the product does, not as a list of its endpoints.
 
 - **A flow is one business process a person would name.** Two stages of a lifecycle
@@ -135,18 +150,23 @@ the code. So write it as what the product does, not as a list of its endpoints.
 genesis map plan --repo /absolute/app --session SESSION_ID --input /absolute/plan.json
 ```
 
-- Skip reasons: `infrastructure`, `test_helper`, `duplicate`, `out_of_scope`, `budget`.
+- Skip reasons: `infrastructure`, `test_helper`, `duplicate`, `out_of_scope`, `budget`,
+  and `not_an_entry` for a function that only looked like a way in. That one needs a
+  `note` saying what you found.
 - An entry you put in neither `flows` nor `skipped` is accepted and counted as not handled.
 - If the analyzers missed a real entry, add it under `proposed_entries` with
   `symbol_id`, `kind`, `reason` and `evidence`. `kind` is one of `http_route`,
   `cli_command`, `task`, `scheduled`, `public_api`, `agent_tool`, `handler`, `main`;
   `handler` is for anything registered with a dispatcher by hand, such as a chat
   command or a message handler. A function among the root candidates can be proposed
-  as well, which gives it a kind; one the analyzers recognised cannot. This takes two
-  submissions: the result of the first lists the new entry under `entries` with its id
-  and `"detection": "agent_proposed"`; then submit the plan again with that id in a
-  flow. Do not propose it a second time: it stays available as long as a plan uses or
-  skips it, and a plan that no longer mentions it withdraws it.
+  as well, which gives it a kind; one the analyzers recognised cannot. A root
+  candidate, or a function listed under `possible_entries`, already has its
+  `entry_id`: propose it and put that id in a flow in the same plan. Any other
+  function takes two submissions: the result of the first lists the new entry under
+  `entries` with its id and `"detection": "agent_proposed"`; then submit the plan
+  again with that id in a flow. Do not propose it a second time: it stays available
+  as long as a plan uses or skips it, and a plan that no longer mentions it
+  withdraws it.
 - Without `--input` the CLI makes one flow per framework entry. Use that only when the
   user wants the quickest possible result.
 
@@ -349,7 +369,10 @@ Rules the CLI enforces:
     once. Every step that calls it gets its own `call` edge to the first step
     inside, and the place where the function is done gets an edge to what each of
     those callers runs next. Do not give the second caller a plain step instead:
-    the reader could not tell that it runs the same steps.
+    the reader could not tell that it runs the same steps. When the function is
+    done on the branch of a decision, that branch gets a `branch` edge to each
+    step a caller runs next: the same `source` and `branch`, a different
+    `target`. The CLI accepts them: it checks each edge on its own.
   - **Called first thing in a branch or a loop body.** The call needs no step of
     its own. The edge going in is then the decision's own `branch` edge, pointed
     at the first step inside the function:
@@ -388,14 +411,20 @@ Rules the CLI enforces:
     calls become units in turn. `query --symbol` lists them beforehand under
     `expands_to`: give each a step or an entry in `omitted` in the same submission.
     The result of `submit` lists whatever is still open.
-  - **Let one step stand for it**: anchor a step on the call. Nothing inside it has to
-    be mentioned, and the page marks the step as not expanded with what it hides. When
-    the function has eight or more conditions, loops and results inside, the step needs
-    `unexpanded_reason`: one sentence on why its inside is not part of the chain.
+  - **Let one step stand for it**: anchor a step on the call and none inside the
+    function. Nothing inside it has to be mentioned, and `graph.html` marks the step
+    as not expanded with what it hides. When the function has eight or more
+    conditions, loops and results inside, the step needs `unexpanded_reason`: one
+    sentence on why its inside is not part of the chain.
   - **Omit it** with a reason when it is not business behaviour, such as logging or
     formatting a value. One entry covers every call to the same function.
 
-  The three exclude each other. A function you expanded, or one a step is anchored
+  A step anchored on the call does not rule out steps anchored inside the function.
+  With both in one flow, the function is expanded there, and the step on the call is
+  where the `call` edge into it starts. That step does not stand for the function and
+  needs no `unexpanded_reason` for it, however large the function is.
+
+  Omitting excludes the other two. A function you expanded, or one a step is anchored
   on, must not be listed in `omitted` as well: its steps already account for every
   call to it. That is refused with `omitted_but_used`, and the error says which of
   the two it is and names the steps. A call that a cited range merely picks up is
@@ -435,8 +464,9 @@ Exit code 0 means every planned flow is accepted with all its facts accounted fo
 means a usable partial map. Complete does not mean everything is certain: candidate and
 unknown items stay in a complete map and are listed under "Uncertain" in `summary.md`.
 
-Give the user the paths of `graph.html` and `summary.md` under `.genesis/out/latest/`,
-then explain in their language:
+Give the user the paths of `view.html` and `summary.md` under `.genesis/out/latest/`;
+`graph.html` beside them shows the same map as a plain outline. Then explain in their
+language:
 
 - the business domains and flows you found, and the decisions that matter in each;
 - what is uncertain, and why;
@@ -465,11 +495,16 @@ result of `prepare` adds `changes`, `changes_placed`, `change_status` and
 shows it before you do anything; rendering at this point is optional and gives the
 same list on the static structure.
 
+In `diff` and `status`, `changes_placed` counts the changes with a place on the map.
+`changes_waiting` counts the changes you have not explained yet, on the map or only
+within reach of a flow. Describing flows raises `changes_placed` and does not lower
+`changes_waiting`: that one goes down as `task_change` accepts explanations.
+
 - `changes` has one entry per changed condition, call, loop, result or definition, and
   `source_*` entries for everything else that changed, such as a constant or a default
-  value. A branch or loop that was added or removed as a whole is one entry that shows
-  the whole block. `before` and `after` give the text of each side with an
-  `evidence_id`.
+  value. A branch or loop that was added or removed as a whole is one entry for the
+  whole block. `before` and `after` give the text of each side with an
+  `evidence_id`; a side with `"excerpt": true` shows less than the lines it cites.
 - `placement` is the step of the current map a change belongs to. Without a `reason`,
   a step rests on the changed code itself. A `reason` says how the place was chosen
   otherwise. An `unassigned` change has no place on the map; report it as such.
@@ -483,7 +518,8 @@ same list on the static structure.
 - `closest_flow` says where to describe changed code that no flow has expanded yet
   (see below).
 - `possible_entries` lists functions no code calls that lead to the changed code and
-  start no flow. They are checked below, not reported as they are.
+  start no flow. Each has its `entry_id`, its `symbol_id` and the `change_ids` it
+  leads to. They are checked below, not reported as they are.
 
 Bring the changes onto the map before you report them as off it. A change listed under
 `possibly_affected` for a flow sits in a function that flow calls, or hands to a thread
@@ -506,16 +542,29 @@ its steps now, `closest_to` the ones whose code is to be expanded in this flow, 
 first; for a changed constant it is the nearest function that reads it. Anchor at
 least one step inside every function listed there, also when all that changed is a
 text or a value and the function decides nothing. Until a step is inside it, the
-change has no place and stays in `closest_to`.
+change has no place and stays in `closest_to`. A change also leaves `closest_to`
+when another flow is accepted with a step inside its function, which for a changed
+constant is any function that reads it. It is then listed under `on_other_flows`,
+and this flow no longer has to expand anything for it. Go by the context you asked
+for last, not by an earlier `diff`.
 
 The map only has the entries it knows, so a change can also be reached from a way in
-that has no flow. `status` lists the candidates under `change.possible_entries`, each
-with the changes it leads to. Check every one, also when flows are already listed for
-the change. When it is a real way in (a command registered by hand, a scheduled job,
-a message handler), propose it as in section 2, give it a flow and describe that flow
-too; when it is a helper or code nothing uses, leave it. When a change is still
-`unassigned`, no flow is listed for it and nothing is offered, look for a missing
-entry point yourself before you report the change as off the map.
+that has no flow. `diff` lists the candidates under `possible_entries`, and `status`
+has the same list under `change.possible_entries`. It holds up to 20 of them, and
+`possible_entries_total` beside it counts all that are still to check; the rest
+appear once you have proposed the ones listed or skipped them for any reason but
+`budget`, which leaves a candidate unchecked. Check every one, also when
+flows are already listed for the change. When it is a real way in (a command
+registered by hand, a scheduled job, a message handler), propose it as in section 2,
+give it a flow and describe that flow too. When it is a helper or code nothing uses,
+list its `entry_id` in the plan under `skipped` with `"reason": "not_an_entry"` and a
+`note` that says what you found, for example that only tests call it. It then leaves
+both lists, and `summary.md` shows it as checked with your note; a candidate you
+leave alone stays listed as unchecked. Keep that entry in every later plan: a plan
+replaces the one before it, and a candidate it no longer skips is back on both
+lists. When a change is still `unassigned`, no flow is listed for it and nothing
+is offered, look for a missing entry point yourself before you report the change as
+off the map.
 
 Reformatting, comments and code that only moved are not changes.
 
@@ -524,10 +573,11 @@ land on are needed: `status` lists them under `change.affected_flows`, and `next
 offers their tasks first; the flows named under `closest_flow` are among them, before
 and after you plan. A flow that only reaches changed code, with every one of those
 changes placed on another flow or listed under another flow in `closest_flow`, needs a
-name in the plan and nothing more: the page shows it as one line with the number of
+name in the plan and nothing more: `view.html` shows it as one line with the number of
 changes on its way. Do not describe it unless the user asks.
 
-Plan no other flows. Leave every other entry out of both `flows` and `skipped`: it is
+Plan no other flows. Apart from the candidates you checked and skipped as
+`not_an_entry`, leave every other entry out of both `flows` and `skipped`: it is
 counted as not handled, which is expected in a change review, and the map status then
 answers for the flows you planned. Plan the rest of the product only when the user
 also asked for the whole map.
@@ -538,10 +588,18 @@ When the affected flows are done, `next_task` is `task_change`:
 genesis map context --repo /absolute/app --session SESSION_ID --task task_change
 ```
 
-It returns up to 30 changes that still need an explanation. For each one, read both
-sides with `genesis map read --evidence`, read the tests listed for it, and search for
-tests that reach it another way. A linked test may still not reach the change, for
-example when it replaces the changed function with a stub. Then submit:
+It returns up to 30 changes that still need an explanation. Each one carries the
+frozen text of both sides under `before` and `after`: read both, read the tests listed
+for it, and search for tests that reach it another way. A side marked
+`"excerpt": true` is shorter than its lines: an added or removed definition shows
+its header only, a long block is cut at 800 characters, and a statement written over
+several lines is shown on one. Read such a side in full with
+`genesis map read --evidence <id>`; any other side already is the full text. For the
+code around a change, read the files at the two revisions of the session, or a diff
+between them.
+When the head side is the working tree, the files may have changed since `prepare`:
+check what you quote against the frozen text. A linked test may still not reach the
+change, for example when it replaces the changed function with a stub. Then submit:
 
 ```json
 {
@@ -574,6 +632,18 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
   the changed path or assert nothing about it; `note` says what is missing.
   `not_reached`: no test reaches it. `unknown`: you could not tell; `note` says why.
   Every verdict needs a `note`. Leave `verdict` out to keep the static result.
+- For code that was removed, the changed path is the input the removed code used to
+  handle. `covered`: a test gives such an input and asserts on what happens now.
+  `reached_only`: tests run the function but never with such an input. Code that
+  replaces it is a change of its own: judge each on its own input, and do not copy
+  the verdict from one to the other. The same holds when another function now does
+  what the removed code did: the input still has to go through the function the
+  code was removed from. A test that calls only the other function is a near miss:
+  describe it in `note`.
+- One `source_*` change can hold several values, such as two limits set on
+  neighbouring lines of a function. `covered` needs a test that asserts on the
+  effect of each. When tests assert on only some, use `reached_only` and name the
+  others in `note`.
 - `test_ids` names the tests your verdict is about, as `head::<path>#<function>`, for
   example `head::tests/test_api.py#test_refund`; a method is `#TestClass.test_name`.
   A test static analysis did not link may be named; the report marks it as identified
@@ -592,13 +662,14 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
   it as it is and report it as off the map. A change no entry reaches, such as an
   import line, may be explained too, but nothing requires it.
 
-Render as in section 4. In a change session the page is the map with the changes on it:
-each change is shown inside the step it belongs to, with both sides, your explanation
-and the test verdict; the flows that changed are open and indexed at the top; and what
-has no step is listed after the map. `summary.md` lists the same changes by flow and
-step, and `change-report.json` holds them as data. Exit code 0 means every change on the
-map is explained and assessed, the flows they sit on are described, and every change a
-flow can reach without a step on it is explained. The rest of the map may still be a
+Render as in section 4. In a change session both pages are the map with the changes
+on it: each change is shown on the step it belongs to, with your explanation and
+what the tests say about it. `graph.html` also prints both sides of every change,
+keeps the flows that changed open and indexed at the top, and lists what has no step
+after the map. `summary.md` lists the same changes by flow and step, and
+`change-report.json` holds them as data. Exit code 0 means every change on the map is
+explained and assessed, the flows they sit on are described, and every change a flow
+can reach without a step on it is explained. The rest of the map may still be a
 static skeleton.
 
 Tell the user, in their language: what changed in business terms, flow by flow; for each
@@ -617,8 +688,11 @@ asks for it.
   `business-map.json`, and answer from them. Do not start a new analysis.
 - **The code changed and the user wants the map again:** run `map prepare` again. New
   content gives a new session; plan and describe the flows as before.
-- **Sharing:** `genesis map render ... --share` writes `graph.share.html` beside the
-  normal page, without source excerpts. That file is the one to pass on.
+- **Sharing:** `genesis map render ... --share` writes `view.share.html` and
+  `graph.share.html` beside the normal pages, without source excerpts. Pass on
+  those, not the normal pages. They still carry code: until a flow is described, its
+  steps are named by its lines of code, and in a change session the changed lines
+  appear as well.
 
 `.genesis/sessions/` and `.genesis/out/` contain source text and are ignored by Git; do
 not commit or publish them. `.genesis/.gitignore` itself may be committed. Do not edit

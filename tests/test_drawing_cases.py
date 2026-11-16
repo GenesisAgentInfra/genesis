@@ -279,6 +279,15 @@ def test_the_drawings_the_skill_describes_are_accepted_as_facts(batching):
     write_step = next(step for step in flow.steps if step.name == "逐个保存结果")
     kinds = {workspace.by_fingerprint[anchor].kind for anchor in write_step.anchors}
     assert (write_step.kind, kinds) == ("action", {"loop", "call"})
+    # Steps sit on the calls of the expanded functions, where their `call` edges start.
+    # None stands for the function it enters: only calls that are not expanded do.
+    stood_for = {item.symbol_id for step in flow.steps for item in step.unexpanded}
+    assert stood_for == {
+        "batch/store.py#drop_empty",
+        "batch/store.py#fetch",
+        "batch/store.py#mark_started",
+        "batch/store.py#save_result",
+    }
 
 
 def test_a_call_in_a_loop_header_may_also_be_one_step_that_stands_for_the_function(batching):
@@ -323,6 +332,16 @@ def test_a_caller_that_waits_for_the_function_it_handed_over_may_draw_the_way_ba
     flow["edges"].append({"source": "finish", "target": "started", "relation": "sequence"})
     result = workspace.submit(task, flow)
     assert result["status"] == "accepted", result.get("errors")
+
+
+def test_a_branch_out_of_a_function_has_to_lead_to_code_after_the_call_to_it(batching):
+    workspace, task = batching
+    flow = batch_flow(workspace, task)
+    # `names` is a step of the caller that runs before the call into `load_items`.
+    flow["edges"].append(
+        {"source": "none", "target": "names", "relation": "branch", "branch": "true"}
+    )
+    assert codes(workspace.submit(task, flow)) == [("edges[15]", "branch_target_not_reachable")]
 
 
 @pytest.fixture
@@ -418,6 +437,14 @@ def test_a_branch_that_begins_with_a_call_enters_the_function_by_its_own_branch_
         entering = edges[(loop, "是否是保留字", "branch")]
         assert entering.condition.branch == "loop"
     assert [step.name for step in flow.steps].count("是否是保留字") == 1
+    # The function is done on the `false` branch of its decision. That one branch
+    # leaves it once for each caller, to the step that caller runs next.
+    leaving = {
+        target
+        for (source, target, _), edge in edges.items()
+        if source == "是否是保留字" and edge.condition and edge.condition.branch == "false"
+    }
+    assert leaving == {"保存名称", "逐个处理标签"}
     # The function is expanded by the steps inside it: no step stands for it at a call.
     stood_for = {item.symbol_id for step in flow.steps for item in step.unexpanded}
     assert "tidy/rules.py#keep" not in stood_for

@@ -1,6 +1,6 @@
 """Code two flows share is described on one of them: the CLI says which one is closest."""
 
-from genesis_ci.business_map.changes import CALLS
+from genesis_ci.business_map.changes import CALLS, CHANGE_TASK
 from genesis_contracts.map_tasks import MapPlan
 from test_change_analysis import by_kind, two_commits
 from test_map_loop import entry, src
@@ -282,3 +282,132 @@ def test_a_session_without_a_base_has_no_change_block(source_repo):
     workspace = Workspace(source_repo, prepare(source_repo, head="HEAD")["session_id"])
     task = workspace.save_plan(None)["tasks"][0]["task_id"]
     assert "change" not in workspace.context(task)
+
+
+def test_a_function_one_flow_expands_is_still_one_step_in_the_flow_beside_it(source_repo):
+    direct = {**BASE, API: BASE[API].replace("run_job(user)", "send_digest(user)")}
+    workspace, _ = two_commits(source_repo, direct, {**direct, SERVICE: HEAD[SERVICE]})
+    tasks = planned(workspace, "post_job", "post_digest")
+    digest = digest_flow(workspace, tasks["post_digest"], expanded=True)
+    assert workspace.submit(tasks["post_digest"], digest)["status"] == "accepted"
+    context = workspace.context(tasks["post_job"])
+    job = {
+        "name": "post_job",
+        "steps": [
+            {
+                "key": "recv",
+                "name": "收到任务请求",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src(API, 14, '@router.post("/jobs")', 15)],
+            },
+            {
+                "key": "send",
+                "name": "发送摘要",
+                "kind": "result",
+                "evidence": [src(API, 16, "send_digest(user)")],
+            },
+        ],
+        "edges": [{"source": "recv", "target": "send", "relation": "sequence"}],
+    }
+    assert workspace.submit(tasks["post_job"], job)["status"] == "accepted"
+    # Each flow goes by its own steps. The flow with steps inside the function has it
+    # expanded, and its step on the call is unmarked; in the flow beside it the step on
+    # the same call still stands for the function.
+    assert {
+        flow.name: [item.symbol_id for step in flow.steps for item in step.unexpanded]
+        for flow in workspace.stored_map().flows
+    } == {
+        "post_job": ["notify/service.py#send_digest"],
+        "post_digest": ["notify/service.py#deliver"],
+    }
+
+
+def test_describing_a_flow_places_a_change_and_only_an_explanation_settles_it(source_repo):
+    workspace, _ = two_commits(source_repo, BASE, HEAD)
+    change = by_kind(workspace.stored_report(), "result_modified").change_id
+    tasks = planned(workspace, "post_job", "post_digest")
+
+    def counters():
+        status, shown = workspace.status()["change"], workspace.change_summary()
+        counted = (status["changes_placed"], status["changes_waiting"])
+        assert counted == (shown["changes_placed"], shown["changes_waiting"])
+        return counted
+
+    # Within reach of a flow and not yet on it: waiting from the start.
+    assert counters() == (0, 1)
+    digest = digest_flow(workspace, tasks["post_digest"], expanded=True)
+    assert workspace.submit(tasks["post_digest"], digest)["status"] == "accepted"
+    # Describing the flow gives the change a place; it still waits for an explanation.
+    assert counters() == (1, 1)
+    explained = {"changes": [{"change_id": change, "summary": "摘要的条目数从 3 条改为 5 条。"}]}
+    assert workspace.submit(CHANGE_TASK, explained)["status"] == "accepted"
+    assert counters() == (1, 0)
+
+
+CONSTANT = "ITEMS = 3\n\n\n" + BASE[SERVICE].replace('"items": 3', '"items": ITEMS')
+
+
+def test_a_constant_another_flow_reads_first_leaves_the_closest_flow_and_is_named_there(
+    source_repo,
+):
+    base = {**BASE, SERVICE: CONSTANT}
+    workspace, _ = two_commits(
+        source_repo, base, {**base, SERVICE: CONSTANT.replace("ITEMS = 3", "ITEMS = 5")}
+    )
+    change = by_kind(workspace.stored_report(), "source_modified").change_id
+    tasks = planned(workspace, "post_digest", "post_job")
+    # The digest flow gets to the function that reads the constant in fewer calls.
+    assert listed(workspace, "closest_flow") == {"post_digest": [change]}
+    reading = src(SERVICE, 12, "ITEMS")
+    context = workspace.context(tasks["post_job"])
+    job = {
+        "name": "post_job",
+        "steps": [
+            {
+                "key": "recv",
+                "name": "收到任务请求",
+                "kind": "trigger",
+                "anchors": [context["entries"][0]["anchor"]],
+                "evidence": [src(API, 14, '@router.post("/jobs")', 15)],
+            },
+            {
+                "key": "run",
+                "name": "执行任务",
+                "kind": "result",
+                "evidence": [src(API, 16, "run_job(user)")],
+            },
+            {
+                "key": "items",
+                "name": "摘要包含最近的条目",
+                "kind": "action",
+                "evidence": [reading],
+            },
+        ],
+        "edges": [
+            {"source": "recv", "target": "run", "relation": "sequence"},
+            {"source": "run", "target": "items", "relation": "call"},
+        ],
+    }
+    assert workspace.submit(tasks["post_job"], job)["status"] == "accepted"
+    # The job flow now has a step on the code that reads it. The digest flow is no
+    # longer asked to expand anything for it, and is told which flow carries it.
+    assert workspace.context(tasks["post_digest"])["change"] == {
+        "placed": [],
+        "closest_to": [],
+        "expand": [],
+        "on_other_flows": [{"flow": "post_job", "changes": [change]}],
+    }
+    assert listed(workspace, "closest_flow") == {}
+    # A step of its own on the same code puts the change on it as well; the plan's order
+    # decides which flow shows it first.
+    digest = digest_flow(workspace, tasks["post_digest"], expanded=False)
+    digest["steps"].append(
+        {"key": "items", "name": "摘要包含最近的条目", "kind": "action", "evidence": [reading]}
+    )
+    digest["edges"].append({"source": "send", "target": "items", "relation": "call"})
+    assert workspace.submit(tasks["post_digest"], digest)["status"] == "accepted"
+    item = by_kind(workspace.stored_report(), "source_modified")
+    flows = {flow.flow_id: flow.name for flow in workspace.stored_map().flows}
+    assert flows[item.projection.flow_id] == "post_digest"
+    assert [flows[target.flow_id] for target in item.other_projections] == ["post_job"]

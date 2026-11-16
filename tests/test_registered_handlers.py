@@ -2,7 +2,10 @@
 that lead to changed code."""
 
 import pytest
+from genesis_ci.business_map.changes import POSSIBLE_ENTRY_LIMIT
+from genesis_ci.business_map.render import render_summary
 from genesis_ci.business_map.skeleton import build_skeleton
+from genesis_ci.business_map.workspace import LoopError
 from genesis_contracts.map_tasks import MapPlan
 from test_change_analysis import two_commits
 from test_map_loop import entry
@@ -248,6 +251,9 @@ def test_an_uncalled_function_that_leads_to_a_change_is_offered_as_an_entry(sour
             "change_ids": [change.change_id],
         }
     ]
+    # `diff` lists it in the same form: the id a plan needs comes with the changes.
+    shown = workspace.change_summary()
+    assert shown["possible_entries"] == listed and shown["possible_entries_total"] == 1
     # Proposing it says what kind of entry it is; from then on it is not a candidate.
     proposal = {
         "symbol_id": "app/jobs.py#nightly",
@@ -266,8 +272,129 @@ def test_an_uncalled_function_that_leads_to_a_change_is_offered_as_an_entry(sour
     proposed = entry(workspace, "#nightly")
     assert (proposed.kind, proposed.detection) == ("scheduled", "agent_proposed")
     assert workspace.status()["change"]["possible_entries"] == []
+    assert workspace.change_summary()["possible_entries"] == []
     # Given a flow, the change lands on it as well.
     job = {"key": "nightly", "name": "夜间结算", "entry_ids": [nightly.entry_id]}
     workspace.save_plan(MapPlan.model_validate({"flows": [now, job]}))
     change = workspace.status()["change"]
     assert len(change["affected_flows"]) == 2 and change["possible_entries_total"] == 0
+
+
+def test_a_candidate_checked_and_found_to_be_no_way_in_is_recorded_as_such(source_repo):
+    head = {**OFF_MAP, "app/core.py": OFF_MAP["app/core.py"].replace("return 1", "return 2")}
+    workspace, _ = two_commits(source_repo, OFF_MAP, head)
+    nightly = entry(workspace, "#nightly")
+    now = {
+        "key": "now",
+        "name": "立即结算",
+        "entry_ids": [entry(workspace, "#settle_now").entry_id],
+    }
+    # Leaving it out as no way in needs a word on what was found.
+    bare = {"entry_id": nightly.entry_id, "reason": "not_an_entry"}
+    with pytest.raises(LoopError) as refused:
+        workspace.save_plan(MapPlan.model_validate({"flows": [now], "skipped": [bare]}))
+    assert [(item["path"], item["code"]) for item in refused.value.errors] == [
+        ("skipped[0].note", "note_required")
+    ]
+    assert len(workspace.status()["change"]["possible_entries"]) == 1
+    found = "只有测试调用它，应用里没有代码用到"
+    workspace.save_plan(
+        MapPlan.model_validate({"flows": [now], "skipped": [{**bare, "note": found}]})
+    )
+    # Nothing is left to check, and the report keeps the candidate with what was found.
+    change = workspace.status()["change"]
+    assert change["possible_entries"] == [] and change["possible_entries_total"] == 0
+    shown = workspace.change_summary()
+    assert shown["possible_entries"] == [] and shown["possible_entries_total"] == 0
+    report = workspace.stored_report()
+    (item,) = report.possible_entries
+    assert (item.entry_id, item.skipped, item.note) == (nightly.entry_id, "not_an_entry", found)
+    summary = render_summary(workspace.stored_map(), report)
+    assert (
+        f"- app/jobs.py#nightly: 1 changes. Checked and left out (not an entry): {found}" in summary
+    )
+    # A plan that no longer leaves it out puts it back on both lists.
+    workspace.save_plan(MapPlan.model_validate({"flows": [now]}))
+    listed = workspace.status()["change"]["possible_entries"]
+    assert [item["entry_id"] for item in listed] == [nightly.entry_id]
+    assert workspace.change_summary()["possible_entries"] == listed
+    (item,) = workspace.stored_report().possible_entries
+    assert item.skipped is None and item.note is None
+
+
+def test_diff_and_status_list_the_same_candidates_up_to_the_same_limit(source_repo):
+    jobs = JOBS + "".join(
+        f"\n\ndef job_{index:02d}():\n    return settle(None)\n"
+        for index in range(POSSIBLE_ENTRY_LIMIT)
+    )
+    base = {**OFF_MAP, "app/jobs.py": jobs}
+    head = {**base, "app/core.py": base["app/core.py"].replace("return 1", "return 2")}
+    workspace, _ = two_commits(source_repo, base, head)
+    # One candidate more than a list holds: `nightly` sorts after the numbered jobs.
+    change, shown = workspace.status()["change"], workspace.change_summary()
+    assert len(change["possible_entries"]) == POSSIBLE_ENTRY_LIMIT
+    assert change["possible_entries_total"] == POSSIBLE_ENTRY_LIMIT + 1
+    assert shown["possible_entries"] == change["possible_entries"]
+    assert shown["possible_entries_total"] == change["possible_entries_total"]
+    # What `diff` lists is enough to leave them out, and the one held back comes up.
+    now = {
+        "key": "now",
+        "name": "立即结算",
+        "entry_ids": [entry(workspace, "#settle_now").entry_id],
+    }
+    skipped = [
+        {"entry_id": item["entry_id"], "reason": "not_an_entry", "note": "只有测试调用它"}
+        for item in shown["possible_entries"]
+    ]
+    workspace.save_plan(MapPlan.model_validate({"flows": [now], "skipped": skipped}))
+    shown = workspace.change_summary()
+    assert [item["symbol_id"] for item in shown["possible_entries"]] == ["app/jobs.py#nightly"]
+    assert shown["possible_entries_total"] == 1
+    assert shown["possible_entries"] == workspace.status()["change"]["possible_entries"]
+
+
+def test_a_listed_candidate_is_proposed_and_given_a_flow_in_one_plan(source_repo):
+    head = {**OFF_MAP, "app/core.py": OFF_MAP["app/core.py"].replace("return 1", "return 2")}
+    workspace, _ = two_commits(source_repo, OFF_MAP, head)
+    (listed,) = workspace.change_summary()["possible_entries"]
+    proposal = {
+        "symbol_id": listed["symbol_id"],
+        "kind": "scheduled",
+        "reason": "由外部定时器每晚调用",
+        "evidence": [
+            {"path": "app/jobs.py", "start_line": 4, "end_line": 4, "quote": "def nightly"}
+        ],
+    }
+    now = {
+        "key": "now",
+        "name": "立即结算",
+        "entry_ids": [entry(workspace, "#settle_now").entry_id],
+    }
+    job = {"key": "nightly", "name": "夜间结算", "entry_ids": [listed["entry_id"]]}
+    # The id `diff` gave is the one the proposal keeps, so one plan does both.
+    status = workspace.save_plan(
+        MapPlan.model_validate({"flows": [now, job], "proposed_entries": [proposal]})
+    )
+    proposed = entry(workspace, "#nightly")
+    assert (proposed.entry_id, proposed.detection) == (listed["entry_id"], "agent_proposed")
+    assert {task["name"] for task in status["tasks"]} == {"立即结算", "夜间结算"}
+    assert len(status["change"]["affected_flows"]) == 2
+
+
+def test_a_candidate_skipped_for_budget_stays_to_check(source_repo):
+    head = {**OFF_MAP, "app/core.py": OFF_MAP["app/core.py"].replace("return 1", "return 2")}
+    workspace, _ = two_commits(source_repo, OFF_MAP, head)
+    nightly = entry(workspace, "#nightly")
+    now = {
+        "key": "now",
+        "name": "立即结算",
+        "entry_ids": [entry(workspace, "#settle_now").entry_id],
+    }
+    skipped = [{"entry_id": nightly.entry_id, "reason": "budget"}]
+    workspace.save_plan(MapPlan.model_validate({"flows": [now], "skipped": skipped}))
+    # Left out for lack of time is not looked at: both lists keep it.
+    listed = workspace.status()["change"]["possible_entries"]
+    assert [item["entry_id"] for item in listed] == [nightly.entry_id]
+    assert workspace.change_summary()["possible_entries"] == listed
+    summary = render_summary(workspace.stored_map(), workspace.stored_report())
+    assert "- app/jobs.py#nightly: 1 changes. Left out without checking (budget)" in summary

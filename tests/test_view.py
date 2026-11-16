@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 from genesis_ci.business_map.view import DATA_SLOT, render_view, viewer_template
@@ -79,3 +80,42 @@ def test_render_writes_the_viewer_beside_the_outline(source_repo):
     )
     assert shared["view"] == str(latest / "view.share.html")
     assert embedded((latest / "view.share.html").read_text())["excerpts"] == {}
+
+
+SKILL = (
+    Path(__file__).resolve().parents[1]
+    / "packages/genesis_ci/src/genesis_ci/assets/skills/genesis/SKILL.md"
+)
+
+
+def test_the_skill_names_every_page_render_writes(source_repo):
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    session = prepared(source_repo, "--head", "HEAD")["session_id"]
+    for extra in ((), ("--share",)):
+        assert run(
+            "render", "--repo", str(source_repo), "--session", session, *extra
+        ).exit_code in (
+            0,
+            2,
+        )
+    latest = source_repo / ".genesis" / "out" / "latest"
+    written = {path.name for path in latest.glob("*.html")}
+    named = set(re.findall(r"\b(?:view|graph)(?:\.share)?\.html\b", SKILL.read_text()))
+    assert named == written == {"view.html", "graph.html", "view.share.html", "graph.share.html"}
+
+
+def test_open_shows_the_viewer_and_not_the_outline(source_repo, monkeypatch):
+    import webbrowser
+
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    session = prepared(source_repo, "--head", "HEAD")["session_id"]
+    monkeypatch.delenv("GENESIS_NO_BROWSER")
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda uri: opened.append(uri) or True)
+    latest = source_repo / ".genesis" / "out" / "latest"
+    for extra, page in (((), "view.html"), (("--share",), "view.share.html")):
+        result = run("render", "--repo", str(source_repo), "--session", session, "--open", *extra)
+        assert json.loads(result.stdout)["opened"] is True
+        assert opened[-1] == (latest / page).as_uri()

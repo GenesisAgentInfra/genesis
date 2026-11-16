@@ -286,12 +286,15 @@ class PropagatedImpact(ContractModel):
 class PossibleEntry(ContractModel):
     """A function no code calls that leads to changed code and starts no flow on the map.
 
-    It may be a way in the analyzers did not recognise, or code nothing uses.
+    It may be a way in the analyzers did not recognise, or code nothing uses. Once the
+    plan leaves it out, `skipped` holds the reason it gave and `note` what was found.
     """
 
     entry_id: Identifier
     symbol_id: SymbolId
     change_ids: tuple[Identifier, ...] = Field(min_length=1)
+    skipped: str | None = Field(default=None, min_length=1, max_length=64)
+    note: Text | None = None
 
 
 class UnanalyzedChange(ContractModel):
