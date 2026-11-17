@@ -581,33 +581,53 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    result.
 4. Read for risks, as a pass of its own, once the explanations are accepted and before
    you render. The explanations say what changed; this pass asks what goes wrong, in
-   which situation, and for whom. It is what a reviewer reads first, so give it real
-   reading time, and read the code, not only the diff and the context:
+   which situation, and for whom. It is what a reviewer reads first. It is a reading
+   pass: a list written from what you noticed while explaining misses most of what a
+   review finds, so open the code below before you write a risk. The result that
+   accepts the last explanations holds `read_for_risks`, and the context lists the same
+   callers under `unchanged_callers`. Read in this order:
+   - **The callers outside the changes** (`unchanged_callers`): for each changed
+     function, the code that calls it and is not part of the change. Read each one:
+     what it does with the new result, error, value or delay, and what its own callers
+     and users then see. A caller with a `loop` runs the changed code once per item:
+     time, requests, log lines and scans add up with the number of items.
+   - **The changed files Genesis did not analyze** (`unanalyzed_changes`):
+     documentation, example configuration, prompts and skill files. Do what each tells
+     a user or an agent to do, as written: copy the example values as they are, follow
+     a skill's steps with the flags it gives, and see what the new code does with that.
    - **Inputs.** For new or changed code that parses, matches, filters, validates or
      formats, list the inputs it may get wrong: empty or missing values, case and
      encoding, nesting, escapes and the other forms the same syntax allows, very large
      inputs, and the forms the docs, the tests or the neighbouring code accept. Follow
-     each through the code. A function that runs on its own without side effects can
-     be tried on them from a small script in your temporary directory.
+     each through the code. Where a function runs on its own without side effects, try
+     the inputs you suspect from a small script in your temporary directory.
    - **The same input, before and after.** For every existing caller, user or stored
      output of the changed code, what does the input it already sends give now: a
      different value, type, format, order or id; an error where there was a result, or
      the reverse; a delay; a log line, message or metric that now means something
-     else. `lands_on` in the context shows where a new `break`, `continue` or `return`
-     goes: the unchanged code that runs next, or the callers of the function.
+     else. Ids, keys, names, orderings and numbers that users or files have kept from
+     before (snapshots, ledgers, caches, exports, stored results) break when an
+     unchanged input now gives a different one. `lands_on` in the context shows where
+     a new `break`, `continue` or `return` goes.
+   - **Size.** How the cost grows with the input: a scan over every item for each item,
+     a file read or a request per call, everything held in memory before the first
+     result comes out.
    - **Failures.** What happens when a service, file or call the code relies on fails,
-     is slow or returns something unexpected, and what the caller then sees.
+     is slow, or answers with success but carries an error or an unexpected shape, and
+     what the caller then sees.
+   - **Reach.** What the changed code now runs, reads or sends that it did not before:
+     programs started from configuration, paths built from input, data that leaves the
+     machine. Check that disabled entries, untrusted folders and secrets stay out.
    - **Other readers.** Code that reads the same value, setting, file or record, and
      whether two readers now disagree.
-   - **Files Genesis does not analyze** (`unanalyzed_changes`): configuration examples,
-     documentation, prompts and skill files. Check that what they tell users or agents
-     to do still works with the code.
 
    Not a risk on its own: a gap in the tests (it goes in the verdict's `note`); a
    failure that needs code nobody has written yet; behaviour the change did not touch,
-   unless it now happens more often or matters more; what the change sets out to do. A
-   risk names the input or situation, what goes wrong, and for whom. Submit every risk
-   you find as `risks`, in a submission of its own ("Explaining the changes" below).
+   unless it now happens more often or matters more; what the change sets out to do,
+   for the inputs it is meant for. The same behaviour reaching inputs it was not meant
+   for is a risk. A risk names the input or situation, what goes wrong, and for whom.
+   Submit every risk you confirm as `risks`, in a submission of its own ("Explaining
+   the changes" below).
 5. `render`. Once every owed change is explained it exits 0 with `change_status:
    complete`. When you described no flows, `affected_flow_not_synthesized` stays among
    the limitations: it says that no flow was described and does not keep the report
@@ -801,6 +821,12 @@ After the risk pass of step 4, submit the risks on their own:
   says so under `evidence_moved` in the result. The same statement about the same
   changes replaces the earlier one. The report lists them under "Risks seen in the
   changes", as your reading.
+- `unchanged_callers` in the context lists, for each changed function, up to three
+  places that call it and are not part of the change, those in a loop first with the
+  loop they run in (`callers_total` counts them all). Calls from tests are left out:
+  they are with each change. Once nothing waits for an explanation, the result of
+  `submit` repeats them under `read_for_risks`, with the changed files Genesis did not
+  analyze. They are where step 4 starts reading.
 - `change_ids` in an explanation lists several changes in place of `change_id`. Each
   of them is checked and stored as if explained alone; a problem with one of them is
   reported at its place in the list.

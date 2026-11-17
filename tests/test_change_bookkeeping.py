@@ -119,13 +119,21 @@ def test_the_skill_reads_for_risks_in_a_pass_of_its_own():
     text = files("genesis_ci").joinpath("assets/skills/genesis/SKILL.md").read_text()
     step = text.split("4. Read for risks", 1)[1].split("5. `render`", 1)[0]
     for angle in (
+        "**The callers outside the changes**",
+        "**The changed files Genesis did not analyze**",
         "**Inputs.**",
         "**The same input, before and after.**",
+        "**Size.**",
         "**Failures.**",
+        "**Reach.**",
         "**Other readers.**",
-        "**Files Genesis does not analyze**",
     ):
         assert angle in step
+    # The pass reads the code outside the changes before writing anything.
+    assert step.index("`unchanged_callers`") < step.index("**Inputs.**")
+    assert "open the code below before you write a risk" in step
+    # The intended behaviour is not a risk only for the inputs it is meant for.
+    assert "The same behaviour reaching inputs it was not meant\n   for is a risk." in step
     assert "once the explanations are accepted" in step and "a submission of its own" in step
     # A gap in the tests is the verdict's business, not a risk.
     assert "a gap in the tests (it goes in the verdict's `note`)" in step

@@ -437,15 +437,24 @@ class Workspace:
             {"assessments": {**self.changes.assessments(), **accepted}, "risks": stored},
         )
         report = self.refresh_change()
-        return {
+        progress = self._change_progress(report)
+        result = {
             "task_id": CHANGE_TASK,
             "status": "accepted",
             "assessed": len(accepted),
             "risks": len(stored),
-            **self._change_progress(report),
+            **progress,
             **({"evidence_moved": moved} if moved else {}),
             "errors": [],
         }
+        if accepted and progress["changes_waiting"] == 0:
+            # Every owed change is explained: what the risk pass reads next lies outside
+            # the changes, in the code that calls them and the files Genesis did not read.
+            result["read_for_risks"] = {
+                "unchanged_callers": self.changes.unchanged_callers(report),
+                "unanalyzed_changes": [item.path for item in report.unanalyzed_changes],
+            }
+        return result
 
     def _change_progress(self, report: ChangeReport) -> dict:
         placed = [item for item in report.changes if item.projection.status != "unassigned"]

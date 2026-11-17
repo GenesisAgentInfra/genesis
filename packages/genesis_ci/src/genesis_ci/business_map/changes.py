@@ -46,6 +46,10 @@ MAX_PROJECTIONS = 6
 MAX_CASES = 20
 MAX_REMOVED_FLOWS = 20
 MAX_UNANALYZED = 100
+# How many changed functions the unchanged callers are listed for, and how many
+# callers each: enough to read in the risk pass, not a call graph.
+CALLER_SYMBOLS = 15
+CALLERS_SHOWN = 3
 _SOURCE_KINDS = {ChangeKind.source_added, ChangeKind.source_removed, ChangeKind.source_modified}
 _ADDED_KINDS = {
     ChangeKind.condition_added,
@@ -2113,6 +2117,78 @@ class ChangeAnalysis:
             found.append(item)
         return found
 
+    @cached_property
+    def _changed_lines(self) -> dict[str, list[tuple[int, int]]]:
+        """The head-side lines each file's changes cover."""
+        found: dict[str, list[tuple[int, int]]] = {}
+        for change in self.diff.changes:
+            if change.after is not None:
+                found.setdefault(change.after.path, []).append(
+                    (change.after.start[0], change.after.end[0])
+                )
+            for side, path, first, last in change.covers:
+                if side == HEAD:
+                    found.setdefault(path, []).append((first, last))
+        return found
+
+    def unchanged_callers(self, report: ChangeReport) -> list[dict]:
+        """For each changed function, the code that calls it and is not itself changed.
+
+        The changes show what is different; what the callers do with it is outside the
+        diff. A call in a loop runs once per item, so those come first, with the loop.
+        Tests are left out: they are listed with each change.
+        """
+        tests = {
+            item.path
+            for item in self.workspace.snapshot.capture.manifest.files
+            if item.side == HEAD and item.kind == "test"
+        }
+        raw = {change.change_id: change for change in self.diff.changes}
+        changed: dict[str, list[str]] = {}
+        for item in report.changes:
+            change = raw.get(item.change_id)
+            if change is None or change.is_test or change.after is None:
+                continue
+            if item.symbol_id.endswith("#<module>"):
+                continue
+            changed.setdefault(item.symbol_id, []).append(item.change_id)
+        loops = self.workspace.by_fingerprint
+
+        def untouched(fact) -> bool:
+            path = fact.symbol_id.partition("#")[0]
+            line = fact.range.start_line
+            return path not in tests and not any(
+                first <= line <= last for first, last in self._changed_lines.get(path, ())
+            )
+
+        def shown(fact) -> dict:
+            item = {
+                "path": fact.symbol_id.partition("#")[0],
+                "line": fact.range.start_line,
+                "text": _short(fact.text, 120),
+            }
+            loop = loops.get(fact.loops[-1]) if fact.loops else None
+            if loop is not None:
+                item["loop"] = _short(loop.text, 80)
+            return item
+
+        found = []
+        for symbol, change_ids in changed.items():
+            calls = [fact for fact in self.callers[HEAD].get(symbol, ()) if untouched(fact)]
+            if not calls:
+                continue
+            calls.sort(key=lambda fact: (not fact.loops, fact.symbol_id, fact.range.start_line))
+            found.append(
+                {
+                    "symbol_id": symbol,
+                    "change_ids": change_ids[:5],
+                    "callers": [shown(fact) for fact in calls[:CALLERS_SHOWN]],
+                    "callers_total": len(calls),
+                }
+            )
+        found.sort(key=lambda item: ("loop" not in item["callers"][0], item["symbol_id"]))
+        return found[:CALLER_SYMBOLS]
+
     def context(self, business_map: BusinessMap) -> dict:
         """The changes still to explain, with both sides and the tests that reach them."""
         report = self.build(business_map)
@@ -2141,6 +2217,8 @@ class ChangeAnalysis:
             # Up to this many per call, unexplained first; submit them and ask again.
             "changes_listed": len(shown),
             "changes": self._views(shown, business_map),
+            # Outside the changes: who calls the changed functions, for the risk pass.
+            "unchanged_callers": self.unchanged_callers(report),
             "tests_total": len(self.tests),
             "rules": list(RULES),
         }
