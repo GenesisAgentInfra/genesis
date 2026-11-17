@@ -40,6 +40,8 @@ const ROW_H = 44
 const ROW_TALL = 62
 const ROW_GAP = 8
 const MORE_H = 34
+/** How far the frame of an opened stage stands off its steps. */
+const STAGE_PAD = 10
 
 export function stepNodeId(flowId: string, stepId: string): string {
   return `${flowId}${SEP}${stepId}`
@@ -104,9 +106,17 @@ export interface MoreData extends Record<string, unknown> {
 export interface OffMapData extends Record<string, unknown> {
   coupon: Coupon
 }
-/** The dashed box a flow's error path runs in. */
+/** The dashed box a flow's error path runs in, or the frame round an opened stage. */
 export interface BoxData extends Record<string, unknown> {
   flowId: string
+  stage?: {
+    /** The block the stage folds back into, as the reader's place names it. */
+    id: string
+    name: string
+    steps: string[]
+    /** A change sits in it: it stays open. */
+    held: boolean
+  }
 }
 /** The most pressing of some colours: a new risk before no test, and so on down. */
 function worst(tones: (Tone | undefined)[]): Tone | undefined {
@@ -155,16 +165,21 @@ export interface Atlas {
   home: Map<string, string>
 }
 
-/** The map with each module open, or with none: each drawn once, when first asked for. */
+/**
+ * The map with each module open, or with none, and with the stages the reader opened:
+ * each drawn once, when first asked for.
+ */
 export function atlasDrawer(
   model: Model,
   t: Strings,
   span?: number
-): (open?: string) => Atlas {
-  const drawn = new Map<string | undefined, Atlas>()
-  return (open) => {
-    if (!drawn.has(open)) drawn.set(open, buildAtlas(model, t, open, span))
-    return drawn.get(open)!
+): (open?: string, unfolded?: readonly string[]) => Atlas {
+  const drawn = new Map<string, Atlas>()
+  return (open, unfolded = []) => {
+    const key = [open ?? "", ...[...unfolded].sort()].join("\n")
+    if (!drawn.has(key))
+      drawn.set(key, buildAtlas(model, t, open, span, new Set(unfolded)))
+    return drawn.get(key)!
   }
 }
 
@@ -237,7 +252,9 @@ function drawFlow(
   view: FlowView,
   max: number,
   /** Words what stands for steps left out; given, the flow is cut down. */
-  words?: CutWords
+  words?: CutWords,
+  /** The stages the reader opened, by the id of the block each folds into. */
+  unfolded: ReadonlySet<string> = new Set()
 ): PlacedFlow {
   const flowId = view.flow.flow_id
   const graph = buildGraph(
@@ -245,7 +262,12 @@ function drawFlow(
     model.findingStatus,
     !model.hasReport,
     max,
-    words
+    words,
+    new Set(
+      (view.flow.stages ?? [])
+        .map((stage) => stage.stage_id)
+        .filter((id) => unfolded.has(stepNodeId(flowId, id)))
+    )
   )
   const steps = view.flow.steps ?? []
   const triggerIds = steps
@@ -275,6 +297,37 @@ function drawFlow(
     ...FIXED,
     data: { flowId },
   }))
+  // An opened stage keeps a frame round its steps, with its name on it to fold it by.
+  for (const stage of graph.stages) {
+    const inside = graph.nodes.filter((node) => stage.steps.includes(node.id))
+    if (!inside.length) continue
+    const left = Math.min(...inside.map((node) => node.position.x))
+    const top = Math.min(...inside.map((node) => node.position.y))
+    const right = Math.max(
+      ...inside.map((node) => node.position.x + node.data.width)
+    )
+    const bottom = Math.max(
+      ...inside.map((node) => node.position.y + node.data.slot)
+    )
+    boxes.push({
+      id: `stage${SEP}${flowId}${SEP}${stage.id}`,
+      type: "box",
+      position: { x: left - STAGE_PAD, y: top - STAGE_PAD },
+      ...sized(right - left + 2 * STAGE_PAD, bottom - top + 2 * STAGE_PAD),
+      zIndex: -1,
+      style: { pointerEvents: "none" },
+      ...FIXED,
+      data: {
+        flowId,
+        stage: {
+          id: stepNodeId(flowId, stage.id),
+          name: stage.name,
+          steps: stage.steps.map((id) => stepNodeId(flowId, id)),
+          held: stage.held,
+        },
+      },
+    })
+  }
   // The drawn steps in the flow's own reading order, then what stands for steps left out.
   const reading = new Map(view.graph.order.map((id, at) => [id, at]))
   const inOrder = [...graph.nodes]
@@ -301,7 +354,8 @@ function placeFlow(
   t: Strings,
   view: FlowView,
   open: boolean,
-  max: number
+  max: number,
+  unfolded: ReadonlySet<string>
 ): PlacedFlow {
   const flowId = view.flow.flow_id
   // A change counts where it stops, and wherever else the same change lands.
@@ -318,9 +372,11 @@ function placeFlow(
       model,
       view,
       max,
-      open || !touched
+      // A flow in stages folds along them whether or not a change is on it.
+      open || !(touched || view.flow.stages?.length)
         ? undefined
-        : { between: t.stepsBetween, more: t.stepsMore }
+        : { between: t.stepsBetween, more: t.stepsMore },
+      unfolded
     )
   return {
     view,
@@ -354,7 +410,9 @@ export function buildAtlas(
   model: Model,
   t: Strings,
   open?: string,
-  span = 1400
+  span = 1400,
+  /** The stages the reader opened, by the id of the block each folds into. */
+  unfolded: ReadonlySet<string> = new Set()
 ): Atlas {
   const flows = new Map<string, PlacedFlow>()
   const home = new Map<string, string>()
@@ -396,7 +454,14 @@ export function buildAtlas(
   ): Block => {
     const placed = views
       .map((view) => {
-        const flow = placeFlow(model, t, view, id === open, span - 2 * P)
+        const flow = placeFlow(
+          model,
+          t,
+          view,
+          id === open,
+          span - 2 * P,
+          unfolded
+        )
         flows.set(view.flow.flow_id, flow)
         home.set(view.flow.flow_id, id)
         return flow

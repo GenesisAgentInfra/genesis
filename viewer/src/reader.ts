@@ -50,6 +50,8 @@ export interface Order {
 export interface Place {
   /** The module whose flows are drawn step by step; every other flow stays folded. */
   focused?: string
+  /** The stages opened one by one, by the block each folds back into; the last opened last. */
+  unfolded?: string[]
   selected?: Selected
   /** The change picked on the map: its card rings and what it leads to answers. */
   current?: { node: string; no: number }
@@ -69,8 +71,8 @@ export const START: Place = {
 /** What the reader moves about in. */
 export interface World {
   model: Model
-  /** The map as it is drawn with a module open, or with none. */
-  atlasOf: (focused?: string) => Atlas
+  /** The map as it is drawn with a module open, or with none, and with stages opened. */
+  atlasOf: (focused?: string, unfolded?: readonly string[]) => Atlas
   /** Things glide and play; off for a reader who asked for less motion. */
   motion: boolean
 }
@@ -106,6 +108,9 @@ const WALK_AHEAD = 320
 const WALK_GLIDE = 420
 
 const glide = (world: World) => (world.motion ? GLIDE_MS : 0)
+/** The map as the reader has it. */
+const mapAt = (place: Place, world: World) =>
+  world.atlasOf(place.focused, place.unfolded)
 const look = (place: Place, shot: Shot, ms: number): Place => ({
   ...place,
   camera: { no: place.camera.no + 1, shot, ms },
@@ -177,9 +182,28 @@ function focusOn(
   if (place.focused === module) return place
   const next = { ...place, focused: module }
   // With the panel up, what it is about stays the subject.
-  return flowId && !panelOf(next.selected, world.atlasOf(module)).open
+  return flowId && !panelOf(next.selected, mapAt(next, world)).open
     ? look(next, { of: "flow", flowId }, glide(world))
     : follow(next, world)
+}
+
+/** A stage opens where it stands, and the camera moves in on its steps. */
+function unfold(place: Place, id: string, world: World): Place {
+  const next = { ...place, unfolded: [...(place.unfolded ?? []), id] }
+  const frame = mapAt(next, world).nodes.find(
+    (node) => node.type === "box" && node.data.stage?.id === id
+  )
+  const steps = frame?.type === "box" ? frame.data.stage?.steps : undefined
+  return steps
+    ? look(next, { of: "steps", ids: steps }, glide(world))
+    : follow(next, world)
+}
+/** A stage folds back into one block, and the camera goes back to the place. */
+function fold(place: Place, id: string, world: World): Place {
+  return follow(
+    { ...place, unfolded: place.unfolded?.filter((item) => item !== id) },
+    world
+  )
 }
 
 /** A change is picked on its step: it rings, and the steps it leads to answer. */
@@ -206,7 +230,7 @@ function toChange(place: Place, no: number, world: World): Place {
   const home =
     stop.kind === "off_map"
       ? APART
-      : world.atlasOf(next.focused).home.get(stop.flowId ?? "")
+      : mapAt(next, world).home.get(stop.flowId ?? "")
   // A change outside the open module is shown on the whole map.
   if (next.focused && home !== next.focused)
     next = follow({ ...next, focused: undefined }, world)
@@ -220,10 +244,7 @@ function toChange(place: Place, no: number, world: World): Place {
     )
   const node =
     stop.flowId && stop.nodeId
-      ? stepOn(
-          world.atlasOf(next.focused),
-          stepNodeId(stop.flowId, stop.nodeId)
-        )
+      ? stepOn(mapAt(next, world), stepNodeId(stop.flowId, stop.nodeId))
       : undefined
   if (!node) return next
   return pick(open(next, { type: "step", node: node.id }, world), node, no)
@@ -244,14 +265,14 @@ function toNeighbour(place: Place, by: number, world: World): Place {
 
 /** A flow is walked the way it usually runs, the camera riding along. */
 function startWalk(place: Place, flowId: string, world: World): Place {
-  const before = world.atlasOf(place.focused)
+  const before = mapAt(place, world)
   if (!before.flows.has(flowId)) return place
   let next: Place = { ...endWalk(place), current: undefined }
   // A walk passes every step, so the flow's module opens first.
   const module = before.home.get(flowId)
   if (before.flows.get(flowId)!.mode !== "full" && module)
     next = focusOn(next, module, world, flowId)
-  const placed = world.atlasOf(next.focused).flows.get(flowId)
+  const placed = mapAt(next, world).flows.get(flowId)
   if (placed?.mode !== "full") return next
   const changed = new Set(
     placed.nodes
@@ -301,8 +322,12 @@ export function beats(trail: Trail): { at: number; act: Act }[] {
 
 /** Something drawn on the map is clicked. */
 function onNode(place: Place, node: AtlasNode, world: World): Place {
-  if (node.type === "box") return place
-  const atlas = world.atlasOf(place.focused)
+  if (node.type === "box") {
+    // The name on an opened stage folds it again, unless a change keeps it open.
+    const { stage } = node.data
+    return stage && !stage.held ? fold(place, stage.id, world) : place
+  }
+  const atlas = mapAt(place, world)
   const next = endWalk(place)
   if (node.type === "module") return focusOn(next, node.id, world)
   const home = homeOf(atlas, node)
@@ -345,6 +370,7 @@ function onNode(place: Place, node: AtlasNode, world: World): Place {
       // The pill that stands for steps left out opens the module on its flow.
       if (node.data.stub)
         return home ? focusOn(next, home, world, flowIdOf(node)) : next
+      if (node.data.stage) return unfold(next, node.id, world)
       const opened = open(next, { type: "step", node: node.id }, world)
       return node.data.coupons.length && !node.data.removedFlow
         ? pick(opened, node)
@@ -356,9 +382,9 @@ function onNode(place: Place, node: AtlasNode, world: World): Place {
 export function act(place: Place, action: Act, world: World): Place {
   switch (action.do) {
     case "node": {
-      const node = world
-        .atlasOf(place.focused)
-        .nodes.find((item) => item.id === action.id)
+      const node = mapAt(place, world).nodes.find(
+        (item) => item.id === action.id
+      )
       return node ? onNode(place, node, world) : place
     }
     case "pane": {
@@ -398,6 +424,8 @@ export function act(place: Place, action: Act, world: World): Place {
       if (calm.walk) return endWalk(calm)
       if (calm.selected) return close(calm, world)
       if (calm.current) return { ...calm, current: undefined }
+      if (!calm.focused && calm.unfolded?.length)
+        return fold(calm, calm.unfolded[calm.unfolded.length - 1], world)
       return calm.focused ? overview(calm, world) : calm
     }
     case "touch":

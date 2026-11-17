@@ -182,6 +182,9 @@ export function FlowEdge({
           <div
             className={cn(
               "map-edge-label nodrag nopan absolute w-max text-body-s font-medium whitespace-nowrap",
+              // On the colour of the flow's card, so a line crossing behind it does not
+              // strike through the words.
+              "corner-xs bg-(--flow)",
               longLabel ? "pointer-events-auto" : "pointer-events-none px-xs",
               data?.exception ? "text-risk-ink" : "text-ink-2"
             )}

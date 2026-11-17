@@ -91,6 +91,8 @@ export interface MapFlow {
   entries: MapEntry[]
   steps?: MapStep[]
   edges?: MapEdge[]
+  /** Steps that read as one block until the reader opens it. */
+  stages?: { stage_id: string; name: string; step_ids: string[] }[]
   accounting: {
     accountable: number
     covered: number

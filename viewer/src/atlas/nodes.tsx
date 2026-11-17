@@ -384,6 +384,33 @@ export function MoreView({ data }: NodeProps<MoreNode>) {
 export function BoxView({ data }: NodeProps<BoxNode>) {
   const canvas = useCanvas()
   const away = canvas.away(data.flowId)
+  const { stage } = data
+  if (stage)
+    // An opened stage: a quiet frame round its steps, its name on top to fold it by.
+    return (
+      <div
+        className={cn(
+          "relative h-full w-full",
+          "corner-xl bg-ink/[0.035] ring-1 ring-line",
+          "pointer-events-none transition-opacity duration-160",
+          away && "opacity-35"
+        )}
+      >
+        <span
+          title={stage.held ? undefined : canvas.t.foldStage}
+          className={cn(
+            "nodrag nopan absolute bottom-full left-2 mb-xs flex max-w-full items-center gap-xs",
+            "text-body-s font-medium whitespace-nowrap text-ink-2",
+            !stage.held && "pointer-events-auto cursor-pointer hover:text-ink"
+          )}
+        >
+          {!stage.held && (
+            <FoldHorizontal aria-hidden className="size-3 shrink-0" />
+          )}
+          <span className="truncate">{stage.name}</span>
+        </span>
+      </div>
+    )
   return (
     <div
       aria-hidden
