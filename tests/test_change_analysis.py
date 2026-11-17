@@ -370,9 +370,10 @@ def test_removed_code_that_moved_keeps_the_tests_of_the_function_it_left(source_
     # The check went into another function. The removal is still judged where it was:
     # only the tests that run `export_rows` are about it.
     assert linked(by_kind(report, "condition_removed")) == ["test_export_keeps_values"]
+    # The test added with the new function comes first.
     assert linked(by_kind(report, "symbol_added")) == [
-        "test_export_keeps_values",
         "test_present_drops_missing_values",
+        "test_export_keeps_values",
     ]
 
 
@@ -536,7 +537,11 @@ def test_the_change_task_takes_explanations_and_checks_verdicts(change):
     assert item.explanation.short_summary == "保留完整说明的短文案"
     assert item.tests.verdict == "reached_only"
     assert item.tests.basis == ("static_fact", "agent_assessment")
-    assert [case.test_id for case in item.tests.items] == [SUBMIT_TEST]
+    # The named test comes first; the other static link stays after it.
+    assert [(case.test_id, "assessed" in case.tags) for case in item.tests.items] == [
+        (SUBMIT_TEST, True),
+        (SMOKE_TEST, False),
+    ]
     gone = by_kind(final, "call_removed", "#approve_report")
     # Nothing static supports it, so the basis is the agent's assessment alone.
     assert gone.tests.verdict == "not_reached" and gone.tests.items == ()
@@ -557,7 +562,7 @@ def test_the_change_task_takes_explanations_and_checks_verdicts(change):
     assert change.submit(CHANGE_TASK, {"changes": [named]})["status"] == "accepted"
     gone = by_kind(change.stored_report(), "call_removed", "#approve_report")
     assert gone.tests.verdict == "covered" and gone.tests.basis == ("agent_assessment",)
-    assert gone.tests.items[0].tags == ("agent_identified", "assertion_found")
+    assert gone.tests.items[0].tags == ("agent_identified", "assessed", "assertion_found")
     assert gone.explanation.effect == "状态直接变为 approved。"
     # Earlier assessments of other changes are kept.
     assert by_kind(change.stored_report(), "loop_added").explanation is not None

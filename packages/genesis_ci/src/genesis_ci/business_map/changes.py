@@ -76,6 +76,9 @@ _HTTP_CALL = re.compile(
     r"\.(get|post|put|patch|delete|head|options)\(\s*f?[\"'](/[^\"'?#]*)", re.IGNORECASE
 )
 _PATH_PARAMETER = re.compile(r"^(\{.*\}|<.*>|:\w+)$")
+# The reason the facts give a function handed to another call, and an argparse subparser.
+_HANDED = "Handed to "
+_SUBCOMMAND = re.compile(r"\.add_parser\(\s*[\"']([^\"']+)[\"']")
 RULES = (
     "`before` and `after` are the frozen text of each side: read both before explaining a "
     "change. A side marked `excerpt` is shorter than its lines (a definition's header, a "
@@ -948,12 +951,16 @@ class ChangeAnalysis:
     @cached_property
     def calls(self) -> dict:
         """Calls between definitions of one side: caller to callees."""
+        return self._graph()
+
+    def _graph(self, skip=frozenset()) -> dict:
+        """The call graph of both sides, leaving out the call facts in `skip`."""
         graph = {BASE: {}, HEAD: {}}
         known = {BASE: set(), HEAD: set()}
         for symbol in self.workspace.facts.symbols:
             known[symbol.side].add(symbol.symbol_id)
         for fact in self.workspace.facts.facts:
-            if fact.kind == FactKind.call:
+            if fact.kind == FactKind.call and (fact.side, fact.fingerprint) not in skip:
                 internal = [item for item in fact.target.targets if item in known[fact.side]]
                 # Creating an object also runs its initializer.
                 internal += [
@@ -963,6 +970,94 @@ class ChangeAnalysis:
                 ]
                 graph[fact.side].setdefault(fact.symbol_id, set()).update(internal)
         return graph
+
+    @cached_property
+    def _dispatch(self) -> tuple[dict[str, list[tuple[frozenset[str], str]]], frozenset]:
+        """Head handlers that run only for one argparse subcommand.
+
+        `p = sub.add_parser("voice")` then `p.set_defaults(func=cmd_voice)` hands
+        `cmd_voice` over, so the facts read it as a deferred call. But the function that
+        builds the parser never calls it: `main` does, when the command line says `voice`.
+        Returns, by the function that registers them, the subcommand names and the
+        handler; and the call facts that hand them over.
+        """
+        found: dict[str, list[tuple[frozenset[str], str]]] = {}
+        facts = set()
+        for fact in self.workspace.facts.facts:
+            reason = fact.target.reason if fact.kind == FactKind.call else None
+            if fact.side != HEAD or not fact.deferred or not (reason or "").startswith(_HANDED):
+                continue
+            receiver = reason[len(_HANDED) :].rsplit("; it runs", 1)[0]
+            holder, _, method = receiver.rpartition(".")
+            if method != "set_defaults":
+                continue
+            names = set(_SUBCOMMAND.findall(holder))
+            if not names and holder.isidentifier():
+                names = {self._subparser(fact, holder)} - {None}
+            if names:
+                facts.add((fact.side, fact.fingerprint))
+                for target in fact.target.targets:
+                    found.setdefault(fact.symbol_id, []).append((frozenset(names), target))
+        return found, frozenset(facts)
+
+    def _subparser(self, fact: CodeFact, name: str) -> str | None:
+        """The subcommand of the parser a local name holds where `fact` hands a handler over.
+
+        The last assignment to the name before that line in the same definition counts:
+        `p = sub.add_parser("voice")` gives `voice`; any other value gives nothing.
+        """
+        path = fact.symbol_id.partition("#")[0]
+        cache = self.__dict__.setdefault("_parsers", {})
+        if path not in cache:
+            tree = self.tree(HEAD, path)
+            found = []
+            for node in ast.walk(tree) if tree is not None else ():
+                if not isinstance(node, ast.Assign | ast.AnnAssign):
+                    continue
+                value = node.value
+                command = None
+                if (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and value.func.attr == "add_parser"
+                    and value.args
+                    and isinstance(value.args[0], ast.Constant)
+                    and isinstance(value.args[0].value, str)
+                ):
+                    command = value.args[0].value
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                found += [(node.lineno, bound, command) for bound in _bound(targets)]
+            cache[path] = sorted(found, key=lambda item: item[0])
+        symbol = self.workspace.symbols.get(fact.symbol_id)
+        first = symbol.range.start_line if symbol is not None else 1
+        command = None
+        for line, bound, value in cache[path]:
+            if first <= line < fact.range.start_line and bound == name:
+                command = value
+        return command
+
+    def _words(self, test_id: str) -> frozenset[str]:
+        """The words of the string literals a test function writes, its decorators included."""
+        test = self.tests[test_id]
+        symbol = self.workspace.symbols.get(test.symbol_id)
+        path = test.symbol_id.partition("#")[0]
+        tree = self.tree(HEAD, path)
+        if symbol is None or tree is None:
+            return frozenset()
+        cache = self.__dict__.setdefault("_literals", {})
+        if path not in cache:
+            cache[path] = [
+                (node.lineno, node.value)
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            ]
+        span = symbol.range
+        return frozenset(
+            word
+            for line, text in cache[path]
+            if span.start_line <= line <= span.end_line
+            for word in text.split()
+        )
 
     @cached_property
     def _called_by(self) -> dict[str, set[str]]:
@@ -1065,8 +1160,14 @@ class ChangeAnalysis:
 
     @cached_property
     def _test_calls(self) -> dict[str, set[str]]:
-        """Head calls as tests make them: a request to a route path calls its handler."""
-        graph = {symbol: set(targets) for symbol, targets in self.calls[HEAD].items()}
+        """Head calls as tests make them: a request to a route path calls its handler.
+
+        A handler registered for one subcommand is left out: whether a test gets to it
+        depends on the command line the test gives, which `_reached` checks per test.
+        """
+        _, handed = self._dispatch
+        calls = self._graph(handed)[HEAD] if handed else self.calls[HEAD]
+        graph = {symbol: set(targets) for symbol, targets in calls.items()}
         if not self._routes:
             return graph
         test_paths = {
@@ -1098,27 +1199,83 @@ class ChangeAnalysis:
         return found
 
     @cached_property
-    def _reached(self) -> dict[str, list[str]]:
-        """Head tests by the definitions they call, directly or through other calls."""
-        found: dict[str, list[str]] = {}
+    def _reached(self) -> dict[str, dict[str, int]]:
+        """Head tests by the definitions they call, directly or through other calls: how
+        many calls away each test is.
+
+        A handler registered for an argparse subcommand counts only for a test whose
+        string literals name that subcommand.
+        """
+        graph = self._test_calls
+        dispatch, _ = self._dispatch
+        found: dict[str, dict[str, int]] = {}
         for test_id in sorted(self.tests):
             symbol_id = self.tests[test_id].symbol_id
-            reached = _closure([symbol_id], self._test_calls, TEST_DEPTH + 1) - {symbol_id}
-            for symbol in reached:
-                found.setdefault(symbol, []).append(test_id)
+            words = self._words(test_id) if dispatch else frozenset()
+            distances, frontier = {symbol_id: 0}, [symbol_id]
+            for calls in range(1, TEST_DEPTH + 2):
+                following = []
+                for symbol in frontier:
+                    chosen = [
+                        target for names, target in dispatch.get(symbol, ()) if names & words
+                    ]
+                    for target in (*graph.get(symbol, ()), *chosen):
+                        if target not in distances:
+                            distances[target] = calls
+                            following.append(target)
+                frontier = following
+            for symbol, calls in distances.items():
+                if symbol != symbol_id:
+                    found.setdefault(symbol, {})[test_id] = calls
         return found
+
+    @cached_property
+    def _changed_tests(self) -> set[str]:
+        """Head tests this change adds or edits: the likeliest to be about it."""
+        kinds = {ChangeKind.test_added, ChangeKind.test_modified}
+        return {
+            f"head::{change.symbol_id}"
+            for change in self.diff.changes
+            if change.is_test and change.kind in kinds
+        }
 
     # ----- tests ---------------------------------------------------------------------
 
-    def _case(self, test_id: str, related: bool) -> dict:
+    def _case(self, test_id: str, related: bool, assessed: bool = False) -> dict:
         test = self.tests[test_id]
         tags = ["related" if related else "agent_identified"]
+        if assessed:
+            tags.append("assessed")
         if test.assertions:
             tags.append("assertion_found")
         return {"test_id": test_id, "tags": tags, "evidence_ids": list(test.evidence_ids)}
 
     def _related(self, change: RawChange, symbols) -> list[str]:
-        return sorted({test for symbol in symbols for test in self._reached.get(symbol, ())})
+        """Tests that reach a change, the most relevant first.
+
+        First the tests this change adds or edits, then by how many calls away a test is
+        (one: it calls the changed definition itself), tests with an assertion before
+        those without, then by id.
+        """
+        reach: dict[str, int] = {}
+        for symbol in symbols:
+            for test_id, calls in self._reached.get(symbol, {}).items():
+                reach[test_id] = min(calls, reach.get(test_id, calls))
+        changed = self._changed_tests
+        ranked = sorted(
+            reach,
+            key=lambda test_id: (
+                test_id not in changed,
+                reach[test_id],
+                not self.tests[test_id].assertions,
+                test_id,
+            ),
+        )
+        self.__dict__.setdefault("_reach_of", {})[change.change_id] = {
+            test_id: {"calls_away": reach[test_id], "changed_with_it": test_id in changed}
+            for test_id in ranked
+        }
+        return ranked
 
     def static_tests(self, change: RawChange, symbols) -> dict | None:
         """What the test sources alone say about a change."""
@@ -1184,18 +1341,23 @@ class ChangeAnalysis:
         if problems:
             return static, problems
         related = self._related(change, symbols)
-        named = list(dict.fromkeys(named)) or related[:MAX_CASES]
-        items = [self._case(test_id, test_id in related) for test_id in named]
-        basis = ["static_fact"] * any(test_id in related for test_id in named)
+        named = list(dict.fromkeys(named))
+        # The tests the verdict rests on come first; the static links stay after them.
+        items = [self._case(test_id, test_id in related, assessed=True) for test_id in named]
+        items += [self._case(test_id, True) for test_id in related if test_id not in named][
+            : max(0, MAX_CASES - len(items))
+        ]
+        static = any(test_id in related for test_id in named) or (not named and related)
+        judged = items[: len(named)] or items
         result = {
             "verdict": verdict.verdict,
-            "basis": [*basis, "agent_assessment"],
+            "basis": [*["static_fact"] * bool(static), "agent_assessment"],
             "execution_data": "not_collected",
             "note": verdict.note,
             "items": items,
         }
         if verdict.verdict == "covered" and not any(
-            "assertion_found" in item["tags"] for item in items
+            "assertion_found" in item["tags"] for item in judged
         ):
             problems.append(
                 (
@@ -1668,6 +1830,7 @@ class ChangeAnalysis:
             if item.detail:
                 view["detail"] = item.detail
             if item.tests is not None:
+                reach = self.__dict__.get("_reach_of", {}).get(item.change_id, {})
                 view["tests"] = {
                     "verdict": item.tests.verdict.value,
                     "basis": [value.value for value in item.tests.basis],
@@ -1677,6 +1840,12 @@ class ChangeAnalysis:
                             "test_id": case.test_id,
                             "evidence_id": case.evidence_ids[0],
                             "assertions": list(self.tests[case.test_id].assertions[:5]),
+                            # How many calls away from the change, and whether this change
+                            # edits the test; unset for a test static analysis did not link.
+                            **reach.get(
+                                case.test_id, {"calls_away": None, "changed_with_it": False}
+                            ),
+                            **({"named": True} if "assessed" in case.tags else {}),
                         }
                         for case in item.tests.items
                     ],

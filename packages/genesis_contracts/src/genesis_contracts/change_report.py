@@ -90,6 +90,9 @@ class CaseTag(StrEnum):
     fixture_or_mock_related = "fixture_or_mock_related"
     # Named by the assessing agent; static analysis found no call path to the change.
     agent_identified = "agent_identified"
+    # Named by the assessing agent in `test_ids`: the verdict rests on this test. Tests
+    # without it are static links kept beside the agent's choice.
+    assessed = "assessed"
 
 
 class ChangeSide(ContractModel):
@@ -182,11 +185,15 @@ class CoverageAssessment(ContractModel):
             for item in self.items
             if item.executed or {CaseTag.related, CaseTag.agent_identified} & set(item.tags)
         ]
-        named = any(CaseTag.agent_identified in item.tags for item in self.items)
+        named = any(
+            {CaseTag.agent_identified, CaseTag.assessed} & set(item.tags) for item in self.items
+        )
         if named and CoverageBasis.agent_assessment not in self.basis:
             raise ValueError("a test named by an agent needs the agent_assessment basis")
+        # The tests the verdict rests on: those the agent named, when it named any.
+        judged = [item for item in reaches if CaseTag.assessed in item.tags] or reaches
         if self.verdict == CoverageVerdict.covered:
-            if not any(CaseTag.assertion_found in item.tags for item in reaches):
+            if not any(CaseTag.assertion_found in item.tags for item in judged):
                 raise ValueError("covered needs a test that reaches the change and asserts on it")
             if not {CoverageBasis.agent_assessment, CoverageBasis.imported_coverage} & set(
                 self.basis
