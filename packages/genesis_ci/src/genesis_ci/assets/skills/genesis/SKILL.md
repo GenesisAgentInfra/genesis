@@ -20,10 +20,28 @@ meets a requirement, that a test passed, or that a path was executed. Never pres
 your own reading of the code as a Genesis result: a Genesis result is what the CLI
 accepted and rendered.
 
+## Two requests
+
+The user asks for one of two things. `/genesis map` and `/genesis review` (`$genesis
+map` and `$genesis review` in Codex) name them outright; otherwise tell them apart by
+what the user says.
+
+- **map**: draw the system as it is now, so that someone can understand it. Sections 1
+  to 4. Nothing is compared and no change is reported.
+- **review REV**: what changed since a revision, where it lands in the flows and whether
+  tests cover it. Section 5. Without a revision, compare with the one the branch
+  started from; for uncommitted work that is `HEAD`.
+
 ## What is supported today
 
-- Python source. On a repository without analyzable Python, `map prepare` fails with
-  `unsupported_repository`; tell the user what it reported and stop.
+- Python source is analyzed statically: the CLI extracts facts, finds the entry points
+  and checks that a flow leaves nothing out.
+- Any other language works without that analysis. `map prepare` then reports
+  `"engine": "agent"`: you find the entry points and read the code yourself, and the
+  CLI checks every citation against the frozen source. In that case read
+  `other-languages.md` next to this skill and follow it instead of sections 2, 3 and 5.
+  For a project whose main language is not Python but which has some Python files, run
+  `map prepare` with `--engine agent`; otherwise only the Python files are mapped.
 - A full map of the current code.
 - The changes since a revision, placed on the steps of that map, with an assessment of
   whether existing tests cover each one (section 5).
@@ -74,7 +92,8 @@ genesis map render --repo /absolute/app --session SESSION_ID --open
 
 `prepare` reads the working tree by default. Use `--head REV` for a specific commit.
 Add `--include-untracked` only when new, uncommitted files belong to the request.
-Its result has the `session_id`; `entries.adapter` is the number of framework entries
+Its result has the `session_id` and the `engine`. With `"engine": "agent"`, continue in
+`other-languages.md`. Otherwise `entries.adapter` is the number of framework entries
 found and `entries.root_heuristic` the number of further candidates. Running it again
 on unchanged code returns the same session with `"resumed": true` and keeps all
 accepted work.
@@ -444,6 +463,21 @@ Rules the CLI enforces:
   fold a whole flow into "call the service": the reader would see nothing.
 - **Observations** are optional risks you noticed while reading. They need evidence and
   a `severity` of `info`, `low` or `medium`.
+- **Stages.** A reader takes in about seven blocks across. A flow that is wider gets
+  `stages`: each folds a run of steps into one block, and the reader opens the block to
+  see its steps. This is where you abstract, so name a stage for what its steps get done
+  together ("Check the payment", not "Steps 3 to 6"):
+
+  ```
+  "stages": [
+    {"key": "pay", "name": "Charge the card and handle a decline", "steps": ["charge", "declined", "retry"]}
+  ]
+  ```
+
+  A stage holds two or more steps that run one after another; no step outside it may
+  run between them. The trigger stays outside. Keep outside the stages the decisions
+  and outcomes a reader needs to follow the flow, and fold the work in between. A step
+  belongs to one stage at most.
 
 Read the result:
 
@@ -457,6 +491,9 @@ Read the result:
   earlier accepted version is still in place.
 - `accepted` with `unaccounted` facts: the map stays partial, and `next_task` comes back
   to this task. Use those facts in a step or omit them with a reason, then submit again.
+- `accepted` with `too_wide`: with its stages folded the flow is more than seven blocks
+  across. The map stays partial and `next_task` comes back to this task. Add or widen
+  stages, then submit again.
 
 ## 4. Render and report
 

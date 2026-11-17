@@ -1,5 +1,6 @@
 import json
 import os
+from enum import StrEnum
 from pathlib import Path
 
 import typer
@@ -18,7 +19,7 @@ def _map_failure(error: Exception) -> typer.Exit:
     """Report a refusal as JSON on stdout, like every other result of `genesis map`."""
     from pydantic import ValidationError
 
-    from .business_map.workspace import LoopError, pydantic_problems
+    from .business_map.loop import LoopError, pydantic_problems
 
     if isinstance(error, LoopError):
         body = {"code": error.code, "message": str(error), "errors": error.errors}
@@ -37,6 +38,28 @@ def _map_failure(error: Exception) -> typer.Exit:
     return typer.Exit(1)
 
 
+class Engine(StrEnum):
+    """Who reads the code. `auto` uses the Python analyzers when they find Python source."""
+
+    auto = "auto"
+    python = "python"
+    agent = "agent"
+
+
+def _workspace(repo: Path, session: str):
+    """The loop of a session, by the engine that prepared it."""
+    from .business_map.store import session_root
+
+    stored = session_root(repo.expanduser().resolve(strict=True), session) / "session.json"
+    if not stored.is_file():
+        raise FileNotFoundError(f"no such session: {session}")
+    if json.loads(stored.read_text(encoding="utf-8")).get("engine") == "agent":
+        from .agent_map import Workspace
+    else:
+        from .business_map.workspace import Workspace
+    return Workspace(repo, session)
+
+
 @map_app.command("prepare")
 def map_prepare(
     repo: Path = typer.Option(Path("."), "--repo"),
@@ -44,24 +67,39 @@ def map_prepare(
     head: str | None = typer.Option(None, "--head", help="Default: the working tree"),
     include_untracked: bool = typer.Option(False, "--include-untracked"),
     exclude: list[str] | None = typer.Option(None, "--exclude"),
+    engine: Engine = typer.Option(
+        Engine.auto, "--engine", help="agent: for a project whose main language is not Python"
+    ),
 ) -> None:
-    """Freeze a snapshot, extract facts and write the static skeleton. Calls no model.
+    """Freeze a snapshot and open a session. Calls no model.
 
-    A repository with many source files is analyzed in several worker processes. Set
+    Python source is analyzed into facts and a static skeleton. A repository without it,
+    or `--engine agent`, gets a session in which the coding agent reads the code itself.
+
+    A repository with many Python files is analyzed in several worker processes. Set
     GENESIS_WORKERS to choose how many; 1 keeps everything in one process.
     """
-    from .business_map.session import prepare
-    from .git_snapshot import SnapshotError
-
+    options = {
+        "base": base,
+        "head": head,
+        "include_untracked": include_untracked,
+        "exclude": tuple(exclude or ()),
+    }
     try:
-        result = prepare(
-            repo,
-            base=base,
-            head=head,
-            include_untracked=include_untracked,
-            exclude=tuple(exclude or ()),
-        )
-    except (SnapshotError, ValueError, OSError) as error:
+        result = None
+        if engine != Engine.agent:
+            from .business_map.session import UnsupportedRepository, prepare
+
+            try:
+                result = prepare(repo, **options)
+            except UnsupportedRepository:
+                if engine == Engine.python:
+                    raise
+        if result is None:
+            from .agent_map import prepare
+
+            result = prepare(repo, **options)
+    except (ValueError, OSError) as error:
         raise _map_failure(error) from error
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -88,13 +126,11 @@ def map_plan(
     plan_file: Path | None = typer.Option(None, "--input", help="Omit for the default plan"),
 ) -> None:
     """Group entries into flows and create one task per flow."""
-    from genesis_contracts.map_tasks import MapPlan
-
-    from .business_map.workspace import Workspace
 
     def action():
-        plan = None if plan_file is None else MapPlan.model_validate(_map_input(plan_file))
-        return Workspace(repo, session).save_plan(plan)
+        workspace = _workspace(repo, session)
+        plan = None if plan_file is None else workspace.Plan.model_validate(_map_input(plan_file))
+        return workspace.save_plan(plan)
 
     _map_call(action)
 
@@ -105,9 +141,7 @@ def map_status(
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
     """List tasks, their state and what is still missing."""
-    from .business_map.workspace import Workspace
-
-    _map_call(lambda: Workspace(repo, session).status())
+    _map_call(lambda: _workspace(repo, session).status())
 
 
 @map_app.command("context")
@@ -118,9 +152,7 @@ def map_context(
     claim: bool = typer.Option(False, "--claim", help="Hold the task for this worker"),
 ) -> None:
     """Everything needed to start one task: entries, source and the facts to account for."""
-    from .business_map.workspace import Workspace
-
-    _map_call(lambda: Workspace(repo, session).context(task, claim))
+    _map_call(lambda: _workspace(repo, session).context(task, claim))
 
 
 @map_app.command("query")
@@ -131,12 +163,14 @@ def map_query(
     search: str | None = typer.Option(None, "--search"),
 ) -> None:
     """Look at one symbol and its neighbours, or search the frozen source."""
-    from .business_map.workspace import Workspace
-
     if (symbol is None) == (search is None):
         raise typer.BadParameter("give exactly one of --symbol or --search")
-    workspace = Workspace(repo, session)
-    _map_call(lambda: workspace.query_symbol(symbol) if symbol else workspace.search(search))
+
+    def action():
+        workspace = _workspace(repo, session)
+        return workspace.query_symbol(symbol) if symbol else workspace.search(search)
+
+    _map_call(action)
 
 
 @map_app.command("read")
@@ -146,9 +180,7 @@ def map_read(
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
     """Read the frozen source behind one evidence reference."""
-    from .business_map.workspace import Workspace
-
-    _map_call(lambda: Workspace(repo, session).read(evidence))
+    _map_call(lambda: _workspace(repo, session).read(evidence))
 
 
 @map_app.command("submit")
@@ -159,9 +191,7 @@ def map_submit(
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
     """Check one submission for a task. It is accepted or rejected as a whole."""
-    from .business_map.workspace import Workspace
-
-    _map_call(lambda: Workspace(repo, session).submit(task, _map_input(submission)))
+    _map_call(lambda: _workspace(repo, session).submit(task, _map_input(submission)))
 
 
 @map_app.command("diff")
@@ -171,12 +201,10 @@ def map_diff(
 ) -> None:
     """List what changed since the base revision, where it lands on the map, and the tests.
 
-    Needs no agent: the changes, their place and the static test evidence come from the
-    code alone. Explanations and coverage verdicts appear once the change task is done.
+    Needs no agent: the changes and their place come from the code alone. Explanations
+    and coverage verdicts appear once the change task is done.
     """
-    from .business_map.workspace import Workspace
-
-    _map_call(lambda: Workspace(repo, session).change_summary())
+    _map_call(lambda: _workspace(repo, session).change_summary())
 
 
 @map_app.command("render")
@@ -193,8 +221,8 @@ def map_render(
     the same changes as data.
     """
     from .business_map.render import render_html, render_summary
-    from .business_map.session import load, load_report, publish, session_root
     from .business_map.source_links import github_source_links
+    from .business_map.store import load, load_report, publish, session_root
     from .business_map.view import render_view
     from .snapshot_store import load_snapshot
 

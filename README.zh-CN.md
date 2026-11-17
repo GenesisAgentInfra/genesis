@@ -35,13 +35,14 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent clau
 
 用 Codex 的话，把最后的参数换成 `--agent codex` 或 `--agent both`。
 
-然后在 Claude Code 里打开你自己的项目，直接问：
+然后在 Claude Code 里打开你自己的项目。一共两个命令：
 
 ```text
-/genesis 画出这个项目的业务流程
-/genesis 我还没提交的代码改了什么，有没有测试？
-/genesis 对比 main 审查一下这个分支
+/genesis map
+/genesis review main
 ```
+
+`map` 画出系统现在的样子，帮你看懂它。`review` 告诉你相对某个版本（这里是 `main`）改了什么，有没有测试管着。你也可以直接用大白话问。
 
 Codex 里对应的是 `$genesis`。跑完之后用浏览器打开 `.genesis/view.html`。旁边的 `summary.md` 可以直接贴进 PR。
 
@@ -68,13 +69,13 @@ Codex 里对应的是 `$genesis`。跑完之后用浏览器打开 `.genesis/view
 
 ## 能信吗
 
-代码是 agent 读的，但它说了不算。它写下的每一步都必须引用对应的那几行代码，Genesis CLI 会拿冻结的仓库快照逐条核对。有一条对不上，整份描述就被退回，agent 重写。agent 漏画了分支，图上会标 `partial`。
+代码是 agent 读的，但它说了不算。它写下的每一步都必须引用对应的那几行代码，Genesis CLI 会拿冻结的仓库快照逐条核对。有一条对不上，整份描述就被退回，agent 重写。对 Python，Genesis 还会自己解析代码，agent 漏画了分支，图上会标 `partial`。
 
 CLI 不调用任何模型，不往外发任何东西，也不会运行你的代码。
 
 ## 局限
 
-- 目前只支持 Python 仓库。
+- Python 的结果最准确，因为 Genesis 会解析它。其他语言也能用：由你的 agent 读代码，Genesis 逐步对照源码核对，但 agent 漏掉的路径不会被标出来。
 - 测试结论是读测试代码得出的，Genesis 不会去跑测试。
 - 风险是 agent 读代码时注意到的，没有规则引擎。
 

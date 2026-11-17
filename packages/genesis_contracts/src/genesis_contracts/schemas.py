@@ -1,3 +1,4 @@
+from .agent_tasks import AgentChangeSubmission, AgentPlan
 from .business_map import BusinessMap
 from .change_report import ChangeReport
 from .evidence_bundle import EvidenceBundle
@@ -11,6 +12,8 @@ MAP_MODELS = {
     "map-plan.schema.json": MapPlan,
     "flow-submission.schema.json": FlowSubmission,
     "change-submission.schema.json": ChangeSubmission,
+    "agent-plan.schema.json": AgentPlan,
+    "agent-change-submission.schema.json": AgentChangeSubmission,
 }
 
 

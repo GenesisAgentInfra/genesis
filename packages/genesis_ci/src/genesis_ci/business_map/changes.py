@@ -33,10 +33,10 @@ from genesis_contracts.map_tasks import ChangeAssessment, ChangeSubmission
 from pydantic import ValidationError
 
 from .fact_diff import BASE, HEAD, FactDiff, RawChange, _innermost, diff_facts
+from .loop import CHANGE_TASK
 from .python_facts import canonical_python
 from .skeleton import _evaluation_order, _short, shown_facts, skeleton_flow
 
-CHANGE_TASK = "task_change"
 CONTEXT_LIMIT = 30
 # How many possible entries `status` and `diff` list at a time.
 POSSIBLE_ENTRY_LIMIT = 20
