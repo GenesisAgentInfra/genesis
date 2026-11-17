@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 import typer
@@ -78,6 +79,9 @@ def _map_call(action) -> None:
 
 
 def _map_input(path: Path):
+    """The JSON of a plan or submission: from a file, or from standard input for `-`."""
+    if str(path) == "-":
+        return json.loads(sys.stdin.read())
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -85,7 +89,9 @@ def _map_input(path: Path):
 def map_plan(
     session: str = typer.Option(..., "--session"),
     repo: Path = typer.Option(Path("."), "--repo"),
-    plan_file: Path | None = typer.Option(None, "--input", help="Omit for the default plan"),
+    plan_file: Path | None = typer.Option(
+        None, "--input", help="Omit for the default plan; - reads standard input"
+    ),
 ) -> None:
     """Group entries into flows and create one task per flow."""
     from genesis_contracts.map_tasks import MapPlan
@@ -155,7 +161,7 @@ def map_read(
 def map_submit(
     session: str = typer.Option(..., "--session"),
     task: str = typer.Option(..., "--task"),
-    submission: Path = typer.Option(..., "--input"),
+    submission: Path = typer.Option(..., "--input", help="A JSON file; - reads standard input"),
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
     """Check one submission for a task. It is accepted or rejected as a whole."""

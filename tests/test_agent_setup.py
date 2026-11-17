@@ -151,10 +151,16 @@ def test_bundled_skill_examples_match_the_contracts_and_the_cli(user_home):
     [(destination, _)] = install_skills(Agent.codex, Scope.user, None)
     text = (destination / "SKILL.md").read_text()
     examples = [json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S)]
-    assert [sorted(example)[0] for example in examples] == ["domains", "edges", "changes"]
+    assert [sorted(example)[0] for example in examples] == [
+        "domains",
+        "edges",
+        "changes",
+        "risks",
+    ]
     MapPlan.model_validate(examples[0])
     FlowSubmission.model_validate(examples[1])
     ChangeSubmission.model_validate(examples[2])
+    ChangeSubmission.model_validate(examples[3])
     commands = set(re.findall(r"genesis map ([a-z]+)", text))
 
     def help_of(*command):

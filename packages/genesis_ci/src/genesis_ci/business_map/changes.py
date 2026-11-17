@@ -96,6 +96,8 @@ _LOCAL_FAILURES = (
     "Cyclic re-export or import alias",
     "Captured namespace package may shadow this external import",
 )
+# Problems that concern the tests an explanation names, whichever change it is about.
+_ABOUT_THE_TESTS = {"unknown_test", "covered_names_tests"}
 RULES = (
     "`before` and `after` are the frozen text of each side: read both before explaining a "
     "change. A side marked `excerpt` is shorter than its lines (a definition's header, a "
@@ -116,10 +118,17 @@ RULES = (
     "test uses is not a missed path.",
     "An added definition is judged as a whole: covered when a test runs it and would fail "
     "without it. Name in `note` the branches no test takes; they do not make it reached_only.",
-    "Tests that are skipped by default (a skip, skipif or xfail mark, importorskip, a marker "
-    "the default configuration deselects), or that need the network, a model download, "
-    "credentials or a service that is not there, do not count: they would not fail in a "
-    "normal test run. Name them in `note` and judge by the other tests.",
+    "A test counts when the project's default test command runs it. Tests skipped by "
+    "default do not count: a skip mark, a skipif whose condition holds in a normal run (such "
+    "as a missing environment variable or credential), a marker the default configuration "
+    "deselects. Name them in `note` and judge by the other tests. Needing the network or a "
+    "model download does not by itself exclude a test; you may say so in `note`.",
+    "For a change that replaces code (both sides present), undoing it puts the `before` side "
+    "back: take the test's input through the `before` side. When the old code gives the same "
+    "outcome for that input (the same exception, the same value, the same call), the test "
+    "still passes and does not make the change covered; a test that checks only an "
+    "exception type or a field name often passes on both sides. covered needs a test whose "
+    "input gets a different outcome on the two sides.",
     "For removed code, the changed path is the input the removed code used to handle. "
     "covered: a test gives such an input and would fail if the removed code were put back. "
     "reached_only: tests run the function but never with such an input. Code that replaces "
@@ -134,6 +143,8 @@ RULES = (
     "`test_ids` names the tests your verdict rests on; the tests static analysis linked "
     "stay listed after them. You may name a test static analysis did not link, for example "
     "one that goes through an HTTP client.",
+    "A verdict answers only whether a test would fail. What the tests leave unchecked goes "
+    "in its `note`, not into `risks`.",
     "No test was run. Never state that a test passed or that a path executed.",
     "Leave `verdict` out to keep the static result shown under `tests`: it reads as called "
     "by tests, not assessed.",
@@ -2196,25 +2207,33 @@ class ChangeAnalysis:
         placement = _Placement(self, self.workspace.stored_map())
         accepted, problems = {}, []
         for index, item in enumerate(submission.changes):
-            where = f"changes[{index}]"
-            change = known.get(item.change_id)
-            if change is None:
-                problems.append(
-                    (where + ".change_id", "unknown_change", f"No change {item.change_id}.")
-                )
-                continue
-            if change.is_test and item.verdict is not None:
-                problems.append(
-                    (
-                        where + ".verdict",
-                        "verdict_on_test",
-                        "A change to a test carries no coverage verdict of itself.",
+            stored = item.model_dump(mode="json", exclude_none=True, exclude={"change_ids"})
+            # A problem about the tests named, not about one change, is said once per item.
+            said = set()
+            for at, change_id in item.places():
+                # One change of several is named at its place in `change_ids`.
+                where = f"changes[{index}]" + ("" if item.change_id else f".{at[0]}[{at[1]}]")
+                change = known.get(change_id)
+                if change is None:
+                    named = where + (".change_id" if item.change_id else "")
+                    problems.append((named, "unknown_change", f"No change {change_id}."))
+                    continue
+                if change.is_test and item.verdict is not None:
+                    problems.append(
+                        (
+                            where + ".verdict",
+                            "verdict_on_test",
+                            "A change to a test carries no coverage verdict of itself.",
+                        )
                     )
-                )
-                continue
-            _, found = self.assessed_tests(change, placement._symbols(change), item)
-            problems += [(f"{where}.{field}", code, message) for field, code, message in found]
-            accepted[item.change_id] = item.model_dump(mode="json", exclude_none=True)
+                    continue
+                _, found = self.assessed_tests(change, placement._symbols(change), item)
+                for field, code, message in found:
+                    if code in _ABOUT_THE_TESTS and (field, code, message) in said:
+                        continue
+                    said.add((field, code, message))
+                    problems.append((f"{where}.{field}", code, message))
+                accepted[change_id] = {**stored, "change_id": change_id}
         for index, risk in enumerate(submission.risks):
             missing = [key for key in risk.change_ids if key not in known]
             if missing:

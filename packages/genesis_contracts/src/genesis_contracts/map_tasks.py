@@ -38,6 +38,8 @@ MAX_STEPS = 60
 MAX_EDGES = 150
 MAX_OBSERVATIONS = 8
 MAX_CHANGE_RISKS = 20
+# How many changes one explanation may cover: the parts of one change in behaviour.
+MAX_GROUPED_CHANGES = 50
 
 
 def place(parts) -> str:
@@ -247,15 +249,18 @@ class SubmittedObservation(ContractModel):
 
 
 class ChangeAssessment(ContractModel):
-    """An agent's reading of one change: what it means, and whether tests cover it.
+    """An agent's reading of a change: what it means, and whether tests cover it.
 
+    `change_id` names the change. `change_ids` instead names several changes that are
+    parts of one change in behaviour; each is checked and stored as if explained alone.
     Leave `verdict` out to keep the static result. A verdict says whether a test would
     fail if the change were undone, and needs a `note` that says what the tests do or do
     not exercise. `test_ids` names the tests the verdict rests on; the report keeps the
     other tests static analysis linked after them.
     """
 
-    change_id: Identifier
+    change_id: Identifier | None = None
+    change_ids: tuple[Identifier, ...] = Field(default=(), max_length=MAX_GROUPED_CHANGES)
     summary: Text
     short_summary: str | None = Field(default=None, min_length=1, max_length=120)
     effect: Text | None = None
@@ -265,12 +270,20 @@ class ChangeAssessment(ContractModel):
 
     @model_validator(mode="after")
     def verdict_is_explained(self) -> ChangeAssessment:
+        if (self.change_id is None) == (not self.change_ids):
+            raise ValueError("name one change in `change_id`, or several in `change_ids`")
         _refuse(_repeated((("test_ids", index), item) for index, item in enumerate(self.test_ids)))
         if self.verdict is not None and not self.note:
             raise ValueError("a coverage verdict needs a note explaining it")
         if self.verdict is None and self.test_ids:
             raise ValueError("test ids belong to a coverage verdict")
         return self
+
+    def places(self) -> tuple[tuple[tuple, str], ...]:
+        """Each change this explanation covers, with where the submission names it."""
+        if self.change_id is not None:
+            return ((("change_id",), self.change_id),)
+        return tuple((("change_ids", index), item) for index, item in enumerate(self.change_ids))
 
 
 class SubmittedChangeRisk(ContractModel):
@@ -300,8 +313,9 @@ class ChangeSubmission(ContractModel):
             raise ValueError("a change submission explains changes or names risks")
         _refuse(
             _repeated(
-                (("changes", index, "change_id"), item.change_id)
+                (("changes", index, *at), change_id)
                 for index, item in enumerate(self.changes)
+                for at, change_id in item.places()
             )
         )
         return self

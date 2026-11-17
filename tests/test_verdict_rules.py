@@ -10,8 +10,17 @@ from test_map_loop import codes
 def test_the_rules_judge_a_verdict_by_whether_a_test_would_fail(change):  # noqa: F811
     rules = " ".join(change.context(CHANGE_TASK)["rules"])
     assert "would fail if the change were undone" in rules
-    # Tests that do not run by default, or cannot run here, do not count.
-    assert "skipped by default" in rules and "network" in rules and "credentials" in rules
+    # A test counts when the default test command runs it: a skip on a missing
+    # credential excludes it, needing the network alone does not.
+    assert "the project's default test command runs it" in rules
+    assert "missing environment variable or credential" in rules
+    assert "Needing the network or a model download does not by itself exclude a test" in rules
+    assert "need the network" not in rules
+    # Replaced code: the test's input goes through the old side as well.
+    assert "take the test's input through the `before` side" in rules
+    assert "a different outcome on the two sides" in rules
+    # A gap in the tests belongs in the note, not among the risks.
+    assert "not into `risks`" in rules
     # A new definition is one change: one verdict for the whole, its gaps in the note.
     assert "An added definition is judged as a whole" in rules
     assert "would fail if the change were undone" in VERDICT_LEGEND

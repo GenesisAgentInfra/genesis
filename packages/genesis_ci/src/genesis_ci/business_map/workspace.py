@@ -65,6 +65,9 @@ FRAME_DEPTH = 6
 # such as reading the clock, and are not outside systems a flow has to account for.
 _EFFECTFUL_STDLIB = {"subprocess", "socket", "urllib", "http", "smtplib", "ftplib", "sqlite3"}
 ANCHOR_RANGE_LINES = 12
+# How far a quote cited as evidence for a risk or an observation may sit from the lines
+# given for it. Such a citation decides no anchor, so the nearest match stands in.
+NEARBY_LINES = 5
 # How many steps a message names before it says how many more there are.
 STEPS_NAMED = 4
 # How much of a fact's source text a message quotes.
@@ -181,11 +184,29 @@ def _quoted(fact: CodeFact) -> str:
     return line if len(line) <= QUOTED_CHARS else line[: QUOTED_CHARS - 1] + "…"
 
 
+def _near(source: str, span: ReferenceRange, quote: str) -> ReferenceRange | None:
+    """The range of as many lines nearest to `span` that holds `quote`, earlier first."""
+    for distance in range(1, NEARBY_LINES + 1):
+        for shift in (-distance, distance):
+            if span.start_line + shift < 1:
+                continue
+            found = ReferenceRange(
+                start_line=span.start_line + shift, end_line=span.end_line + shift
+            )
+            try:
+                if quote in slice_source(source, found):
+                    return found
+            except ValueError:
+                continue
+    return None
+
+
 def _problem(path: str, code: str, message: str) -> dict:
     return {"path": path, "code": code, "message": message}
 
 
 _ITEM = re.compile(r"^(steps|edges|omitted|observations|changes)\[(\d+)\]")
+_GROUPED = re.compile(r"^changes\[\d+\]\.change_ids\[(\d+)\]")
 _NAMED_BY = {
     "steps": ("step {}", ("key",)),
     "edges": ("edge {} -> {}", ("source", "target")),
@@ -215,6 +236,12 @@ def _named(problems: list[dict], raw, describe=None) -> list[dict]:
         if not isinstance(items, list) or int(found.group(2)) >= len(items):
             continue
         item = items[int(found.group(2))]
+        grouped = _GROUPED.match(problem["path"])
+        ids = item.get("change_ids") if grouped and isinstance(item, dict) else None
+        if isinstance(ids, list) and int(grouped.group(1)) < len(ids):
+            # One explanation of several changes: name the change the problem is about.
+            problem["item"] = f"change {ids[int(grouped.group(1))]}"
+            continue
         wording, fields = _NAMED_BY[found.group(1)]
         values = [item.get(field) for field in fields] if isinstance(item, dict) else []
         if values and all(isinstance(value, str) for value in values):
@@ -366,12 +393,12 @@ class Workspace:
     def _submit_change(self, raw) -> dict:
         """Check explanations and coverage verdicts for changes; all or nothing."""
         folder = self.root / "changes"
-        risks = {}
+        risks, moved = {}, []
         try:
             accepted, found = self.changes.check(raw)
             problems = [_problem(*item) for item in found]
             for index, risk in enumerate(ChangeSubmission.model_validate(raw).risks):
-                evidence = self._cite(risk.evidence, f"risks[{index}].evidence", problems)
+                evidence = self._cite(risk.evidence, f"risks[{index}].evidence", problems, moved)
                 changes = sorted(risk.change_ids)
                 key = (
                     "risk_"
@@ -416,6 +443,7 @@ class Workspace:
             "assessed": len(accepted),
             "risks": len(stored),
             **self._change_progress(report),
+            **({"evidence_moved": moved} if moved else {}),
             "errors": [],
         }
 
@@ -712,8 +740,15 @@ class Workspace:
             )
         return ref
 
-    def _cite(self, cites: tuple[EvidenceCite, ...], where: str, problems: list) -> list[str]:
-        """Resolve citations against the frozen snapshot; report every one that fails."""
+    def _cite(
+        self, cites: tuple[EvidenceCite, ...], where: str, problems: list, moved=None
+    ) -> list[str]:
+        """Resolve citations against the frozen snapshot; report every one that fails.
+
+        With a `moved` list, a quote that is not in the lines given is looked for in a range
+        of as many lines up to `NEARBY_LINES` away, and the range found is recorded there.
+        Only evidence that decides no anchor is cited this way: a risk or an observation.
+        """
         resolved = []
         for index, cite in enumerate(cites):
             at = f"{where}[{index}]"
@@ -736,22 +771,33 @@ class Workspace:
                 )
                 continue
             span = ReferenceRange(start_line=cite.start_line, end_line=cite.end_line)
+            source = self.snapshot.source.read_text(cite.side, cite.path)
             try:
-                text = slice_source(self.snapshot.source.read_text(cite.side, cite.path), span)
+                text = slice_source(source, span)
             except ValueError:
                 problems.append(
                     _problem(at, "range_out_of_bounds", "The line range is outside the file.")
                 )
                 continue
             if cite.quote not in text:
-                problems.append(
-                    _problem(
-                        at,
-                        "quote_not_found",
-                        "The quote is not in that range of the frozen file; read it again through the CLI.",
+                found = None if moved is None else _near(source, span, cite.quote)
+                if found is None:
+                    problems.append(
+                        _problem(
+                            at,
+                            "quote_not_found",
+                            "The quote is not in that range of the frozen file; read it again through the CLI.",
+                        )
                     )
+                    continue
+                moved.append(
+                    {
+                        "path": at,
+                        "cited": [span.start_line, span.end_line],
+                        "found": [found.start_line, found.end_line],
+                    }
                 )
-                continue
+                span = found
             resolved.append(self._register(cite.side, cite.path, span).evidence_id)
         return list(dict.fromkeys(resolved))
 
@@ -1583,9 +1629,9 @@ class Workspace:
                 }
                 for callee in sorted(hidden)
             ]
-        findings = []
+        findings, moved = [], []
         for index, item in enumerate(submission.observations):
-            evidence = self._cite(item.evidence, f"observations[{index}].evidence", problems)
+            evidence = self._cite(item.evidence, f"observations[{index}].evidence", problems, moved)
             cited.update(evidence)
             finding_id = "find_" + _digest(task["flow_id"] + "\0" + item.statement)
             if evidence:
@@ -1644,6 +1690,8 @@ class Workspace:
         }
         if ignored:
             result["ignored"] = ignored
+        if moved:
+            result["evidence_moved"] = moved
         accepted = self._task_file(task_id, "accepted.json")
         previous = accepted.read_text(encoding="utf-8") if accepted.is_file() else None
         write_json(

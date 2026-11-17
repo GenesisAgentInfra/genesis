@@ -40,13 +40,20 @@ file system", the sandbox does not let it write there: tell the user that Genesi
 needs write access to `.genesis/`, and do not present your own reading as a Genesis
 result. After a review, mention that `.genesis/` now exists.
 
-Write each JSON file you submit into a temporary directory and pass its absolute path:
-the scratchpad or temporary directory your environment names, or else one made by
-`mktemp -d`. Use your file-writing tool, or a quoted heredoc
-(`cat > DIR/changes.json <<'EOF' ... EOF`) when that tool cannot write there. Do not
-use a fixed path, such as one in `/tmp`, or a directory next to the repository: a
-sandbox may let you write only into the repository and the temporary directory it
-gives you.
+Hand `plan` and `submit` their JSON on standard input with `--input -` and a quoted
+heredoc, so that no file is needed:
+
+```
+genesis map submit --repo /absolute/app --session SESSION_ID --task task_change --input - <<'EOF'
+{"changes": [...]}
+EOF
+```
+
+A file works too: write it into the scratchpad or temporary directory your environment
+names and pass its absolute path. Do not use a fixed path, such as one in `/tmp`, or a
+directory next to the repository: a sandbox may let you write only into the
+repository and the temporary directory it gives you. Long output, such as that of
+`diff`, can go straight into `jq` or Python instead of into a file.
 
 ## What is supported today
 
@@ -529,7 +536,7 @@ whether tests cover it, or what its risks are.
 genesis map prepare --repo /absolute/app --base MERGE_BASE --head HEAD
 genesis map diff    --repo /absolute/app --session SESSION_ID
 genesis map context --repo /absolute/app --session SESSION_ID --task task_change
-genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change --input /absolute/changes.json
+genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change --input -
 genesis map render  --repo /absolute/app --session SESSION_ID
 ```
 
@@ -553,9 +560,9 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    reports `"resumed": true`.
 2. `diff` lists every change, where each sits, the tests static analysis links to it,
    and the flows (`possibly_affected`) and candidate entries (`possible_entries`) that
-   reach it. Its output can be long: write it to a file in your temporary directory and
-   read it in parts, for example with `jq '.changes[] | {change_id, kind, symbol_id,
-   placement}'` or Python. `possibly_affected`, `possible_entries` and
+   reach it. Its output can be long: pipe it into `jq` or Python, or write it to a file
+   in your temporary directory, and read it in parts, for example with
+   `jq '.changes[] | {change_id, kind, symbol_id, placement}'`. `possibly_affected`, `possible_entries` and
    `unanalyzed_changes` are top-level keys. Check each candidate in `possible_entries`
    by reading its code: name a real way in as an entry point of its changes, as your
    reading, and say which candidates you could not check. Record them in a plan
@@ -565,19 +572,42 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    tests: those on the map, those a flow reaches, and those calls that failed to
    resolve may reach (`unresolved_calls`). `changes_waiting` counts them. Read them,
    decide each verdict, and `submit` your explanations ("Explaining the changes"
-   below). Ask for the context again until `changes_waiting` is 0; `status` offers
-   `task_change` as `next_task` while any wait. Do not write explanations for the
-   rest, such as changes to tests and import lines no entry reaches: the report lists
-   them anyway, and the time is better spent on step 4. When the user asked nothing
-   about tests, you may leave `verdict` out and keep the static result.
-4. Look for risks before you render. For each change you explained, ask what it can
-   break, and read that code, not only the diff: where a new `break`, `continue` or
-   `return` takes the code (`lands_on` in the context shows the unchanged code that
-   runs next, or the callers of the function); what callers do with a new result,
-   value or exception; what happens when a call to another service fails; what else
-   reads a changed value or setting. Submit what you find as `risks` ("Explaining the
-   changes" below); a submission may hold `risks` alone. A risk the tests do not probe
-   goes here, not into a verdict.
+   below). Changes that are parts of one change in behaviour take one explanation that
+   lists them all in `change_ids`. Ask for the context again until `changes_waiting`
+   is 0; `status` offers `task_change` as `next_task` while any wait. Do not write
+   explanations for the rest, such as changes to tests and import lines no entry
+   reaches: the report lists them anyway, and the time is better spent on step 4. When
+   the user asked nothing about tests, you may leave `verdict` out and keep the static
+   result.
+4. Read for risks, as a pass of its own, once the explanations are accepted and before
+   you render. The explanations say what changed; this pass asks what goes wrong, in
+   which situation, and for whom. It is what a reviewer reads first, so give it real
+   reading time, and read the code, not only the diff and the context:
+   - **Inputs.** For new or changed code that parses, matches, filters, validates or
+     formats, list the inputs it may get wrong: empty or missing values, case and
+     encoding, nesting, escapes and the other forms the same syntax allows, very large
+     inputs, and the forms the docs, the tests or the neighbouring code accept. Follow
+     each through the code. A function that runs on its own without side effects can
+     be tried on them from a small script in your temporary directory.
+   - **The same input, before and after.** For every existing caller, user or stored
+     output of the changed code, what does the input it already sends give now: a
+     different value, type, format, order or id; an error where there was a result, or
+     the reverse; a delay; a log line, message or metric that now means something
+     else. `lands_on` in the context shows where a new `break`, `continue` or `return`
+     goes: the unchanged code that runs next, or the callers of the function.
+   - **Failures.** What happens when a service, file or call the code relies on fails,
+     is slow or returns something unexpected, and what the caller then sees.
+   - **Other readers.** Code that reads the same value, setting, file or record, and
+     whether two readers now disagree.
+   - **Files Genesis does not analyze** (`unanalyzed_changes`): configuration examples,
+     documentation, prompts and skill files. Check that what they tell users or agents
+     to do still works with the code.
+
+   Not a risk on its own: a gap in the tests (it goes in the verdict's `note`); a
+   failure that needs code nobody has written yet; behaviour the change did not touch,
+   unless it now happens more often or matters more; what the change sets out to do. A
+   risk names the input or situation, what goes wrong, and for whom. Submit every risk
+   you find as `risks`, in a submission of its own ("Explaining the changes" below).
 5. `render`. Once every owed change is explained it exits 0 with `change_status:
    complete`. When you described no flows, `affected_flow_not_synthesized` stays among
    the limitations: it says that no flow was described and does not keep the report
@@ -674,19 +704,34 @@ change, for example when it replaces the changed function with a stub. Then subm
     {"change_id": "chg_f1c02c12d9463145",
      "summary": "Approval no longer records the intermediate reviewed status.",
      "verdict": "not_reached",
-     "note": "No test calls the approval route or approve_report."}
-  ],
-  "risks": [
-    {"statement": "A report of exactly the threshold amount now waits for model review: no test submits that amount, and a slow or failing model call now holds such reports back.",
-     "severity": "medium",
-     "category": "reliability",
-     "change_ids": ["chg_9603691aeade3d47"]}
+     "note": "No test calls the approval route or approve_report."},
+    {"change_ids": ["chg_03a420c71b4e228d", "chg_da88254492c7c41b"],
+     "summary": "The nightly cleanup no longer archives the reports before it clears them.",
+     "verdict": "not_reached",
+     "note": "No test calls nightly_cleanup."}
   ]
 }
 ```
 
 ```
-genesis map submit --repo /absolute/app --session SESSION_ID --task task_change --input /absolute/changes.json
+genesis map submit --repo /absolute/app --session SESSION_ID --task task_change --input - <<'EOF'
+...
+EOF
+```
+
+After the risk pass of step 4, submit the risks on their own:
+
+```json
+{
+  "risks": [
+    {"statement": "A report of exactly the threshold amount now goes to model review, so while the model service is slow or down its submission waits on that call instead of being approved at once.",
+     "severity": "medium",
+     "category": "reliability",
+     "change_ids": ["chg_9603691aeade3d47"],
+     "evidence": [{"path": "expense/api.py", "start_line": 14, "end_line": 14,
+                   "quote": "verdict = await review_with_model(report)"}]}
+  ]
+}
 ```
 
 - `summary` says in business terms what is different, and `effect` what it means for the
@@ -708,11 +753,22 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
 - An added definition (`symbol_added`) is one change, so judge it as a whole:
   `covered` when a test runs it and would fail without it. Name the branches no test
   takes in `note`; they do not make it `reached_only`.
-- Tests that are skipped by default (a `skip`, `skipif` or `xfail` mark,
-  `importorskip`, a marker the default configuration deselects), or that need the
-  network, a model download, credentials or a service that is not there, do not
-  count: they would not fail in a normal test run. Name them in `note` and judge by
-  the other tests.
+- A test counts when the project's default test command runs it. Tests skipped by
+  default do not count: a `skip` mark, a `skipif` whose condition holds in a normal
+  run (such as a missing environment variable or credential), a marker the default
+  configuration deselects. Name them in `note` and judge by the other tests. Needing
+  the network or a model download does not by itself exclude a test; you may say so
+  in `note`.
+- For a change that replaces code (both sides present), undoing it puts the `before`
+  side back, so take the test's input through the `before` side too. When the old
+  code gives the same outcome for that input (the same exception, the same value, the
+  same call), the test still passes and does not make the change `covered`. A test
+  that checks only an exception type or a field name often passes on both sides: five
+  validators replaced by a `Literal` type both raise `ValidationError` for an unknown
+  value, so a test that only matches the field name in the error is `reached_only`.
+  `covered` needs a test whose input gets a different outcome on the two sides.
+- A verdict answers only whether a test would fail. What the tests leave unchecked
+  goes in its `note`, not into `risks`.
 - For code that was removed, the changed path is the input the removed code used to
   handle. `covered`: a test gives such an input and would fail if the removed code
   were put back. `reached_only`: tests run the function but never with such an input. Code that
@@ -740,9 +796,14 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
   `reliability`, `correctness`, `data_integrity`, `security`, `performance` or
   `other`. `evidence` may cite code beyond the changed lines that the risk lands on,
   as flow observations do (`path`, `start_line`, `end_line` and a `quote` from those
-  lines, or an `evidence_id`). The same statement about the same changes replaces the
-  earlier one. The report lists them under "Risks seen in the changes", as your
-  reading.
+  lines, or an `evidence_id`). When the quote is not on the lines given, the CLI
+  takes the nearest range of as many lines, up to five lines away, that holds it, and
+  says so under `evidence_moved` in the result. The same statement about the same
+  changes replaces the earlier one. The report lists them under "Risks seen in the
+  changes", as your reading.
+- `change_ids` in an explanation lists several changes in place of `change_id`. Each
+  of them is checked and stored as if explained alone; a problem with one of them is
+  reported at its place in the list.
 - An observation you recorded on a flow is shown as `introduced` when its evidence cites
   code this change added, or when its whole flow is new, and as `persisting` when it
   cites code the change modified. Cite the changed lines when the risk comes from them.
@@ -847,9 +908,10 @@ asks for it.
   confirmed. List the candidates you could not check as such. For a change Genesis
   places nowhere, find the way in yourself and say that this part is your reading.
 - **Risks.** Genesis has no risk rules: the risks in the report are the ones you
-  submitted in step 4. Give them right after what changed, as your own reading, with
-  the changed lines and the code they land on cited. On a described flow you may also
-  record them as observations.
+  submitted in step 4. Give every one of them right after what changed, most serious
+  first, as your own reading, each with the input or situation, what goes wrong and
+  for whom, and the changed lines and the code they land on cited. On a described flow
+  you may also record them as observations.
 - **Limitations.** When `unresolved_local_calls` is among them, say that changes
   shown as unreachable may be reached through calls Genesis could not resolve.
 - **Verdict words.** Use the user's words when they asked in their own terms. The

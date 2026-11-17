@@ -767,7 +767,7 @@ def test_bundled_skill_examples_are_accepted_and_leave_nothing_unaccounted(works
     from importlib.resources import files
 
     text = files("genesis_ci").joinpath("assets/skills/genesis/SKILL.md").read_text()
-    plan, flow, _ = (json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S))
+    plan, flow = (json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S)[:2])
     status = workspace.save_plan(MapPlan.model_validate(plan))
     assert status["status"] == "accepted" and status["tasks"][0]["flow_key"] == "submit"
     result = workspace.submit(status["next_task"], flow)

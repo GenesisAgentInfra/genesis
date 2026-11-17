@@ -755,16 +755,23 @@ def test_the_change_example_in_the_bundled_skill_is_accepted(change):
     from importlib.resources import files
 
     text = files("genesis_ci").joinpath("assets/skills/genesis/SKILL.md").read_text()
-    example = json.loads(re.findall(r"```json\n(.*?)```", text, re.S)[2])
-    result = change.submit(CHANGE_TASK, example)
-    assert result["status"] == "accepted" and result["assessed"] == 2, result
+    explained, risks = [
+        json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S)[2:4]
+    ]
+    result = change.submit(CHANGE_TASK, explained)
+    # One of the explanations covers two changes.
+    assert result["status"] == "accepted" and result["assessed"] == 4, result
     report = change.stored_report()
-    # The example names a risk too, which the report keeps apart.
-    assert result["risks"] == 1 and report.risks[0].change_ids == (
-        by_kind(report, "condition_modified").change_id,
-    )
     assert by_kind(report, "condition_modified").tests.verdict == "reached_only"
     assert by_kind(report, "call_removed", "#approve_report").tests.verdict == "not_reached"
+    cleanup = by_kind(report, "call_removed", "#nightly_cleanup").explanation
+    assert cleanup == by_kind(report, "symbol_removed", "#archive_reports").explanation
+    # The risks come in a submission of their own, and the report keeps them apart.
+    result = change.submit(CHANGE_TASK, risks)
+    assert result["status"] == "accepted" and "evidence_moved" not in result, result
+    assert result["risks"] == 1 and change.stored_report().risks[0].change_ids == (
+        by_kind(report, "condition_modified").change_id,
+    )
 
 
 def test_swapping_the_two_branches_of_a_condition_is_a_change(source_repo):
