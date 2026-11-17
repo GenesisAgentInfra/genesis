@@ -718,7 +718,7 @@ def test_cli_runs_a_change_session_end_to_end(source_repo, tmp_path, monkeypatch
     )
     assert "## Removed flows" in summary and "(tests: reached only)" in summary
     assert "## Changes not on the map\n\n- symbol removed in expense/api.py#version" in summary
-    assert "  - This code is not reachable from any entry on the map." in summary
+    assert "  - No entry on the map reaches this code through calls static analysis" in summary
     assert "- Compared base (" in summary and ") with HEAD (" in summary
     assert "    - tests: " + SUBMIT_TEST in summary and "    - 测试只用了 50 和 500" in summary
     assert "    - placement: This step's code refers to `THRESHOLD`" in summary

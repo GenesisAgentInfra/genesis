@@ -79,6 +79,23 @@ _PATH_PARAMETER = re.compile(r"^(\{.*\}|<.*>|:\w+)$")
 # The reason the facts give a function handed to another call, and an argparse subparser.
 _HANDED = "Handed to "
 _SUBCOMMAND = re.compile(r"\.add_parser\(\s*[\"']([^\"']+)[\"']")
+NO_ENTRY = "No entry on the map reaches this code through calls static analysis resolved."
+UNRESOLVED = (
+    "No resolved call leads here from an entry on the map; {count} that could not be "
+    "resolved may lead here, such as {example}."
+)
+# Why a call into this code base's own modules could not be resolved, as the resolver
+# words it. A receiver of unknown type is dynamic by nature and is not among these.
+_LOCAL_FAILURES = (
+    "Target is absent from captured module",
+    "Local module member is not captured",
+    "Ambiguous module across source roots",
+    "Captured or omitted local module was not analyzed",
+    "Imported module has dynamic namespace mutation",
+    "Relative import escapes configured package roots",
+    "Cyclic re-export or import alias",
+    "Captured namespace package may shadow this external import",
+)
 RULES = (
     "`before` and `after` are the frozen text of each side: read both before explaining a "
     "change. A side marked `excerpt` is shorter than its lines (a definition's header, a "
@@ -473,6 +490,8 @@ class _Placement:
         self.cited: dict[str, list[tuple[int, int, str, str]]] = {}
         refs = {ref.evidence_id: ref for ref in business_map.evidence}
         self.reach: dict[str, set[str]] = {}
+        # Changes no resolved call leads to: how many unresolved calls may lead to each.
+        self.unresolved: dict[str, int] = {}
         # Calls from a flow's entries to each definition it reaches, and its first entry.
         self.calls_to: dict[str, dict[str, int]] = {}
         self.first_entry: dict[str, str] = {}
@@ -815,7 +834,25 @@ class _Placement:
                     "as possibly affected."
                 )
             ], reaching
-        return [_unassigned("This code is not reachable from any entry on the map.")], set()
+        # No resolved call leads here. That is not the same as no call at all.
+        might = analysis.unresolved_into(symbols)
+        if might:
+            self.unresolved[change.change_id] = len(might)
+            count = f"{len(might)} call{'s' * (len(might) != 1)}"
+            return [_unassigned(UNRESOLVED.format(count=count, example=_where(might[0])))], set()
+        return [_unassigned(NO_ENTRY)], set()
+
+
+def _callee(text: str) -> str | None:
+    """The name a call calls: the last name before its arguments."""
+    names = re.findall(r"[A-Za-z_]\w*", text.split("(", 1)[0])
+    return names[-1] if names else None
+
+
+def _where(fact: CodeFact) -> str:
+    return (
+        f"`{_short(fact.text, 80)}` in {fact.symbol_id.partition('#')[0]}:{fact.range.start_line}"
+    )
 
 
 class ChangeAnalysis:
@@ -1072,6 +1109,58 @@ class ChangeAnalysis:
             if span.start_line <= line <= span.end_line
             for word in text.split()
         )
+
+    @cached_property
+    def unresolved(self) -> list[CodeFact]:
+        """Head calls into this code base's own modules that could not be resolved."""
+        return [
+            fact
+            for fact in self.workspace.facts.facts
+            if fact.side == HEAD
+            and fact.kind == FactKind.call
+            and fact.target.status == "unknown"
+            and any(text in (fact.target.reason or "") for text in _LOCAL_FAILURES)
+        ]
+
+    @cached_property
+    def _unresolved_by_name(self) -> dict[str, list[CodeFact]]:
+        """Unresolved calls outside the tests, by the name they call."""
+        tests = {
+            item.path
+            for item in self.workspace.snapshot.capture.manifest.files
+            if item.side == HEAD and item.kind == "test"
+        }
+        found: dict[str, list[CodeFact]] = {}
+        for fact in self.unresolved:
+            name = _callee(fact.text)
+            if name and fact.symbol_id.partition("#")[0] not in tests:
+                found.setdefault(name, []).append(fact)
+        return found
+
+    def unresolved_into(self, symbols) -> list[CodeFact]:
+        """Unresolved calls that may lead to these head definitions.
+
+        A call counts when the name it calls is the name of one of them, or of a
+        definition that leads to them through resolved calls. Matching by name finds
+        too many rather than too few: a change wrongly found here only asks for one
+        more explanation, while one missed would look unreachable without a word.
+        """
+        if not symbols or not self._unresolved_by_name:
+            return []
+        leading = _closure(symbols, self._called_by, REACH_DEPTH)
+        names = {
+            part
+            for symbol in leading
+            for part in symbol.partition("#")[2].split(".")
+            if part and part != "<module>"
+        }
+        found = {
+            fact.fingerprint: fact
+            for name in names
+            for fact in self._unresolved_by_name.get(name, ())
+            if fact.symbol_id not in leading
+        }
+        return sorted(found.values(), key=lambda fact: (fact.symbol_id, fact.range.start_line))
 
     @cached_property
     def _called_by(self) -> dict[str, set[str]]:
@@ -1643,6 +1732,8 @@ class ChangeAnalysis:
                     cited.update(part.evidence_ids)
             if change.details:
                 item["detail"] = _short(" ".join(change.details), 2000)
+            if placement.unresolved.get(change.change_id):
+                item["unresolved_calls"] = placement.unresolved[change.change_id]
             symbols = placement._symbols(change)
             stored = assessments.get(change.change_id)
             if stored is None:
@@ -1739,6 +1830,32 @@ class ChangeAnalysis:
                     + ", ".join(diff.skipped_files[:5])
                     + ".",
                     "affects_completeness": True,
+                }
+            )
+        if self.unresolved:
+            # The most common reason, by its first call, stands for all of them.
+            reasons = Counter(fact.target.reason for fact in self.unresolved)
+            reason = reasons.most_common(1)[0][0]
+            example = next(fact for fact in self.unresolved if fact.target.reason == reason)
+            count = len(self.unresolved)
+            owed = sum(1 for item in items if item.get("unresolved_calls"))
+            limitations.append(
+                {
+                    "code": "unresolved_local_calls",
+                    "message": _short(
+                        f"{count} call{'s' * (count != 1)} into this code base's own modules "
+                        f"could not be resolved, such as {_where(example)} ({reason}). Code "
+                        "reached only through such calls looks unreachable, and its tests may "
+                        "not be linked."
+                        + (
+                            f" {owed} change{'s' * (owed != 1)} may be reached this way and "
+                            "need an explanation."
+                            if owed
+                            else ""
+                        ),
+                        2000,
+                    ),
+                    "affects_completeness": False,
                 }
             )
         limitations.append(
@@ -1851,6 +1968,8 @@ class ChangeAnalysis:
                 view["also_placed"] = [place(target) for target in item.other_projections]
             if item.detail:
                 view["detail"] = item.detail
+            if item.unresolved_calls:
+                view["unresolved_calls"] = item.unresolved_calls
             if item.tests is not None:
                 reach = self.__dict__.get("_reach_of", {}).get(item.change_id, {})
                 view["tests"] = {

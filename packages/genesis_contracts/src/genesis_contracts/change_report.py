@@ -249,9 +249,14 @@ class ChangeItem(ContractModel):
     explanation: ChangeExplanation | None = None
     tests: CoverageAssessment | None = None
     finding_ids: tuple[Identifier, ...] = ()
+    # Calls into this code base that could not be resolved and may lead here, counted
+    # when no resolved call does: such a change may be reachable after all.
+    unresolved_calls: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def sides_match_kind(self) -> ChangeItem:
+        if self.unresolved_calls and self.projection.status != ProjectionStatus.unassigned:
+            raise ValueError("only a change with no place on the map counts unresolved calls")
         if self.before is not None and self.before.side != EvidenceSide.base:
             raise ValueError("the before side of a change is the base snapshot")
         if self.after is not None and self.after.side != EvidenceSide.head:
@@ -387,16 +392,20 @@ class ChangeReport(ContractModel):
             raise ValueError("evidence is cited on the wrong side of the change")
 
     def owed(self) -> tuple[ChangeItem, ...]:
-        """The changes that have to be explained: on the map, or within reach of a flow.
+        """The changes that have to be explained: on the map, within reach of a flow, or
+        possibly reached through calls that could not be resolved.
 
         A change a flow can get to is not done with because no step covers it yet. It
-        comes onto the map as its flow is described, or it is explained where it is.
+        comes onto the map as its flow is described, or it is explained where it is. Nor
+        is one that looks unreachable only because the calls to it failed to resolve.
         """
         reached = {key for item in self.possibly_affected for key in item.change_ids}
         return tuple(
             item
             for item in self.changes
-            if item.projection.status != ProjectionStatus.unassigned or item.change_id in reached
+            if item.projection.status != ProjectionStatus.unassigned
+            or item.change_id in reached
+            or item.unresolved_calls
         )
 
     def _check_complete(self) -> None:

@@ -142,7 +142,7 @@ def test_a_constant_nothing_reads_stays_off_the_map(source_repo):
     workspace, _ = two_commits(source_repo, head, later)
     item = changed(workspace.stored_report(), "2")
     assert item.projection.status == "unassigned"
-    assert "not reachable" in item.projection.reason
+    assert item.projection.reason.startswith("No entry on the map reaches this code")
 
 
 TRIM = "shop/trim.py"
