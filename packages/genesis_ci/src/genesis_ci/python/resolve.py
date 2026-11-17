@@ -41,6 +41,9 @@ _PROPERTIES = {"property", "cached_property"}
 # Library functions whose result is an object of a known class.
 _RESULTS = {"external:logging.getLogger": "external:logging.Logger"}
 INHERITED = "Member found in a base class; another base or a subclass may define it instead"
+OVERRIDDEN = "Method looked up on the instance; subclasses that override it are included"
+# How many overrides a call on an instance leads to at most.
+MAX_OVERRIDES = 20
 PASSED = "Taken from what callers in this code base pass; another caller may pass something else"
 # How many call sites of one function are read to learn what a parameter receives.
 MAX_CALL_SITES = 24
@@ -115,6 +118,7 @@ class Resolver:
         self.call_sites = {}
         self._passed_cache = {}
         self._passing = []
+        self._subclass_index = None
         self._taint = _NEVER
         for side, path in sorted(set(files) | self.unavailable):
             file = files.get((side, path))
@@ -744,6 +748,52 @@ class Resolver:
     def _instance_member(self, cls, attribute, side, path, seen):
         """`attribute` looked up on an instance of the class `cls` written in `path`.
 
+        The instance may be of a subclass, so a method that subclasses override leads to
+        their overrides as well: a base class that calls `self.run()` runs whichever
+        `run` the instance's class defines. Only subclasses of `cls` itself count, not
+        those of the base class the method was found in.
+        """
+        found = self._member_lookup(cls, attribute, side, path, seen)
+        if found is None or not found.targets:
+            return found
+        if any(self.kinds.get((side, target)) != {"function"} for target in found.targets):
+            return found
+        overrides = [
+            item.symbol_id
+            for sub_path, sub in self._subclasses(side, path, cls)
+            for item in self.symbols.get((side, sub_path, sub + "." + attribute), [])
+            if item.kind == "function" and not _is_property(item)
+        ]
+        if not overrides:
+            return found
+        targets = tuple(dict.fromkeys((*found.targets, *sorted(set(overrides))[:MAX_OVERRIDES])))
+        return Resolution(status="candidate", targets=targets, reason=OVERRIDDEN)
+
+    def _subclasses(self, side, path, cls) -> list[tuple[str, str]]:
+        """The classes of the captured code that inherit from `cls`, directly or not."""
+        if self._subclass_index is None:
+            # Resolving the base classes may come back here; until it is built, none.
+            self._subclass_index = {}
+            index: dict[tuple, list[tuple[str, str]]] = {}
+            for (file_side, file_path), file in sorted(
+                self.files.items(), key=lambda item: (item[0][0].value, item[0][1])
+            ):
+                for name in file.bases:
+                    for base in self._bases(name, file_side, file_path, frozenset()):
+                        index.setdefault((file_side, *base), []).append((file_path, name))
+            self._subclass_index = index
+        found, pending = [], [(path, cls)]
+        while pending and len(found) < 4 * MAX_OVERRIDES:
+            current = pending.pop(0)
+            for item in self._subclass_index.get((side, *current), ()):
+                if item not in found and item != (path, cls):
+                    found.append(item)
+                    pending.append(item)
+        return found
+
+    def _member_lookup(self, cls, attribute, side, path, seen):
+        """`attribute` looked up on an instance of exactly the class `cls`.
+
         What the class itself says comes first: a unique unconditional assignment in its
         initializer, a declared type, then a method. A name the class does not mention is
         looked up in its base classes, in the order they are listed.
@@ -756,7 +806,7 @@ class Resolver:
         if own is not None or self.attributes.get((side, path, cls, attribute)):
             return own
         for base_path, base in self._bases(cls, side, path, seen):
-            inherited = self._instance_member(base, attribute, side, base_path, seen)
+            inherited = self._member_lookup(base, attribute, side, base_path, seen)
             if inherited is not None:
                 return Resolution(status="candidate", targets=inherited.targets, reason=INHERITED)
         return None
