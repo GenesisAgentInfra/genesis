@@ -546,11 +546,11 @@ genesis map render  --repo /absolute/app --session SESSION_ID
      Genesis does not fetch;
    - uncommitted work: `--base HEAD` and no `--head`. When `git status -s` shows
      new files (`??`) that belong to the change, add `--include-untracked`: untracked
-     files are otherwise left out without a word, and only `integrity_status: partial`
-     hints at it.
+     files are otherwise left out; `prepare` counts them under `untracked_left_out`
+     and the report names them.
 
-   Running `prepare` again on the same revisions keeps your accepted explanations, even
-   when it reports `"resumed": false`.
+   Running `prepare` again on the same revisions keeps your accepted explanations and
+   reports `"resumed": true`.
 2. `diff` lists every change, where each sits, the tests static analysis links to it,
    and the flows (`possibly_affected`) and candidate entries (`possible_entries`) that
    reach it. Its output can be long: write it to a file in your temporary directory and
@@ -560,21 +560,28 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    by reading its code: name a real way in as an entry point of its changes, as your
    reading, and say which candidates you could not check. Record them in a plan
    (proposed, or skipped as `not_an_entry`) only when you also place changes on flows.
-3. `context --task task_change` lists the changes on the map or within reach of a flow
-   that still need an explanation, 30 at a time, with both sides and their tests. Read
-   them, decide each verdict, and `submit` your explanations ("Explaining the changes"
-   below). When the user asked nothing about tests or risks, you may leave `verdict`
-   out and keep the static result. Ask for the context again until `changes_waiting`
-   is 0; go by `changes_waiting` in the context and in the result of `submit`, not by
-   `status`, whose `next_task` stays null while there is no plan. Once
-   `changes_waiting` is 0, the context lists the first 30 of all changes, with your
-   explanations under `previous`. Take the changes that still have no explanation,
-   such as those no flow reaches, from `diff`, which shows both sides, and explain them
-   by `change_id` too, so that the report says what each change does.
-4. `render`. When you described no flows, it exits 2 and the result lists
-   `affected_flow_not_synthesized`: some changes sit on entries whose flows are still
-   a static skeleton. That is the expected end of the short path, not a reason to
-   describe flows. Then report as the end of this section says.
+3. Explain what the CLI owes, and only that. `context --task task_change` lists first
+   the changes that need an explanation, 30 at a time, with both sides and their
+   tests: those on the map, those a flow reaches, and those calls that failed to
+   resolve may reach (`unresolved_calls`). `changes_waiting` counts them. Read them,
+   decide each verdict, and `submit` your explanations ("Explaining the changes"
+   below). Ask for the context again until `changes_waiting` is 0; `status` offers
+   `task_change` as `next_task` while any wait. Do not write explanations for the
+   rest, such as changes to tests and import lines no entry reaches: the report lists
+   them anyway, and the time is better spent on step 4. When the user asked nothing
+   about tests, you may leave `verdict` out and keep the static result.
+4. Look for risks before you render. For each change you explained, ask what it can
+   break, and read that code, not only the diff: where a new `break`, `continue` or
+   `return` takes the code (`lands_on` in the context shows the unchanged code that
+   runs next, or the callers of the function); what callers do with a new result,
+   value or exception; what happens when a call to another service fails; what else
+   reads a changed value or setting. Submit what you find as `risks` ("Explaining the
+   changes" below); a submission may hold `risks` alone. A risk the tests do not probe
+   goes here, not into a verdict.
+5. `render`. Once every owed change is explained it exits 0 with `change_status:
+   complete`. When you described no flows, `affected_flow_not_synthesized` stays among
+   the limitations: it says that no flow was described and does not keep the report
+   from being complete. Then report as the end of this section says.
 
 The CLI takes explanations at any point of a change session: no plan and no flow
 description has to come first. Describe flows, as set out under "Placing changes on
@@ -592,8 +599,10 @@ shows it before you do anything; rendering at this point is optional and gives t
 same list on the static structure.
 
 In `diff` and `status`, `changes_placed` counts the changes with a place on the map.
-`changes_waiting` counts the changes you have not explained yet, on the map or only
-within reach of a flow. Describing flows raises `changes_placed` and does not lower
+`changes_waiting` counts the changes you have not explained yet that the report needs:
+on the map, within reach of a flow, or possibly reached through calls that failed to
+resolve. `changes_unexplained` in the context counts every change without an
+explanation. Describing flows raises `changes_placed` and does not lower
 `changes_waiting`: that one goes down as `task_change` accepts explanations.
 
 - `changes` has one entry per changed condition, call, loop, result or definition, and
@@ -603,7 +612,10 @@ within reach of a flow. Describing flows raises `changes_placed` and does not lo
   `evidence_id`; a side with `"excerpt": true` shows less than the lines it cites.
 - `placement` is the step of the current map a change belongs to. Without a `reason`,
   a step rests on the changed code itself. A `reason` says how the place was chosen
-  otherwise. An `unassigned` change has no place on the map; report it as such.
+  otherwise. An `unassigned` change has no place on the map, and its `reason` says
+  whether a flow reaches it, whether calls that failed to resolve may reach it
+  (`unresolved_calls`), or that no entry reaches it through resolved calls. The last
+  is not proof that nothing does.
 - `tests` is what the test sources alone show. A test is linked when it calls the
   changed function, directly or through other calls, or requests a route that leads to
   it with an HTTP test client. `reached_only` at this point means only that; `unknown`
@@ -616,7 +628,12 @@ within reach of a flow. Describing flows raises `changes_placed` and does not lo
   reads, or chains longer than five calls: look for such tests yourself.
 - `possibly_affected` lists flows that can reach changed code without a step on it;
   `removed_flows` the entries that no longer exist; `unanalyzed_changes` the changed
-  files Genesis did not analyze, such as other languages. Mention all three.
+  files Genesis did not analyze, such as other languages. Mention those that are not
+  empty. A changed document or skill file can describe or drive the changed code:
+  read it against the Python change.
+- `limitations` says what the analysis could not do. `unresolved_local_calls` means
+  calls into the code base's own modules failed to resolve: changes that look
+  unreachable may be reached, and their tests may not be linked.
 - `closest_flow` says where to describe changed code that no flow has expanded yet
   (see below).
 - `possible_entries` lists functions no code calls that lead to the changed code and
@@ -625,14 +642,14 @@ within reach of a flow. Describing flows raises `changes_placed` and does not lo
 
 ### Explaining the changes
 
-Explain the changes with `task_change`, whether or not you described flows. Once
-affected flows are described, `next_task` offers it as well.
+Explain the changes with `task_change`, whether or not you described flows. `status`
+offers it as `next_task` while changes wait for an explanation.
 
 ```
 genesis map context --repo /absolute/app --session SESSION_ID --task task_change
 ```
 
-It returns up to 30 changes that still need an explanation. Each one carries the
+It returns up to 30 changes, those that still need an explanation first. Each one carries the
 frozen text of both sides under `before` and `after`: read both, read the tests listed
 for it, and search for tests that reach it another way. A side marked
 `"excerpt": true` is shorter than its lines: an added or removed definition shows
@@ -658,6 +675,12 @@ change, for example when it replaces the changed function with a stub. Then subm
      "summary": "Approval no longer records the intermediate reviewed status.",
      "verdict": "not_reached",
      "note": "No test calls the approval route or approve_report."}
+  ],
+  "risks": [
+    {"statement": "A report of exactly the threshold amount now waits for model review: no test submits that amount, and a slow or failing model call now holds such reports back.",
+     "severity": "medium",
+     "category": "reliability",
+     "change_ids": ["chg_9603691aeade3d47"]}
   ]
 }
 ```
@@ -711,18 +734,29 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
   or when none of the named tests contains an assertion, `not_reached` when a test
   calls the changed function itself or requests its route, an unknown `change_id` or
   test. A refusal changes nothing already accepted.
+- `risks` lists the risks you see in the changes, each with the `change_ids` it comes
+  from and a `severity` of `info`, `low` (the default) or `medium`; there is no
+  `high`, since it is your reading and no rule checked it. `category` is optional:
+  `reliability`, `correctness`, `data_integrity`, `security`, `performance` or
+  `other`. `evidence` may cite code beyond the changed lines that the risk lands on,
+  as flow observations do (`path`, `start_line`, `end_line` and a `quote` from those
+  lines, or an `evidence_id`). The same statement about the same changes replaces the
+  earlier one. The report lists them under "Risks seen in the changes", as your
+  reading.
 - An observation you recorded on a flow is shown as `introduced` when its evidence cites
   code this change added, or when its whole flow is new, and as `persisting` when it
   cites code the change modified. Cite the changed lines when the risk comes from them.
-- A change to a test (its `kind` starts with `test_`) takes a `summary` and no
-  `verdict`. With a verdict, the whole submission is refused with `verdict_on_test`.
+- A change to a test (its `kind` starts with `test_`) needs no explanation. If you
+  give one, it takes a `summary` and no `verdict`; with a verdict, the whole
+  submission is refused with `verdict_on_test`.
 - Submissions add up. Ask for the context again until `changes_waiting` is 0. A
   change that no step covers but a flow can reach counts in `changes_waiting` from
   the start, so a session is not done because nothing is on the map yet. On the short
   path, explain such a change where it is and name the flows that reach it; bring it
-  onto the map by describing its flow only when the user wants the flows shown. A
-  change no flow reaches, such as an import line, does not count in `changes_waiting`;
-  explain it too, by its `change_id` from `diff`.
+  onto the map by describing its flow only when the user wants the flows shown. So
+  does a change that calls which failed to resolve may reach. A change no entry
+  reaches, such as an import line, does not count; the context lists it after the
+  others, and you explain it only when it matters to the user's question.
 
 ### Placing changes on flows
 
@@ -797,8 +831,8 @@ after the map. `summary.md` lists the same changes by flow and step, and
 `change-report.json` holds them as data. Exit code 0 means every change on the map is
 explained and assessed, the flows they sit on are described, and every change a flow
 can reach without a step on it is explained. The rest of the map may still be a
-static skeleton. On the short path, exit code 2 with only
-`affected_flow_not_synthesized` is a finished review.
+static skeleton. On the short path, with no plan, the report is complete once every
+owed change is explained, and `render` exits 0.
 
 Tell the user, in their language: what changed in business terms, flow by flow, or entry
 by entry when you described no flows; for each
@@ -812,8 +846,12 @@ asks for it.
   flow it sits on, of the flows that possibly reach it, and the candidates you
   confirmed. List the candidates you could not check as such. For a change Genesis
   places nowhere, find the way in yourself and say that this part is your reading.
-- **Risks.** Genesis has no risk rules. Report the risks you see as your own reading,
-  with the changed lines cited; on a described flow, record them as observations.
+- **Risks.** Genesis has no risk rules: the risks in the report are the ones you
+  submitted in step 4. Give them right after what changed, as your own reading, with
+  the changed lines and the code they land on cited. On a described flow you may also
+  record them as observations.
+- **Limitations.** When `unresolved_local_calls` is among them, say that changes
+  shown as unreachable may be reached through calls Genesis could not resolve.
 - **Verdict words.** Use the user's words when they asked in their own terms. The
   verdicts read as covered (a test would fail if the change were undone); run by tests
   that would not fail if it were undone (`reached_only` you assessed); called by tests,

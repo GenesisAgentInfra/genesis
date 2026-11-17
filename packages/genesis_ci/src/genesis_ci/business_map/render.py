@@ -398,8 +398,15 @@ def _off_map(report: ChangeReport, overlay: _Overlay, refs, excerpts) -> str:
         f"<li>{escape(item.path)} ({escape(item.change)}): {escape(item.reason)}</li>"
         for item in report.unanalyzed_changes
     )
+    risks = "".join(
+        f"<li>{escape(item.severity.value)}: {escape(item.statement)}{_tag('agent reading')}"
+        f'<span class="muted"> · {escape(", ".join(item.change_ids))}</span>'
+        f"{_evidence(item.evidence_ids, refs, excerpts)}</li>"
+        for item in report.risks
+    )
     return (
-        (f"<h2>Removed flows</h2>{removed}" if removed else "")
+        (f'<h2>Risks seen in the changes</h2><ul class="plain">{risks}</ul>' if risks else "")
+        + (f"<h2>Removed flows</h2>{removed}" if removed else "")
         + (
             f'<h2 id="off-map">Changes not on the map</h2><ul class="plain">'
             f"{''.join(overlay.off_map)}</ul>"
@@ -599,6 +606,12 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
         lines += ["", "## Changes not on the map", ""]
         for item in apart:
             lines += told(item, "", item.projection.reason)
+    if report.risks:
+        lines += ["", "## Risks seen in the changes (agent reading)", ""]
+        lines += [
+            f"- {item.severity.value}: {item.statement} (changes: {', '.join(item.change_ids)})"
+            for item in report.risks
+        ]
     if report.finding_changes:
         lines += ["", "## Risk findings touched by the changes", ""]
         lines += [f"- {item.status}: {item.finding.statement}" for item in report.finding_changes]

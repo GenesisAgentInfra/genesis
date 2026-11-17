@@ -759,6 +759,10 @@ def test_the_change_example_in_the_bundled_skill_is_accepted(change):
     result = change.submit(CHANGE_TASK, example)
     assert result["status"] == "accepted" and result["assessed"] == 2, result
     report = change.stored_report()
+    # The example names a risk too, which the report keeps apart.
+    assert result["risks"] == 1 and report.risks[0].change_ids == (
+        by_kind(report, "condition_modified").change_id,
+    )
     assert by_kind(report, "condition_modified").tests.verdict == "reached_only"
     assert by_kind(report, "call_removed", "#approve_report").tests.verdict == "not_reached"
 

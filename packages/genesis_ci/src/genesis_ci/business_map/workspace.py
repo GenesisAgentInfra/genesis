@@ -26,6 +26,7 @@ from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet, Language
 from genesis_contracts.fingerprint import fact_fingerprint
 from genesis_contracts.map_tasks import (
+    ChangeSubmission,
     EvidenceCite,
     FlowSubmission,
     MapPlan,
@@ -365,9 +366,26 @@ class Workspace:
     def _submit_change(self, raw) -> dict:
         """Check explanations and coverage verdicts for changes; all or nothing."""
         folder = self.root / "changes"
+        risks = {}
         try:
             accepted, found = self.changes.check(raw)
             problems = [_problem(*item) for item in found]
+            for index, risk in enumerate(ChangeSubmission.model_validate(raw).risks):
+                evidence = self._cite(risk.evidence, f"risks[{index}].evidence", problems)
+                changes = sorted(risk.change_ids)
+                key = (
+                    "risk_"
+                    + hashlib.sha256(
+                        "\n".join([risk.statement, *changes]).encode("utf-8")
+                    ).hexdigest()[:16]
+                )
+                risks[key] = {
+                    "statement": risk.statement,
+                    "severity": risk.severity.value,
+                    **({"category": risk.category.value} if risk.category else {}),
+                    "change_ids": list(risk.change_ids),
+                    "evidence_ids": evidence,
+                }
         except ValidationError as error:
             accepted, problems = {}, _pydantic_problems(error)
         if problems:
@@ -384,15 +402,19 @@ class Workspace:
                 "accepted_version_kept": True,
                 "errors": problems,
             }
+        # Submissions add up: an assessment replaces the one of the same change, and a
+        # risk with the same statement about the same changes replaces the earlier one.
+        stored = {**self.changes.risks(), **risks}
         write_json(
             folder / "accepted.json",
-            {"assessments": {**self.changes.assessments(), **accepted}},
+            {"assessments": {**self.changes.assessments(), **accepted}, "risks": stored},
         )
         report = self.refresh_change()
         return {
             "task_id": CHANGE_TASK,
             "status": "accepted",
             "assessed": len(accepted),
+            "risks": len(stored),
             **self._change_progress(report),
             "errors": [],
         }

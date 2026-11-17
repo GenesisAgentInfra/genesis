@@ -22,6 +22,7 @@ from .business_map import (
     MapFinding,
     MapFlow,
     Name,
+    RiskCategory,
     SymbolId,
     Text,
     _unique,
@@ -31,6 +32,7 @@ from .models import (
     EvidenceRef,
     EvidenceSide,
     Limitation,
+    Severity,
     validate_evidence_refs,
     validate_repo_path,
 )
@@ -287,6 +289,18 @@ class FindingChange(ContractModel):
     step_id: Identifier | None = None
 
 
+class ChangeRisk(ContractModel):
+    """A risk an agent saw in the changes. Its own reading: never rated high, never a gate."""
+
+    risk_id: Identifier
+    statement: Text
+    severity: Literal[Severity.info, Severity.low, Severity.medium]
+    category: RiskCategory | None = None
+    support: Literal["agent_synthesis"] = "agent_synthesis"
+    change_ids: tuple[Identifier, ...] = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = ()
+
+
 class PropagatedImpact(ContractModel):
     """A flow that can reach changed code through calls but has no step anchored on it."""
 
@@ -337,6 +351,7 @@ class ChangeReport(ContractModel):
     possible_entries: tuple[PossibleEntry, ...] = ()
     unanalyzed_changes: tuple[UnanalyzedChange, ...] = ()
     finding_changes: tuple[FindingChange, ...] = ()
+    risks: tuple[ChangeRisk, ...] = ()
     limitations: tuple[Limitation, ...] = ()
     evidence: tuple[EvidenceRef, ...] = ()
 
@@ -353,6 +368,9 @@ class ChangeReport(ContractModel):
             raise ValueError("a propagated impact refers to an unknown change")
         if any(set(item.change_ids) - changes for item in self.possible_entries):
             raise ValueError("a possible entry refers to an unknown change")
+        _unique((item.risk_id for item in self.risks), "risk_id values")
+        if any(set(item.change_ids) - changes for item in self.risks):
+            raise ValueError("a risk refers to an unknown change")
         self._check_evidence()
         if self.analysis_status == "complete":
             self._check_complete()
@@ -382,6 +400,7 @@ class ChangeReport(ContractModel):
             side = EvidenceSide.base if item.status == "resolved" else EvidenceSide.head
             sided.extend((side, ref) for ref in item.finding.evidence_ids)
         unsided = [ref for item in self.limitations for ref in item.evidence_ids]
+        unsided += [ref for item in self.risks for ref in item.evidence_ids]
         validate_evidence_refs(
             snapshot_id=self.snapshot_id,
             evidence=self.evidence,

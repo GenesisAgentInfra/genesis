@@ -37,6 +37,7 @@ from .models import ContractModel, EvidenceSide, Severity, validate_repo_path
 MAX_STEPS = 60
 MAX_EDGES = 150
 MAX_OBSERVATIONS = 8
+MAX_CHANGE_RISKS = 20
 
 
 def place(parts) -> str:
@@ -272,12 +273,31 @@ class ChangeAssessment(ContractModel):
         return self
 
 
+class SubmittedChangeRisk(ContractModel):
+    """A risk the agent sees in the changes: its own reading, never rated high.
+
+    `change_ids` names the changes it comes from. `evidence` may cite code beyond the
+    changed lines that the risk lands on, such as what runs after a new `break`.
+    """
+
+    statement: Text
+    severity: Literal[Severity.info, Severity.low, Severity.medium] = Severity.low
+    category: RiskCategory | None = None
+    change_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=20)
+    evidence: tuple[EvidenceCite, ...] = Field(default=(), max_length=10)
+
+
 class ChangeSubmission(ContractModel):
+    """Explanations of changes, risks seen in them, or both."""
+
     schema_version: Literal["0.1.0"] = "0.1.0"
-    changes: tuple[ChangeAssessment, ...] = Field(min_length=1, max_length=200)
+    changes: tuple[ChangeAssessment, ...] = Field(default=(), max_length=200)
+    risks: tuple[SubmittedChangeRisk, ...] = Field(default=(), max_length=MAX_CHANGE_RISKS)
 
     @model_validator(mode="after")
     def one_assessment_per_change(self) -> ChangeSubmission:
+        if not self.changes and not self.risks:
+            raise ValueError("a change submission explains changes or names risks")
         _refuse(
             _repeated(
                 (("changes", index, "change_id"), item.change_id)

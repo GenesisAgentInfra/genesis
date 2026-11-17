@@ -843,6 +843,55 @@ class _Placement:
         return [_unassigned(NO_ENTRY)], set()
 
 
+_LANDING = {FactKind.breaks, FactKind.continues, FactKind.returns}
+_LOOPS = (ast.For, ast.AsyncFor, ast.While)
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module, ast.Lambda)
+
+
+def _landing(tree: ast.Module | None, lines: list[str], kind: FactKind, line: int) -> dict | None:
+    """The statement a `break` or `continue` on `line` leads to: its line and text."""
+    if tree is None:
+        return None
+    parents: dict[int, ast.AST] = {}
+    jump = None
+    wanted = ast.Break if kind == FactKind.breaks else ast.Continue
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[id(child)] = node
+        if isinstance(node, wanted) and node.lineno == line:
+            jump = node
+    loop = parents.get(id(jump)) if jump is not None else None
+    while loop is not None and not isinstance(loop, (*_LOOPS, *_SCOPES)):
+        loop = parents.get(id(loop))
+    if not isinstance(loop, _LOOPS):
+        return None
+
+    def at(node) -> dict:
+        return {"line": node.lineno, "text": _short(lines[node.lineno - 1].strip(), 120)}
+
+    if kind == FactKind.continues:
+        return at(loop)
+    # After the loop: the statement that follows it, or, when it ends a block, whatever
+    # follows that block. An outer loop goes round again; the end of a function returns.
+    node = loop
+    while True:
+        parent = parents.get(id(node))
+        if parent is None:
+            return None
+        for field in ("body", "orelse", "finalbody"):
+            block = getattr(parent, field, None)
+            if isinstance(block, list) and node in block:
+                index = block.index(node)
+                if index + 1 < len(block):
+                    return at(block[index + 1])
+                if isinstance(parent, _LOOPS) and field == "body":
+                    return at(parent)
+                break
+        if isinstance(parent, _SCOPES):
+            return {"line": node.end_lineno, "text": "the end of the function: it returns"}
+        node = parent
+
+
 def _callee(text: str) -> str | None:
     """The name a call calls: the last name before its arguments."""
     names = re.findall(r"[A-Za-z_]\w*", text.split("(", 1)[0])
@@ -1525,6 +1574,12 @@ class ChangeAnalysis:
             return {}
         return json.loads(self._store.read_text(encoding="utf-8"))["assessments"]
 
+    def risks(self) -> dict[str, dict]:
+        """Risks an agent submitted with the changes, by their id."""
+        if not self._store.is_file():
+            return {}
+        return json.loads(self._store.read_text(encoding="utf-8")).get("risks", {})
+
     # ----- report --------------------------------------------------------------------
 
     def _unanalyzed(self) -> tuple[list[dict], list[dict]]:
@@ -1793,6 +1848,13 @@ class ChangeAnalysis:
                 cited.update(finding.evidence_ids)
         removed_flows, removed_refs = self._removed_flows(business_map)
         cited |= removed_refs
+        known = {change.change_id for change in diff.changes}
+        risks = [
+            {"risk_id": key, **risk}
+            for key, risk in sorted(self.risks().items())
+            if set(risk["change_ids"]) <= known
+        ]
+        cited.update(ref for risk in risks for ref in risk.get("evidence_ids", ()))
         unanalyzed, limitations = self._unanalyzed()
         waiting = [flows[key].name for key in sorted(touched) if flows[key].stage == "skeleton"]
         if waiting:
@@ -1887,6 +1949,7 @@ class ChangeAnalysis:
             "possible_entries": self._possible_entries(business_map, placement),
             "unanalyzed_changes": unanalyzed,
             "finding_changes": finding_changes,
+            "risks": risks,
             "limitations": limitations,
             "evidence": [
                 (workspace.evidence(key) or diff.evidence[key]).model_dump(mode="json")
@@ -1970,6 +2033,9 @@ class ChangeAnalysis:
                 view["detail"] = item.detail
             if item.unresolved_calls:
                 view["unresolved_calls"] = item.unresolved_calls
+            landing = self.lands_on(change)
+            if landing:
+                view["lands_on"] = landing
             if item.tests is not None:
                 reach = self.__dict__.get("_reach_of", {}).get(item.change_id, {})
                 view["tests"] = {
@@ -1993,6 +2059,48 @@ class ChangeAnalysis:
                 }
             views.append(view)
         return views
+
+    def lands_on(self, change: RawChange) -> list[dict]:
+        """Where each new `break`, `continue` or `return` of a change takes the code.
+
+        The code that runs next is not part of the change, so neither the diff nor the
+        change shows it. `break` goes on after its loop, `continue` back to the loop
+        header, `return` to the callers. Only for a definition both sides have: in a
+        new one there is no earlier path to leave.
+        """
+        pairs = self.diff.same.get(change.symbol_id)
+        if change.is_test or change.after is None or pairs is None:
+            return []
+        kept = set(pairs.values())
+        part = change.after
+        found = []
+        for fact in self.ordered(HEAD, change.symbol_id):
+            if fact.kind not in _LANDING or fact.fingerprint in kept:
+                continue
+            line = fact.range.start_line
+            inside = part.start[0] <= line <= part.end[0]
+            in_loop = change.kind == ChangeKind.loop_bound_changed and part.anchor in fact.loops
+            if not (inside or in_loop):
+                continue
+            item = {"jump": _short(fact.text, 80), "line": line}
+            if fact.kind == FactKind.returns:
+                callers = [
+                    {
+                        "path": caller.symbol_id.partition("#")[0],
+                        "line": caller.range.start_line,
+                        "text": _short(caller.text, 120),
+                    }
+                    for caller in self.callers[HEAD].get(change.symbol_id, ())[:3]
+                ]
+                item["callers"] = callers
+            else:
+                lines = self.workspace.snapshot.source.read_text(HEAD, part.path).split("\n")
+                after = _landing(self.tree(HEAD, part.path), lines, fact.kind, line)
+                if after is None:
+                    continue
+                item["next"] = {"path": part.path, **after}
+            found.append(item)
+        return found
 
     def context(self, business_map: BusinessMap) -> dict:
         """The changes still to explain, with both sides and the tests that reach them."""
@@ -2054,6 +2162,11 @@ class ChangeAnalysis:
             # lists them: a plan needs the entry id to skip one or give it a flow.
             **unchecked_entries(report),
             "removed_flows": [flow.name for flow in report.removed_flows],
+            # Risks an agent submitted with the changes: its own reading.
+            "risks": [
+                item.model_dump(mode="json", exclude={"support"}, exclude_none=True)
+                for item in report.risks
+            ],
             # Observations an agent recorded on the map, as far as this change touches them.
             "risk_findings": [
                 {
@@ -2102,4 +2215,14 @@ class ChangeAnalysis:
             _, found = self.assessed_tests(change, placement._symbols(change), item)
             problems += [(f"{where}.{field}", code, message) for field, code, message in found]
             accepted[item.change_id] = item.model_dump(mode="json", exclude_none=True)
+        for index, risk in enumerate(submission.risks):
+            missing = [key for key in risk.change_ids if key not in known]
+            if missing:
+                problems.append(
+                    (
+                        f"risks[{index}].change_ids",
+                        "unknown_change",
+                        f"No change {', '.join(missing)}.",
+                    )
+                )
         return accepted, problems
