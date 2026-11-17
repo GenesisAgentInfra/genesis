@@ -104,6 +104,10 @@ def python_source_roots(paths) -> tuple[str, ...]:
     A top-level package is importable from the folder that holds it, so `pkg/src/app/`
     with an `__init__.py` makes `pkg/src` a root. Without this, code in a `src` layout
     or a monorepo cannot be linked to the tests and callers that import it.
+
+    A folder inside a package is never a root, even without an `__init__.py` of its
+    own: `app/core/` holding `app/core/data/__init__.py` is the namespace part
+    `app.core`, and code imports `app.core.services.x`, not `services.x`.
     """
     paths = [path for path in paths if path.endswith((".py", ".pyi"))]
     packages = {
@@ -111,8 +115,20 @@ def python_source_roots(paths) -> tuple[str, ...]:
         for path in paths
         if path.rpartition("/")[2] in {"__init__.py", "__init__.pyi"} and "/" in path
     }
+
+    def inside_package(folder):
+        while "/" in folder:
+            folder = folder.rpartition("/")[0]
+            if folder in packages:
+                return True
+        return False
+
     parents = {package.rpartition("/")[0] for package in packages}
-    roots = sorted(parent for parent in parents if parent and parent not in packages)
+    roots = sorted(
+        parent
+        for parent in parents
+        if parent and parent not in packages and not inside_package(parent)
+    )
     # `src` is a root only as a plain folder of modules. When it is a package itself,
     # code imports `src.module`, and treating it as a root would hide every such import.
     plain_src = "src" not in packages and any(path.startswith("src/") for path in paths)

@@ -336,6 +336,55 @@ def test_source_roots_follow_the_package_layout():
     assert python_source_roots(["src/__init__.py", "src/tool.py", "README.md"]) == (".",)
 
 
+def test_a_folder_inside_a_package_is_never_an_import_root():
+    from genesis_ci.business_map.python_facts import python_source_roots
+
+    # `core/` has no `__init__.py` but sits inside the package `app`: it is a namespace
+    # part of `app`, imported as `app.core.*`, not a folder on the import path.
+    paths = [
+        "src/app/__init__.py",
+        "src/app/server.py",
+        "src/app/core/data/__init__.py",
+        "src/app/core/services/screener.py",
+        "tests/unit/test_screener.py",
+    ]
+    assert python_source_roots(paths) == (".", "src")
+
+
+def test_imports_through_namespace_folders_resolve(source_repo):
+    from genesis_ci.business_map.python_facts import python_source_roots
+    from genesis_contracts.python import PythonOptions
+
+    files = {
+        # A namespace folder inside a package.
+        "src/app/__init__.py": "",
+        "src/app/core/data/__init__.py": "",
+        "src/app/core/services/screener.py": "def analyze(symbol):\n    return symbol\n",
+        "src/app/server.py": "from app.core.services.screener import analyze\n\n\n"
+        "def coin(symbol):\n    return analyze(symbol)\n",
+        # A top-level namespace folder: `vendor` holds a package but is not one.
+        "src/vendor/tools/__init__.py": "",
+        "src/vendor/tools/clean.py": "def scrub(text):\n    return text\n",
+        "src/app/client.py": "from vendor.tools.clean import scrub\n\n\n"
+        "def tidy(text):\n    return scrub(text)\n",
+        "tests/unit/test_server.py": "from app.server import coin\n\n\n"
+        "def test_coin():\n    assert coin('BTC') == 'BTC'\n",
+    }
+    for path, text in files.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    snapshot = capture_snapshot(source_repo, SnapshotSpec(head="HEAD"))
+    roots = python_source_roots(item.path for item in snapshot.capture.manifest.files)
+    result = python_facts(extract_python(snapshot, PythonOptions(source_roots=roots)))
+    assert one(result, "call", "analyze(symbol)").target.targets == (
+        "src/app/core/services/screener.py#analyze",
+    )
+    assert one(result, "call", "scrub(text)").target.targets == (
+        "src/vendor/tools/clean.py#scrub",
+    )
+    assert one(result, "call", "coin('BTC')").target.targets == ("src/app/server.py#coin",)
+
+
 def test_modules_of_a_package_named_src_resolve_by_their_full_name(source_repo):
     from genesis_ci.business_map.python_facts import python_source_roots
     from genesis_contracts.python import PythonOptions

@@ -102,6 +102,7 @@ class Resolver:
         self.roots = roots
         self.unavailable = set(unavailable)
         self.modules = {}
+        self.aliases = {}
         self.module_for_path = {}
         self.bindings = {}
         self.symbols = {}
@@ -136,6 +137,13 @@ class Resolver:
                 module = max(candidates)[1]
                 self.module_for_path[(side, path)] = module
                 self.modules.setdefault((side, module), []).append(path)
+                # The same file is importable under every root that holds it: a
+                # namespace folder such as `src/vendor/` (no `__init__.py`) is a root
+                # of its own, yet code imports `vendor.tools.x` from `src`. The other
+                # names are used only where no file has that name under its own root.
+                for _, alias in candidates:
+                    if alias != module:
+                        self.aliases.setdefault((side, alias), []).append(path)
             if file is None:
                 continue
             for symbol in file.symbols:
@@ -181,7 +189,7 @@ class Resolver:
         parts = absolute.split(".")
         for count in range(len(parts), 0, -1):
             module = ".".join(parts[:count])
-            paths = self.modules.get((side, module), [])
+            paths = self.modules.get((side, module)) or self.aliases.get((side, module), [])
             if not paths:
                 continue
             if len(paths) != 1:

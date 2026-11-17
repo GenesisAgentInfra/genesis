@@ -1,6 +1,6 @@
 ---
 name: genesis
-description: Map the business flows of a codebase with Genesis, backed by code evidence, and show what a change does to them. Use when the user wants to understand what a project does as business flows, asks for a business flow map or diagram that product and engineering can both read, asks what a branch, commit range or uncommitted change alters in business terms, asks whether existing tests cover a change, asks to update or continue such a map, or asks about an existing Genesis map. Match the intent in any language, not exact keywords. Explain an existing map from its files without starting a new analysis.
+description: Show what a code change in a Python codebase does, and map its business flows, with Genesis, backed by code evidence. Use when the user asks what a commit, pull request, branch, commit range or uncommitted change does or affects, whether it could break something or is safe to merge or release, which business flows or entry points it reaches, or whether tests cover it, for example when reviewing a change before pushing, merging or releasing. Also use it when the user wants to understand what a project does as business flows, asks for a business flow map or diagram that product and engineering can both read, asks to update or continue such a map, or asks about an existing Genesis map. Match the intent in any language, not exact keywords.
 ---
 
 # Genesis business map
@@ -12,21 +12,52 @@ QA can read together. The work is split in two:
   facts, finds entry points, checks everything you submit, and renders the result.
   It calls no model and no service.
 - **You** read the code and say what it means in business terms. You never write the
-  map yourself: you submit a plan and one description per flow, and the CLI accepts
-  or rejects each as a whole.
+  map yourself: you submit a plan and one description per flow, or, for a change, one
+  explanation per change, and the CLI accepts or rejects each submission as a whole.
 
 The map describes what the code currently does. It is not a statement that the code
 meets a requirement, that a test passed, or that a path was executed. Never present
 your own reading of the code as a Genesis result: a Genesis result is what the CLI
 accepted and rendered.
 
+## Which path to take
+
+- **A question about a change**: what a commit, pull request, branch or uncommitted
+  work does or could break, which entry points or flows it reaches, whether tests cover
+  it, what its risks are. Run `version` as in "Locate the CLI" below, then go to
+  section 5 and take its short path. It needs no full map: it takes a handful of
+  commands, and you describe flows only where that pays off. Even a small change takes
+  the short path, as long as a changed file is Python; when none is, Genesis has
+  nothing to add, so say so and answer from the diff yourself.
+- **A map of the project**: sections 1 to 4.
+- **A question about an existing map**: see "Later requests" at the end.
+
+Genesis does not import or run the project's code, installs nothing, never needs the
+project's dependencies and does not use the network. `prepare` reads files and Git
+objects; with `--head` nothing is checked out. It writes its results under `.genesis/`
+in the repository. If `prepare` fails with "Operation not permitted" or "Read-only
+file system", the sandbox does not let it write there: tell the user that Genesis
+needs write access to `.genesis/`, and do not present your own reading as a Genesis
+result. After a review, mention that `.genesis/` now exists.
+
+Write each JSON file you submit into a temporary directory and pass its absolute path:
+the scratchpad or temporary directory your environment names, or else one made by
+`mktemp -d`. Use your file-writing tool, or a quoted heredoc
+(`cat > DIR/changes.json <<'EOF' ... EOF`) when that tool cannot write there. Do not
+use a fixed path, such as one in `/tmp`, or a directory next to the repository: a
+sandbox may let you write only into the repository and the temporary directory it
+gives you.
+
 ## What is supported today
 
 - Python source. On a repository without analyzable Python, `map prepare` fails with
-  `unsupported_repository`; tell the user what it reported and stop.
+  `unsupported_repository`. For a map request, tell the user what it reported and stop.
+  For a question about a change, say that Genesis could not analyze this repository,
+  then answer from your own reading of the diff and mark it as such.
 - A full map of the current code.
-- The changes since a revision, placed on the steps of that map, with an assessment of
-  whether existing tests cover each one (section 5).
+- The changes since a revision, each explained with whether existing tests cover it,
+  and placed on the steps of the map, or of its static skeleton when no flow is
+  described (section 5).
 - Two pages show the result. `view.html` is the one for the user: it draws each flow
   you described as a diagram of steps and arrows, and needs a browser that runs
   scripts. Its fixed labels exist in Chinese and English only, and the page picks
@@ -175,8 +206,11 @@ The plan can be submitted again when flows should merge or split; a flow whose e
 did not change keeps its accepted description.
 
 Now tell the user the scope before the long part: how many entries were found, how
-many flows you are about to describe, and what you skipped. If there are many flows,
-propose starting with the area the user cares about.
+many flows you are about to describe, and what you skipped. When the user named an area,
+start with it. When there are many flows and the user named none, describe the primary
+flows first, render and report, then offer to do the supporting ones. If you cannot
+describe every flow now, render after the ones you did and say which are still open;
+running `prepare` again resumes the session.
 
 ## 3. Describe each flow
 
@@ -485,13 +519,71 @@ Changing code or tests needs its own request from the user.
 
 ## 5. Changes since a revision
 
-Use this when the user asks what a branch, a commit range or their uncommitted work
-changes, where a change lands in the business flows, or whether tests cover it.
+Use this when the user asks what a commit, a pull request, a branch, a commit range or
+their uncommitted work changes or could break, which entry points or flows it reaches,
+whether tests cover it, or what its risks are.
+
+### The short path
 
 ```
-genesis map prepare --repo /absolute/app --base main
+genesis map prepare --repo /absolute/app --base MERGE_BASE --head HEAD
 genesis map diff    --repo /absolute/app --session SESSION_ID
+genesis map context --repo /absolute/app --session SESSION_ID --task task_change
+genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change --input /absolute/changes.json
+genesis map render  --repo /absolute/app --session SESSION_ID
 ```
+
+1. `prepare`, with `--base` where the change starts and `--head` where it ends:
+   - one commit: `--base COMMIT~1 --head COMMIT` (write `~1`, since zsh may read `^` as a
+     pattern); a commit with no parent cannot be compared this way;
+   - a commit range `A..B`: `--base A --head B`;
+   - a branch or a pull request: `--head` the branch or `HEAD`, and as `--base` the
+     commit `git merge-base main HEAD` prints, with the base branch of the pull request
+     in place of `main` (or `origin/main` when there is no local `main`). `--base main`
+     alone would also report what `main` gained since the branch started, as changes
+     undone. A pull request that is not in the local repository has to be fetched
+     first, for example with `git fetch origin pull/N/head` and `--head FETCH_HEAD`;
+     Genesis does not fetch;
+   - uncommitted work: `--base HEAD` and no `--head`. When `git status -s` shows
+     new files (`??`) that belong to the change, add `--include-untracked`: untracked
+     files are otherwise left out without a word, and only `integrity_status: partial`
+     hints at it.
+
+   Running `prepare` again on the same revisions keeps your accepted explanations, even
+   when it reports `"resumed": false`.
+2. `diff` lists every change, where each sits, the tests static analysis links to it,
+   and the flows (`possibly_affected`) and candidate entries (`possible_entries`) that
+   reach it. Its output can be long: write it to a file in your temporary directory and
+   read it in parts, for example with `jq '.changes[] | {change_id, kind, symbol_id,
+   placement}'` or Python. `possibly_affected`, `possible_entries` and
+   `unanalyzed_changes` are top-level keys. Check each candidate in `possible_entries`
+   by reading its code: name a real way in as an entry point of its changes, as your
+   reading, and say which candidates you could not check. Record them in a plan
+   (proposed, or skipped as `not_an_entry`) only when you also place changes on flows.
+3. `context --task task_change` lists the changes on the map or within reach of a flow
+   that still need an explanation, 30 at a time, with both sides and their tests. Read
+   them, decide each verdict, and `submit` your explanations ("Explaining the changes"
+   below). When the user asked nothing about tests or risks, you may leave `verdict`
+   out and keep the static result. Ask for the context again until `changes_waiting`
+   is 0; go by `changes_waiting` in the context and in the result of `submit`, not by
+   `status`, whose `next_task` stays null while there is no plan. Once
+   `changes_waiting` is 0, the context lists the first 30 of all changes, with your
+   explanations under `previous`. Take the changes that still have no explanation,
+   such as those no flow reaches, from `diff`, which shows both sides, and explain them
+   by `change_id` too, so that the report says what each change does.
+4. `render`. When you described no flows, it exits 2 and the result lists
+   `affected_flow_not_synthesized`: some changes sit on entries whose flows are still
+   a static skeleton. That is the expected end of the short path, not a reason to
+   describe flows. Then report as the end of this section says.
+
+The CLI takes explanations at any point of a change session: no plan and no flow
+description has to come first. Describe flows, as set out under "Placing changes on
+flows", only when the user wants to see the changes in the business flows, or when
+`diff` lists for a change neither a flow under `possibly_affected` nor a candidate
+under `possible_entries`. An `unassigned` change that a flow reaches already has its
+way in: explain it where it is.
+
+### What `prepare` and `diff` return
 
 `--base REV` compares that revision with the working tree, or with `--head REV`. The
 result of `prepare` adds `changes`, `changes_placed`, `change_status` and
@@ -525,68 +617,10 @@ within reach of a flow. Describing flows raises `changes_placed` and does not lo
   start no flow. Each has its `entry_id`, its `symbol_id` and the `change_ids` it
   leads to. They are checked below, not reported as they are.
 
-Bring the changes onto the map before you report them as off it. A change listed under
-`possibly_affected` for a flow sits in a function that flow calls, or hands to a thread
-or a task runner, with no step on it yet. Expand the functions on the way to it by
-anchoring steps inside them; `status` shows `changes_placed` going up as they land.
+### Explaining the changes
 
-Code that several flows share is expanded on one of them, and the CLI says which.
-`closest_flow` lists every change whose function no flow has expanded yet, whether
-it has no place or sits on a step that only calls the function, under the one flow
-that reaches it through the fewest calls. Plan that flow and expand the functions
-there. In every other flow that reaches or calls the same code, do not expand it
-again, whichever flow you happen to describe first: let one step stand for the
-function. That step may show the change with the reason that it calls the changed
-function, and that is all the flow needs.
-
-The context of a flow task says the same under `change`: `placed` are the changes on
-its steps now, `closest_to` the ones whose code is to be expanded in this flow, and
-`on_other_flows` the ones this flow reaches or calls that another flow describes.
-`expand` names the function each `closest_to` change is in, nearest to the entry
-first; for a changed constant it is the nearest function that reads it. Anchor at
-least one step inside every function listed there, also when all that changed is a
-text or a value and the function decides nothing. Until a step is inside it, the
-change has no place and stays in `closest_to`. A change also leaves `closest_to`
-when another flow is accepted with a step inside its function, which for a changed
-constant is any function that reads it. It is then listed under `on_other_flows`,
-and this flow no longer has to expand anything for it. Go by the context you asked
-for last, not by an earlier `diff`.
-
-The map only has the entries it knows, so a change can also be reached from a way in
-that has no flow. `diff` lists the candidates under `possible_entries`, and `status`
-has the same list under `change.possible_entries`. It holds up to 20 of them, and
-`possible_entries_total` beside it counts all that are still to check; the rest
-appear once you have proposed the ones listed or skipped them for any reason but
-`budget`, which leaves a candidate unchecked. Check every one, also when
-flows are already listed for the change. When it is a real way in (a command
-registered by hand, a scheduled job, a message handler), propose it as in section 2,
-give it a flow and describe that flow too. When it is a helper or code nothing uses,
-list its `entry_id` in the plan under `skipped` with `"reason": "not_an_entry"` and a
-`note` that says what you found, for example that only tests call it. It then leaves
-both lists, and `summary.md` shows it as checked with your note; a candidate you
-leave alone stays listed as unchecked. Keep that entry in every later plan: a plan
-replaces the one before it, and a candidate it no longer skips is back on both
-lists. When a change is still `unassigned`, no flow is listed for it and nothing
-is offered, look for a missing entry point yourself before you report the change as
-off the map.
-
-Reformatting, comments and code that only moved are not changes.
-
-Then plan as in section 2 and describe flows as in section 3. Only the flows the changes
-land on are needed: `status` lists them under `change.affected_flows`, and `next_task`
-offers their tasks first; the flows named under `closest_flow` are among them, before
-and after you plan. A flow that only reaches changed code, with every one of those
-changes placed on another flow or listed under another flow in `closest_flow`, needs a
-name in the plan and nothing more: `view.html` shows it as one line with the number of
-changes on its way. Do not describe it unless the user asks.
-
-Plan no other flows. Apart from the candidates you checked and skipped as
-`not_an_entry`, leave every other entry out of both `flows` and `skipped`: it is
-counted as not handled, which is expected in a change review, and the map status then
-answers for the flows you planned. Plan the rest of the product only when the user
-also asked for the whole map.
-
-When the affected flows are done, `next_task` is `task_change`:
+Explain the changes with `task_change`, whether or not you described flows. Once
+affected flows are described, `next_task` offers it as well.
 
 ```
 genesis map context --repo /absolute/app --session SESSION_ID --task task_change
@@ -659,12 +693,80 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
 - An observation you recorded on a flow is shown as `introduced` when its evidence cites
   code this change added, or when its whole flow is new, and as `persisting` when it
   cites code the change modified. Cite the changed lines when the risk comes from them.
+- A change to a test (its `kind` starts with `test_`) takes a `summary` and no
+  `verdict`. With a verdict, the whole submission is refused with `verdict_on_test`.
 - Submissions add up. Ask for the context again until `changes_waiting` is 0. A
   change that no step covers but a flow can reach counts in `changes_waiting` from
-  the start, so a session is not done because nothing is on the map yet. Bring such
-  a change onto the map by describing its flow; where that is not worth it, explain
-  it as it is and report it as off the map. A change no entry reaches, such as an
-  import line, may be explained too, but nothing requires it.
+  the start, so a session is not done because nothing is on the map yet. On the short
+  path, explain such a change where it is and name the flows that reach it; bring it
+  onto the map by describing its flow only when the user wants the flows shown. A
+  change no flow reaches, such as an import line, does not count in `changes_waiting`;
+  explain it too, by its `change_id` from `diff`.
+
+### Placing changes on flows
+
+Do this when the user wants the changes shown in the business flows, or to settle what
+reaches a change that has no place. Bring the changes onto the map before you report
+them as off it. A change listed under
+`possibly_affected` for a flow sits in a function that flow calls, or hands to a thread
+or a task runner, with no step on it yet. Expand the functions on the way to it by
+anchoring steps inside them; `status` shows `changes_placed` going up as they land.
+
+Code that several flows share is expanded on one of them, and the CLI says which.
+`closest_flow` lists every change whose function no flow has expanded yet, whether
+it has no place or sits on a step that only calls the function, under the one flow
+that reaches it through the fewest calls. Plan that flow and expand the functions
+there. In every other flow that reaches or calls the same code, do not expand it
+again, whichever flow you happen to describe first: let one step stand for the
+function. That step may show the change with the reason that it calls the changed
+function, and that is all the flow needs.
+
+The context of a flow task says the same under `change`: `placed` are the changes on
+its steps now, `closest_to` the ones whose code is to be expanded in this flow, and
+`on_other_flows` the ones this flow reaches or calls that another flow describes.
+`expand` names the function each `closest_to` change is in, nearest to the entry
+first; for a changed constant it is the nearest function that reads it. Anchor at
+least one step inside every function listed there, also when all that changed is a
+text or a value and the function decides nothing. Until a step is inside it, the
+change has no place and stays in `closest_to`. A change also leaves `closest_to`
+when another flow is accepted with a step inside its function, which for a changed
+constant is any function that reads it. It is then listed under `on_other_flows`,
+and this flow no longer has to expand anything for it. Go by the context you asked
+for last, not by an earlier `diff`.
+
+The map only has the entries it knows, so a change can also be reached from a way in
+that has no flow. `diff` lists the candidates under `possible_entries`, and `status`
+has the same list under `change.possible_entries`. It holds up to 20 of them, and
+`possible_entries_total` beside it counts all that are still to check; the rest
+appear once you have proposed the ones listed or skipped them for any reason but
+`budget`, which leaves a candidate unchecked. Check every one, also when
+flows are already listed for the change. When it is a real way in (a command
+registered by hand, a scheduled job, a message handler), propose it as in section 2,
+give it a flow and describe that flow too. When it is a helper or code nothing uses,
+list its `entry_id` in the plan under `skipped` with `"reason": "not_an_entry"` and a
+`note` that says what you found, for example that only tests call it. It then leaves
+both lists, and `summary.md` shows it as checked with your note; a candidate you
+leave alone stays listed as unchecked. Keep that entry in every later plan: a plan
+replaces the one before it, and a candidate it no longer skips is back on both
+lists. When a change is still `unassigned`, no flow is listed for it and nothing
+is offered, look for a missing entry point yourself before you report the change as
+off the map.
+
+Reformatting, comments and code that only moved are not changes.
+
+Then plan as in section 2 and describe flows as in section 3. Only the flows the changes
+land on are needed: `status` lists them under `change.affected_flows`, and `next_task`
+offers their tasks first; the flows named under `closest_flow` are among them, before
+and after you plan. A flow that only reaches changed code, with every one of those
+changes placed on another flow or listed under another flow in `closest_flow`, needs a
+name in the plan and nothing more: `view.html` shows it as one line with the number of
+changes on its way. Do not describe it unless the user asks.
+
+Plan no other flows. Apart from the candidates you checked and skipped as
+`not_an_entry`, leave every other entry out of both `flows` and `skipped`: it is
+counted as not handled, which is expected in a change review, and the map status then
+answers for the flows you planned. Plan the rest of the product only when the user
+also asked for the whole map.
 
 Render as in section 4. In a change session both pages are the map with the changes
 on it: each change is shown on the step it belongs to, with your explanation and
@@ -674,19 +776,32 @@ after the map. `summary.md` lists the same changes by flow and step, and
 `change-report.json` holds them as data. Exit code 0 means every change on the map is
 explained and assessed, the flows they sit on are described, and every change a flow
 can reach without a step on it is explained. The rest of the map may still be a
-static skeleton.
+static skeleton. On the short path, exit code 2 with only
+`affected_flow_not_synthesized` is a finished review.
 
-Tell the user, in their language: what changed in business terms, flow by flow; for each
+Tell the user, in their language: what changed in business terms, flow by flow, or entry
+by entry when you described no flows; for each
 change whether tests cover it and what is missing; the changes with no place on the map;
 flows that are possibly affected or removed; and the files that were not analyzed. Say
 that no test was run: a verdict is a reading of the test source, by static analysis or by
 you, and never a statement that a test passed. Do not run tests yourself unless the user
 asks for it.
 
+- **Entry points.** For each change, name the entry points that reach it: those of the
+  flow it sits on, of the flows that possibly reach it, and the candidates you
+  confirmed. List the candidates you could not check as such. For a change Genesis
+  places nowhere, find the way in yourself and say that this part is your reading.
+- **Risks.** Genesis has no risk rules. Report the risks you see as your own reading,
+  with the changed lines cited; on a described flow, record them as observations.
+- **Verdict words.** Use the user's words when they asked in their own terms. The four
+  verdicts read as covered; called by tests that miss the changed path or assert
+  nothing about it (`reached_only`); not reached by any test (`not_reached`); and cannot
+  tell (`unknown`, which from static analysis alone means no linked test was found).
+
 ## Later requests
 
-- **What a branch or a pending change does:** section 5, with `--base` set to the
-  revision it started from.
+- **What a commit, a branch or a pending change does:** section 5, with `--base` and
+  `--head` set as its short path says.
 
 - **A question about an existing map:** read `.genesis/out/latest/summary.md` and
   `business-map.json`, and answer from them. Do not start a new analysis.
