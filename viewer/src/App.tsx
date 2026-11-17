@@ -232,7 +232,7 @@ function Viewer({ model, theme, toggleTheme }: ViewerProps) {
     setPlace(next)
   }, [])
 
-  const atlas = atlasOf(focused)
+  const atlas = atlasOf(focused, place.unfolded)
   const nodeById = React.useMemo(
     () => new Map(atlas.nodes.map((node) => [node.id, node])),
     [atlas]

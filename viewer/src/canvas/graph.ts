@@ -81,6 +81,17 @@ export interface StepNodeData extends Record<string, unknown> {
   slot: number
   /** Not a step: a pill that stands for this many steps left out after the one before it. */
   stub?: number
+  /** Not a step: a stage of this many steps, one block until the reader opens it. */
+  stage?: number
+}
+
+/** A stage drawn step by step: the steps a frame goes round. */
+export interface OpenStage {
+  id: string
+  name: string
+  steps: string[]
+  /** A change sits in it, so it cannot be folded. */
+  held: boolean
 }
 
 /** How the lines and pills that stand for steps left out are worded. */
@@ -142,7 +153,9 @@ export function buildGraph(
    * Given, the flow is cut down to the steps the change touches and the way into each;
    * they word the lines and pills that stand for the steps left out.
    */
-  words?: CutWords
+  words?: CutWords,
+  /** With `words`: the stages the reader has opened. Every other stage is one block. */
+  opened: ReadonlySet<string> = new Set()
 ): {
   nodes: StepNode[]
   edges: FlowEdge[]
@@ -150,6 +163,8 @@ export function buildGraph(
   h: number
   /** The dashed boxes the error paths run in. */
   boxes: ErrorBox[]
+  /** The stages drawn step by step. */
+  stages: OpenStage[]
   /** Whether steps were left out. */
   cut: boolean
 } {
@@ -258,23 +273,106 @@ export function buildGraph(
       },
     }))
 
-  const cut = words
-    ? cutFlow(
-        steps,
-        view.graph,
-        new Set(
-          nodes
-            .filter(
-              ({ data }) =>
-                data.coupons.length > 0 ||
-                data.echoes.length > 0 ||
-                data.isNew ||
-                data.risk === "new"
-            )
-            .map((node) => node.id)
+  const touched = ({ data }: StepNode) =>
+    data.coupons.length > 0 ||
+    data.echoes.length > 0 ||
+    data.isNew ||
+    data.risk === "new"
+  // A flow described in stages folds along them: each is one block that says what its
+  // steps get done, unless the reader opened it or a change sits in it.
+  const staged = words ? (view.flow.stages ?? []) : []
+  const openStages: OpenStage[] = []
+  for (const stage of staged) {
+    const inside = new Set(stage.step_ids)
+    const members = nodes.filter((node) => inside.has(node.id))
+    if (members.length < 2) continue
+    const held = members.some(touched)
+    if (held || opened.has(stage.stage_id)) {
+      openStages.push({
+        id: stage.stage_id,
+        name: stage.name,
+        steps: members.map((node) => node.id),
+        held,
+      })
+      continue
+    }
+    const risk = members.some((node) => node.data.risk) ? "known" : undefined
+    const data: StepNodeData = {
+      step: {
+        step_id: stage.stage_id,
+        name: stage.name,
+        kind: "action",
+        support: "agent_synthesis",
+        resolution: "resolved",
+      },
+      coupons: [],
+      echoes: [],
+      isNew: false,
+      risk,
+      alerts: sortAlerts([
+        ...new Set(members.flatMap((node) => node.data.alerts ?? [])),
+      ]),
+      ghost: false,
+      loops: [],
+      removedFlow: view.removed,
+      skeleton: false,
+      compact: !risk,
+      width: CARD_W,
+      hasIn: false,
+      hasOut: false,
+      slot: 0,
+      stage: members.length,
+    }
+    data.slot = heightOf(data)
+    // The block takes the place of its first step, so the flow reads in the same order.
+    nodes = nodes.flatMap((node) =>
+      node.id === members[0].id
+        ? [
+            {
+              id: stage.stage_id,
+              type: "step" as const,
+              position: { x: 0, y: 0 },
+              draggable: false,
+              connectable: false,
+              ariaLabel: stage.name,
+              data,
+            },
+          ]
+        : inside.has(node.id)
+          ? []
+          : [node]
+    )
+    // Lines into its steps reach the block, lines out of them leave it, and what ran
+    // between them is inside.
+    const drawn = new Set<string>()
+    flowEdges = flowEdges
+      .map((edge) => ({
+        ...edge,
+        source: inside.has(edge.source) ? stage.stage_id : edge.source,
+        target: inside.has(edge.target) ? stage.stage_id : edge.target,
+      }))
+      .filter((edge) => {
+        const key = `${edge.source}>${edge.target}>${edge.data?.label ?? ""}`
+        if (edge.source === edge.target || drawn.has(key)) return false
+        drawn.add(key)
+        return true
+      })
+  }
+  if (staged.length)
+    for (const node of nodes) {
+      node.data.hasIn = flowEdges.some((edge) => edge.target === node.id)
+      node.data.hasOut = flowEdges.some((edge) => edge.source === node.id)
+    }
+
+  // A flow with no stages folds to what a change on it is about.
+  const cut =
+    words && !staged.length
+      ? cutFlow(
+          steps,
+          view.graph,
+          new Set(nodes.filter(touched).map((node) => node.id))
         )
-      )
-    : undefined
+      : undefined
   if (cut && cut.keep.size < nodes.length) {
     nodes = nodes.filter((node) => cut.keep.has(node.id))
     flowEdges = flowEdges.filter(
@@ -422,9 +520,11 @@ export function buildGraph(
     w: Math.max(w, 120),
     h,
     boxes: size.boxes,
+    stages: openStages,
     cut:
-      nodes.filter((node) => !node.data.ghost && !node.data.stub).length <
-      steps.length,
+      nodes.filter(
+        (node) => !node.data.ghost && !node.data.stub && !node.data.stage
+      ).length < steps.length,
   }
 }
 
@@ -636,6 +736,9 @@ function arrange(
     right?: number
     /** Its label hangs back over the empty cell before its step instead of widening the gap. */
     hang?: boolean
+    /** Its label stands by the turn it takes out of its own step, where no other line of
+     *  that step turns with it, so the label is read with the step it leaves. */
+    beside?: boolean
   }
   const ways: Way[] = lines.map((edge) => {
     const rs = row.get(edge.source)!
@@ -708,13 +811,22 @@ function arrange(
       !ways.some(further)
   }
   for (const way of ways) {
+    if (way.kind !== "early" || !way.width || way.hang) continue
+    const turnsWith = (other: Way) =>
+      other !== way &&
+      other.edge.source === way.edge.source &&
+      other.left === way.left &&
+      other.rt > other.rs === way.rt > way.rs
+    way.beside = !ways.some(turnsWith)
+  }
+  for (const way of ways) {
     if (
       !way.width ||
       way.hang ||
       way.kind === "between" ||
       way.kind === "drop" ||
       way.kind === "rise" ||
-      way.ct - way.cs >= 2
+      (way.ct - way.cs >= 2 && !way.beside)
     )
       continue
     const room =
@@ -757,7 +869,7 @@ function arrange(
   }
   const cell = (c: number) => colX[c] + CARD_W / 2
   // Labels already set down, so a line running beside another puts its own label clear of
-  // theirs: along its run, from the middle outward.
+  // theirs: along its run, from the end it sets out from.
   const set: { x: number; y: number; w: number }[] = []
   const free = (x: number, y: number, w: number) =>
     set.every(
@@ -770,11 +882,22 @@ function arrange(
     const hi = Math.max(from, to) - w / 2 - 8
     const middle = (from + to) / 2
     if (hi <= lo) return middle
-    for (const share of [0.5, 0.3, 0.7, 0.15, 0.85]) {
-      const x = lo + (hi - lo) * share
+    for (const share of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
+      const x = to >= from ? lo + (hi - lo) * share : hi - (hi - lo) * share
       if (free(x, y, w)) return x
     }
     return middle
+  }
+  // Two lines that turn in one gap and run on together would put their labels on one
+  // spot: the later one moves along its line to the nearest place clear of the other.
+  const clearOf = (label: Point, [from, to]: [number, number], w: number) => {
+    if (free(label.x, label.y, w)) return label
+    const lo = Math.min(from, to) + w / 2 + 8
+    const hi = Math.max(from, to) - w / 2 - 8
+    for (let by = 12; by <= hi - lo; by += 12)
+      for (const x of [label.x + by, label.x - by])
+        if (x >= lo && x <= hi && free(x, label.y, w)) return { x, y: label.y }
+    return label
   }
   // A label on a run between rows is set down last, the shortest runs first: they have
   // the least room to give way.
@@ -803,20 +926,29 @@ function arrange(
     const nearExit = (x: number, y: number) => ({ x: x + 8 + half, y })
     let points: Point[]
     let label: Point | undefined
+    // The stretch of the line its label may move along to keep clear of another label.
+    let room: [number, number] = [start.x, end.x]
     let slide: { from: number; to: number; y: number } | undefined
     if (way.kind === "straight") {
       points = [start, end]
       label = nearExit(start.x, start.y)
     } else if (way.kind === "early") {
       points = [start, { x: out, y: start.y }, { x: out, y: end.y }, end]
+      // By its turn, under the row it leaves (or over it, going up); with the room taken
+      // there, or other lines of its step turning with it, on the row it arrives on.
+      const by = nearExit(out, start.y + (end.y > start.y ? 22 : -22))
       label = way.hang
         ? { x: end.x - 14 - half, y: end.y }
-        : nearExit(out, end.y)
+        : way.beside && free(by.x, by.y, way.width)
+          ? by
+          : nearExit(out, end.y)
+      room = [out, end.x]
     } else if (way.kind === "late") {
       points = [start, { x: back, y: start.y }, { x: back, y: end.y }, end]
       label = passes
         ? { x: cell(way.cs + 1), y: start.y }
         : { x: start.x + 8 + half, y: start.y }
+      room = [start.x, back]
     } else if (way.kind === "drop" || way.kind === "rise") {
       const run = betweenY(way)
       // It comes straight down into the middle of the top, or up into the bottom.
@@ -856,8 +988,9 @@ function arrange(
     if (!way.width) continue
     if (slide) runs.push({ edge: way.edge, width: way.width, ...slide })
     else if (label) {
-      set.push({ ...label, w: way.width })
-      way.edge.data.labelAt = drawn(label)
+      const at = clearOf(label, room, way.width)
+      set.push({ ...at, w: way.width })
+      way.edge.data.labelAt = drawn(at)
     }
   }
 

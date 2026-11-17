@@ -14,7 +14,7 @@ from pathlib import Path
 SKILL_NAME = "genesis"
 # Earlier releases installed the skill under these names; an untouched copy is replaced.
 LEGACY_SKILL_NAMES = ("genesis-review",)
-ASSET_FILES = ("SKILL.md", "agents/openai.yaml", "scripts/run_genesis.py")
+ASSET_FILES = ("SKILL.md", "other-languages.md", "agents/openai.yaml", "scripts/run_genesis.py")
 MANIFEST = ".genesis-skill.json"
 
 

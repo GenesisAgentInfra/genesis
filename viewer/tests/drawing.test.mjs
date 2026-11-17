@@ -129,10 +129,13 @@ test("no line runs behind a step", () => {
   }
 })
 
-test("a label sits level with a run of its own line, on it or hanging just before it", () => {
+test("a label sits by its own line: level with a run of it, hanging just before it, or beside the turn out of its step", () => {
   // A long label on a branch that drops a row hangs back over the empty cell before its
   // step, so it may start left of the run it names; it never leaves the run's height.
+  // A branch that turns out of its step alone carries its label beside that turn, one
+  // line of text under the row it leaves, or over it.
   const HANG = 160
+  const BESIDE = 22
   for (const [name, atlas] of all)
     for (const edge of atlas.edges) {
       const at = edge.data.labelAt
@@ -149,7 +152,18 @@ test("a label sits level with a run of its own line, on it or hanging just befor
           at.x <= Math.max(a.x, b.x) + 0.01
         )
       })
-      assert.ok(level, `${name}: the label of ${edge.id} is off its line`)
+      const [from, turn, down] = points
+      const beside =
+        points.length > 2 &&
+        near(turn.x, down.x) &&
+        near(Math.abs(at.y - from.y), BESIDE) &&
+        Math.sign(at.y - from.y) === Math.sign(down.y - from.y) &&
+        at.x > turn.x &&
+        at.x <= turn.x + HANG
+      assert.ok(
+        level || beside,
+        `${name}: the label of ${edge.id} is off its line`
+      )
     }
 })
 

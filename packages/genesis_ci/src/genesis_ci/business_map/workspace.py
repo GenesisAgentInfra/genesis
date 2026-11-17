@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sys
 import time
 from dataclasses import dataclass
@@ -25,13 +24,7 @@ from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, S
 from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet, Language
 from genesis_contracts.fingerprint import fact_fingerprint
-from genesis_contracts.map_tasks import (
-    EvidenceCite,
-    FlowSubmission,
-    MapPlan,
-    SkipReason,
-    place,
-)
+from genesis_contracts.map_tasks import EvidenceCite, FlowSubmission, MapPlan, SkipReason
 from genesis_contracts.models import EvidenceRef, EvidenceSide, ReferenceRange
 from pydantic import ValidationError
 
@@ -39,8 +32,19 @@ from genesis_ci.snapshot import slice_source
 from genesis_ci.snapshot_store import load_snapshot
 
 from .changes import CHANGE_TASK, ChangeAnalysis, unchecked_entries
+from .loop import (
+    SOURCE_CHARS,
+    TOO_WIDE,
+    LoopError,
+    cited_range,
+    fold_stages,
+    pydantic_problems,
+    read_source,
+    search_source,
+)
+from .loop import named as _named
+from .loop import problem as _problem
 from .python_entries import entry_id
-from .session import evidence_bundle, session_root, write_json
 from .skeleton import (
     _JUMPS,
     _entry_label,
@@ -50,6 +54,7 @@ from .skeleton import (
     shown_facts,
     skeleton_flow,
 )
+from .store import evidence_bundle, session_root, write_json
 
 HEAD = EvidenceSide.head
 ACCOUNTABLE_LIMIT = 400
@@ -68,8 +73,6 @@ ANCHOR_RANGE_LINES = 12
 STEPS_NAMED = 4
 # How much of a fact's source text a message quotes.
 QUOTED_CHARS = 80
-SOURCE_CHARS = 12000
-SEARCH_LIMIT = 40
 CLAIM_SECONDS = 900
 OTHER_FACT_LIMIT = 80
 ROOT_CANDIDATE_LIMIT = 40
@@ -106,15 +109,6 @@ RULES = (
     "by an edge from where it is done to the step the caller runs next.",
     "If the code does not show a relation, submit it as candidate or unknown with a reason.",
 )
-
-
-class LoopError(ValueError):
-    """A request the session cannot accept. `errors` lists every problem found."""
-
-    def __init__(self, code: str, message: str, errors: list[dict] | None = None):
-        self.code = code
-        self.errors = errors or []
-        super().__init__(message)
 
 
 @dataclass
@@ -180,20 +174,6 @@ def _quoted(fact: CodeFact) -> str:
     return line if len(line) <= QUOTED_CHARS else line[: QUOTED_CHARS - 1] + "…"
 
 
-def _problem(path: str, code: str, message: str) -> dict:
-    return {"path": path, "code": code, "message": message}
-
-
-_ITEM = re.compile(r"^(steps|edges|omitted|observations|changes)\[(\d+)\]")
-_NAMED_BY = {
-    "steps": ("step {}", ("key",)),
-    "edges": ("edge {} -> {}", ("source", "target")),
-    "omitted": ("omitted {}", ("anchor",)),
-    "observations": ("observation on {}", ("step",)),
-    "changes": ("change {}", ("change_id",)),
-}
-
-
 def _keys(found: list[str]) -> str:
     """`step 'a'` or `steps 'a', 'b'`, for a message that names steps by their keys."""
     shown = ", ".join(f"'{key}'" for key in found[:STEPS_NAMED])
@@ -201,56 +181,12 @@ def _keys(found: list[str]) -> str:
     return ("step " if len(found) == 1 else "steps ") + shown + more
 
 
-def _named(problems: list[dict], raw, describe=None) -> list[dict]:
-    """Say which item each problem is about, by the name the submission gives it.
-
-    A path names an item by its position, and among fifty steps a position is easy to
-    misread: `steps[34]` was taken for another step twice in a row. `describe` adds what
-    the name stands for where the name says nothing, as with a fingerprint.
-    """
-    for problem in problems:
-        found = _ITEM.match(problem["path"])
-        items = raw.get(found.group(1)) if found and isinstance(raw, dict) else None
-        if not isinstance(items, list) or int(found.group(2)) >= len(items):
-            continue
-        item = items[int(found.group(2))]
-        wording, fields = _NAMED_BY[found.group(1)]
-        values = [item.get(field) for field in fields] if isinstance(item, dict) else []
-        if values and all(isinstance(value, str) for value in values):
-            problem["item"] = wording.format(*values)
-            about = describe(found.group(1), item) if describe else None
-            if about:
-                problem["item"] += f" ({about})"
-    return problems
-
-
-def _location(parts) -> str:
-    """`steps[1].evidence[0]`, the same form the CLI's own checks report."""
-    return place(parts) or "(document)"
-
-
-def pydantic_problems(error: ValidationError) -> list[dict]:
-    found = error.errors()
-    places = [tuple(item["loc"]) for item in found]
-
-    def echo(item) -> bool:
-        # A list reported as too short only because one of its items was invalid.
-        place = tuple(item["loc"])
-        return item["type"] == "too_short" and any(
-            other != place and other[: len(place)] == place for other in places
-        )
-
-    return [
-        _problem(_location(item["loc"]), "invalid_" + item["type"], item["msg"])
-        for item in found
-        if not echo(item)
-    ]
-
-
 _pydantic_problems = pydantic_problems
 
 
 class Workspace:
+    Plan = MapPlan
+
     def __init__(self, repo: Path, session_id: str):
         self.repo = repo.expanduser().resolve(strict=True)
         self.root = session_root(self.repo, session_id)
@@ -701,36 +637,9 @@ class Workspace:
                 else:
                     resolved.append(cite.evidence_id)
                 continue
-            if cite.side != HEAD:
-                problems.append(
-                    _problem(at, "wrong_side", "Only head-side source can be cited here.")
-                )
-                continue
-            if cite.path not in self.snapshot.source.list_files(cite.side):
-                problems.append(
-                    _problem(
-                        at, "file_not_in_snapshot", f"{cite.path} is not in the frozen snapshot."
-                    )
-                )
-                continue
-            span = ReferenceRange(start_line=cite.start_line, end_line=cite.end_line)
-            try:
-                text = slice_source(self.snapshot.source.read_text(cite.side, cite.path), span)
-            except ValueError:
-                problems.append(
-                    _problem(at, "range_out_of_bounds", "The line range is outside the file.")
-                )
-                continue
-            if cite.quote not in text:
-                problems.append(
-                    _problem(
-                        at,
-                        "quote_not_found",
-                        "The quote is not in that range of the frozen file; read it again through the CLI.",
-                    )
-                )
-                continue
-            resolved.append(self._register(cite.side, cite.path, span).evidence_id)
+            span = cited_range(self.snapshot.source, cite, at, problems)
+            if span is not None:
+                resolved.append(self._register(cite.side, cite.path, span).evidence_id)
         return list(dict.fromkeys(resolved))
 
     def _facts_in(self, evidence_ids) -> list[str]:
@@ -1003,43 +912,13 @@ class Workspace:
         }
 
     def search(self, text: str) -> dict:
-        if not text.strip():
-            raise LoopError("empty_search", "Search text must not be empty.")
-        matches, truncated = [], False
-        for path in self.snapshot.source.list_files(HEAD):
-            lines = self.snapshot.source.read_text(HEAD, path).split("\n")
-            for number, line in enumerate(lines, 1):
-                if text in line:
-                    if len(matches) >= SEARCH_LIMIT:
-                        truncated = True
-                        break
-                    span = ReferenceRange(start_line=number, end_line=number)
-                    matches.append(
-                        {
-                            "path": path,
-                            "line": number,
-                            "text": line.strip()[:240],
-                            "evidence_id": self._register(HEAD, path, span).evidence_id,
-                        }
-                    )
-            if truncated:
-                break
-        return {"matches": matches, "truncated": truncated}
+        return search_source(self.snapshot.source, text, self._register)
 
     def read(self, evidence_id: str) -> dict:
         ref = self.evidence(evidence_id)
         if ref is None:
             raise LoopError("unknown_evidence", f"No evidence {evidence_id} in this session.")
-        text = slice_source(self.snapshot.source.read_text(ref.side, ref.path), ref.range)
-        return {
-            "evidence_id": evidence_id,
-            "side": ref.side.value,
-            "path": ref.path,
-            "start_line": ref.range.start_line,
-            "end_line": ref.range.end_line,
-            "text": text[:SOURCE_CHARS],
-            "truncated": len(text) > SOURCE_CHARS,
-        }
+        return read_source(self.snapshot.source, ref)
 
     # ----- submission --------------------------------------------------------------
 
@@ -1580,6 +1459,12 @@ class Workspace:
                     finding["category"] = item.category.value
                 findings.append(finding)
                 by_key[item.step]["finding_ids"].append(finding_id)
+        stages, wide = fold_stages(
+            submission,
+            task["flow_id"],
+            {key: item["step_id"] for key, item in by_key.items()},
+            problems,
+        )
         flow = {
             "flow_id": task["flow_id"],
             "name": submission.name,
@@ -1591,6 +1476,8 @@ class Workspace:
             ],
             "steps": steps,
             "edges": edges,
+            "stages": stages,
+            **({"limitations": wide} if wide else {}),
             "accounting": {
                 "accountable": len(units),
                 "covered": len(units) - len(omitted) - len(unaccounted),
@@ -1618,6 +1505,7 @@ class Workspace:
             "steps": {step.key: by_key[step.key]["step_id"] for step in submission.steps},
             "accounting": flow["accounting"],
             "unaccounted": [self._unit_view(unit) for unit in open_units],
+            **({"too_wide": wide[0]["message"]} if wide else {}),
             "errors": [],
         }
         if ignored:
@@ -1702,11 +1590,12 @@ class Workspace:
                 flow = {
                     **flow,
                     "limitations": [
+                        *flow.get("limitations", ()),
                         {
                             "code": "accountable_truncated",
                             "message": "More code facts are reachable than this task lists.",
                             "affects_completeness": True,
-                        }
+                        },
                     ],
                 }
             flows.append(flow)
@@ -1864,6 +1753,10 @@ class Workspace:
                     "entry_ids": task["entry_ids"],
                     "accountable": len(task["accountable"]),
                     "accounting": (accepted or {}).get("flow", {}).get("accounting"),
+                    "too_wide": any(
+                        item["code"] == TOO_WIDE
+                        for item in (accepted or {}).get("flow", {}).get("limitations", ())
+                    ),
                     "errors": len((rejected or {}).get("errors", [])),
                     "rejections": (self._stored(task["task_id"], "attempts.json") or {}).get(
                         "rejected", 0
@@ -1877,13 +1770,14 @@ class Workspace:
         def open_work(among):
             # The business processes before the lookups and upkeep around them. Within
             # each: untouched work, then refused work, then accepted flows that left
-            # facts out.
+            # facts out, then those a reader cannot take in until they have stages.
             for tier in ("primary", "supporting"):
                 tiered = [item for item in among if item["tier"] == tier]
                 found = (
                     first(lambda item: item["state"] == "pending", tiered)
                     or first(lambda item: item["state"] == "failed", tiered)
                     or first(lambda item: (item["accounting"] or {}).get("unaccounted"), tiered)
+                    or first(lambda item: item["too_wide"], tiered)
                 )
                 if found:
                     return found

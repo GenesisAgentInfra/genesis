@@ -119,7 +119,7 @@ def test_share_mode_leaves_source_excerpts_out(source_repo):
 def test_unsupported_repository_and_unknown_session_fail_with_a_reason(source_repo):
     write(source_repo, "index.ts", "export const x = 1;\n")
     commit(source_repo)
-    result = run("prepare", "--repo", str(source_repo), "--head", "HEAD")
+    result = run("prepare", "--repo", str(source_repo), "--head", "HEAD", "--engine", "python")
     assert result.exit_code == 1
     error = json.loads(result.stdout)["error"]
     assert error["code"] == "unsupported_repository" and ".ts: 1" in error["message"]

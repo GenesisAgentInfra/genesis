@@ -36,13 +36,16 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent clau
 
 Use `--agent codex` or `--agent both` if you work in Codex.
 
-Now open your own project in Claude Code and ask:
+Now open your own project in Claude Code. There are two commands:
 
 ```text
-/genesis map this project
-/genesis what does my uncommitted work change, and is it tested?
-/genesis review this branch against main
+/genesis map
+/genesis review main
 ```
+
+`map` draws the system as it is now, so you can understand it. `review` shows what
+changed since a revision (here `main`) and whether a test checks it. You can also just
+ask in plain language.
 
 In Codex the skill is `$genesis`. When it finishes, open `.genesis/view.html` in a
 browser. The `summary.md` next to it is ready to paste into a pull request.
@@ -74,13 +77,16 @@ Click a step to see the code behind it and the tests that touch it:
 Your agent does the reading, but it doesn't get the last word. Every step it writes has
 to quote the lines of code it stands for, and the Genesis CLI checks each quote against
 a frozen snapshot of your repo. If one doesn't match, the whole description is rejected
-and the agent tries again. If the agent skips a branch, the map is marked `partial`.
+and the agent tries again. For Python, Genesis also parses the code itself, so a branch
+the agent skips leaves the map marked `partial`.
 
 The CLI calls no model, sends nothing anywhere, and never runs your code.
 
 ## Limits
 
-- Python repositories only, for now.
+- Python gets the most accurate results, because Genesis parses it. Other languages
+  work too: your agent reads the code and Genesis checks each step against the source,
+  but a path the agent misses is not flagged.
 - Test verdicts come from reading your tests. Genesis doesn't run them.
 - Risks are what your agent noticed while reading. There is no rule engine.
 

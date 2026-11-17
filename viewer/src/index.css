@@ -151,6 +151,35 @@
   color-scheme: dark;
 }
 
+/* A colour per kind of step, on its tile only, so a reader finds the decisions and the
+   outside systems of a flow at a glance. None is a colour a change uses (red, amber,
+   green): those stay for what a change asks of the reader. Plain work stays grey. */
+:root {
+  --kind-trigger: var(--select);
+  --kind-decision: #2f66d0;
+  --kind-external: #0e7f87;
+  --kind-result: var(--ink);
+}
+:root[data-theme="dark"] {
+  --kind-decision: #8fb0f0;
+  --kind-external: #6cc3c9;
+}
+[data-kind] {
+  --kind-soft: color-mix(in oklab, var(--kind) 13%, var(--card));
+}
+[data-kind="trigger"] {
+  --kind: var(--kind-trigger);
+}
+[data-kind="decision"] {
+  --kind: var(--kind-decision);
+}
+[data-kind="external"] {
+  --kind: var(--kind-external);
+}
+[data-kind="result"] {
+  --kind: var(--kind-result);
+}
+
 /* What a changed card's colour says: a new risk, no test reaching the change, a verdict
    nobody can give, or a test that checks it. Set on the card; everything inside follows. */
 [data-tone="risk"] {

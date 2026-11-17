@@ -30,6 +30,8 @@ Identifier = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[A-Za
 Anchor = Annotated[str, Field(pattern=FINGERPRINT_PATTERN)]
 SymbolId = Annotated[str, Field(min_length=1, max_length=1024)]
 Name = Annotated[str, Field(min_length=1, max_length=200)]
+# How many blocks across a flow may be with its stages folded: what a reader takes in.
+FOLDED_WIDTH = 7
 Text = Annotated[str, Field(min_length=1, max_length=2000)]
 Count = Annotated[int, Field(ge=0)]
 
@@ -281,6 +283,18 @@ class FlowAccounting(ContractModel):
         return self
 
 
+class MapStage(ContractModel):
+    """Steps of one flow that a reader sees as one block until they open it.
+
+    Stages are how a long flow stays readable: drawn with its stages folded, a flow is at
+    most `FOLDED_WIDTH` blocks wide. The name says what the steps get done together.
+    """
+
+    stage_id: Identifier
+    name: Name
+    step_ids: tuple[Identifier, ...] = Field(min_length=2)
+
+
 class MapFlow(ContractModel):
     flow_id: Identifier
     name: Name
@@ -294,6 +308,7 @@ class MapFlow(ContractModel):
     entries: tuple[MapEntry, ...] = Field(min_length=1)
     steps: tuple[MapStep, ...] = ()
     edges: tuple[MapEdge, ...] = ()
+    stages: tuple[MapStage, ...] = ()
     accounting: FlowAccounting
     omitted: tuple[OmittedFact, ...] = ()
     unaccounted: tuple[Anchor, ...] = ()
@@ -307,6 +322,11 @@ class MapFlow(ContractModel):
         _unique((entry.entry_id for entry in self.entries), "entry_id values in a flow")
         _unique((item.anchor for item in self.omitted), "omitted anchors")
         _unique(self.unaccounted, "unaccounted anchors")
+        _unique((stage.stage_id for stage in self.stages), "stage_id values in a flow")
+        staged = [step_id for stage in self.stages for step_id in stage.step_ids]
+        _unique(staged, "the stage of a step")
+        if set(staged) - steps.keys():
+            raise ValueError("a stage holds steps of its own flow")
         if len(self.omitted) != self.accounting.omitted:
             raise ValueError("omitted facts do not match the accounting count")
         if len(self.unaccounted) != self.accounting.unaccounted:
@@ -473,6 +493,7 @@ class BusinessMap(ContractModel):
         _unique((link.link_id for link in self.links), "link_id values")
         _unique((finding.finding_id for finding in self.findings), "finding_id values")
         _unique((step.step_id for flow in self.flows for step in flow.steps), "step_id values")
+        _unique((stage.stage_id for flow in self.flows for stage in flow.stages), "stage_id values")
         _unique(
             (entry.entry_id for flow in self.flows for entry in flow.entries), "entry_id values"
         )
