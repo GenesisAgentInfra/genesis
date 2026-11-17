@@ -379,9 +379,7 @@ def test_imports_through_namespace_folders_resolve(source_repo):
     assert one(result, "call", "analyze(symbol)").target.targets == (
         "src/app/core/services/screener.py#analyze",
     )
-    assert one(result, "call", "scrub(text)").target.targets == (
-        "src/vendor/tools/clean.py#scrub",
-    )
+    assert one(result, "call", "scrub(text)").target.targets == ("src/vendor/tools/clean.py#scrub",)
     assert one(result, "call", "coin('BTC')").target.targets == ("src/app/server.py#coin",)
 
 

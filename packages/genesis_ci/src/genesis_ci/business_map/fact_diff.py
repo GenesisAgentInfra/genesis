@@ -401,7 +401,11 @@ class _Sources:
         self._kept: dict[str, dict[int, int]] = {}
 
     def lines(self, side, path) -> list[str]:
-        return self.source.read_text(side, path).split("\n")
+        """The lines of a file on one side; none when the file is not on that side."""
+        try:
+            return self.source.read_text(side, path).split("\n")
+        except KeyError:
+            return []
 
     def aligned(self, path) -> list | None:
         """How the lines of a file line up between the sides, indentation aside.
@@ -572,6 +576,23 @@ def _source_changes(
     opcodes = sources.aligned(path)
     if opcodes is None:
         raise OverflowError(path)
+    if not old_lines or not new_lines:
+        # A file on one side only. Each stretch of lines between its definitions is a
+        # run of its own, so that one line of changed text never spans a definition.
+        side = HEAD if new_lines else BASE
+        lines = new_lines or old_lines
+        stretches, start = [], None
+        for number in range(1, len(lines) + 2):
+            inside = number <= len(lines) and number not in covered[side]
+            if inside and start is None:
+                start = number
+            elif not inside and start is not None:
+                stretches.append((start - 1, number - 1))
+                start = None
+        opcodes = [
+            ("insert", 0, 0, first, last) if side == HEAD else ("delete", first, last, 0, 0)
+            for first, last in stretches
+        ]
     old = [line.strip() for line in old_lines]
     new = [line.strip() for line in new_lines]
 
@@ -1007,13 +1028,26 @@ def diff_facts(
             by_path[side].setdefault(symbol.path, []).append(symbol)
     analyzed = {(item.side, item.path) for item in facts.files if item.status == "analyzed"}
 
+    present = {side: set(source.list_files(side)) for side in (BASE, HEAD)}
+    # A renamed file is compared by its definitions only, never as one added and one removed.
+    renamed_paths = set(renames) | set(renames.values())
+
     def lines_changed(cut: bool) -> tuple[list[RawChange], list[str]]:
         found, skipped = [], []
-        for path in sorted(path for side, path in analyzed if side == HEAD):
-            if (BASE, path) not in analyzed or (HEAD, path) in test_paths:
+        for path in sorted({path for _, path in analyzed}):
+            sides = [side for side in (BASE, HEAD) if (side, path) in analyzed]
+            if any((side, path) in test_paths for side in sides):
                 continue
-            if source.read_text(BASE, path) == source.read_text(HEAD, path):
+            if len(sides) == 2:
+                if source.read_text(BASE, path) == source.read_text(HEAD, path):
+                    continue
+            # A file added or deleted as a whole: the other side is empty. One that is on
+            # both sides but could not be analyzed on one is not compared at all.
+            elif path in renamed_paths or any(
+                path in present[side] for side in (BASE, HEAD) if side not in sides
+            ):
                 continue
+            language = languages[(sides[-1], path)]
             try:
                 found.extend(
                     _source_changes(
@@ -1021,8 +1055,8 @@ def diff_facts(
                         {side: by_path[side].get(path, []) for side in (BASE, HEAD)},
                         {side: covered[side].get(path, set()) for side in (BASE, HEAD)},
                         sources,
-                        _COMMENT.get(languages[(HEAD, path)], "#"),
-                        canonical.get(languages[(HEAD, path)], _plain),
+                        _COMMENT.get(language, "#"),
+                        canonical.get(language, _plain),
                         assignments if cut else None,
                         movable if cut else None,
                     )

@@ -1230,9 +1230,7 @@ class ChangeAnalysis:
             for calls in range(1, TEST_DEPTH + 2):
                 following = []
                 for symbol in frontier:
-                    chosen = [
-                        target for names, target in dispatch.get(symbol, ()) if names & words
-                    ]
+                    chosen = [target for names, target in dispatch.get(symbol, ()) if names & words]
                     for target in (*graph.get(symbol, ()), *chosen):
                         if target not in distances:
                             distances[target] = calls

@@ -208,9 +208,7 @@ def _change_card(item, refs, excerpts, reason: str | None, *, anchor: bool = Tru
             body += f'<p class="muted">{escape(tests.note)}</p>'
         for case in tests.items:
             named = _tag("named") if "assessed" in case.tags else ""
-            body += (
-                f'<p class="muted" style="margin:2px 0 0 0">{escape(case.test_id)}{named}</p>'
-            )
+            body += f'<p class="muted" style="margin:2px 0 0 0">{escape(case.test_id)}{named}</p>'
             body += _evidence(case.evidence_ids, refs, excerpts)
     sides = [
         *(item.before.evidence_ids if item.before else ()),
