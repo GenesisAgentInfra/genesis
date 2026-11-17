@@ -723,7 +723,7 @@ def test_cli_runs_a_change_session_end_to_end(source_repo, tmp_path, monkeypatch
     assert "    - tests: " + SUBMIT_TEST in summary and "    - 测试只用了 50 和 500" in summary
     assert "    - placement: This step's code refers to `THRESHOLD`" in summary
     assert "- 提交报销 (7 steps, synthesized, changed)" in summary
-    assert "covered: a test takes the changed path" in summary
+    assert "covered: a test runs the change and would fail if the change were undone" in summary
     assert "Compared base (" in page and "1 changed file outside the supported languages" in page
     # The changes come before the map they are placed on.
     assert summary.index("## Changes on") < summary.index("# Map") < summary.index("## 报销")
@@ -1091,8 +1091,8 @@ def test_the_change_task_says_what_to_read_and_how_to_judge_removed_code(change)
     assert "do not copy the verdict" in rules
     # Also when another function now does what the removed code did.
     assert "the input still has to go through the function the code was removed from" in rules
-    # One source change that sets several values is covered only when each is asserted on.
-    assert "When tests assert on only some, use reached_only" in rules
+    # One source change that sets several values is covered only when each would be missed.
+    assert "for each value, a test that would fail if that value were undone" in rules
 
 
 def test_a_copy_of_an_assignment_added_or_removed_is_listed(source_repo):

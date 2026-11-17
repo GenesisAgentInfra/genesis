@@ -607,7 +607,13 @@ within reach of a flow. Describing flows raises `changes_placed` and does not lo
 - `tests` is what the test sources alone show. A test is linked when it calls the
   changed function, directly or through other calls, or requests a route that leads to
   it with an HTTP test client. `reached_only` at this point means only that; `unknown`
-  means no such test was found.
+  means no such test was found. The linked tests come most relevant first: those this
+  change adds or edits (`changed_with_it`), then by `calls_away` (1: the test calls
+  the changed function itself). A handler registered with
+  `set_defaults(func=...)` on an argparse subcommand is linked only to tests whose
+  strings name that subcommand. Static analysis does not follow pytest fixtures,
+  `subprocess` runs of the program, decorators that call a function later, property
+  reads, or chains longer than five calls: look for such tests yourself.
 - `possibly_affected` lists flows that can reach changed code without a step on it;
   `removed_flows` the entries that no longer exist; `unanalyzed_changes` the changed
   files Genesis did not analyze, such as other languages. Mention all three.
@@ -665,31 +671,46 @@ genesis map submit --repo /absolute/app --session SESSION_ID --task task_change 
 - Add `short_summary` for the map card: one short clause (up to 120 characters), preserving
   the triggering condition and consequence. Keep the complete explanation in `summary`
   and `effect`; do not omit qualifications to make an uncertain claim sound definite.
-- `verdict` is your reading of the tests. `covered`: a test's input takes the changed
-  path and the test asserts on the result. `reached_only`: tests call the code but miss
-  the changed path or assert nothing about it; `note` says what is missing.
+- `verdict` is your reading of the tests, and it answers one question: would a test
+  fail if this change were undone? `covered`: a test runs the changed code and would
+  fail if the change were undone; name it in `test_ids`. `reached_only`: tests run the
+  code but would not fail if the change were undone, because their input misses the
+  changed path or they check nothing it affects; `note` says what is missing.
   `not_reached`: no test reaches it. `unknown`: you could not tell; `note` says why.
-  Every verdict needs a `note`. Leave `verdict` out to keep the static result.
+  Every verdict needs a `note`. Leave `verdict` out to keep the static result, which
+  the report shows as "called by tests, not assessed".
+- A statement that runs on every call, such as an added `add_argument` or an
+  assignment, is `covered` by a test that runs the code and would fail without it.
+  An input value no test uses is not a missed path.
+- An added definition (`symbol_added`) is one change, so judge it as a whole:
+  `covered` when a test runs it and would fail without it. Name the branches no test
+  takes in `note`; they do not make it `reached_only`.
+- Tests that are skipped by default (a `skip`, `skipif` or `xfail` mark,
+  `importorskip`, a marker the default configuration deselects), or that need the
+  network, a model download, credentials or a service that is not there, do not
+  count: they would not fail in a normal test run. Name them in `note` and judge by
+  the other tests.
 - For code that was removed, the changed path is the input the removed code used to
-  handle. `covered`: a test gives such an input and asserts on what happens now.
-  `reached_only`: tests run the function but never with such an input. Code that
+  handle. `covered`: a test gives such an input and would fail if the removed code
+  were put back. `reached_only`: tests run the function but never with such an input. Code that
   replaces it is a change of its own: judge each on its own input, and do not copy
   the verdict from one to the other. The same holds when another function now does
   what the removed code did: the input still has to go through the function the
   code was removed from. A test that calls only the other function is a near miss:
   describe it in `note`.
 - One `source_*` change can hold several values, such as two limits set on
-  neighbouring lines of a function. `covered` needs a test that asserts on the
-  effect of each. When tests assert on only some, use `reached_only` and name the
-  others in `note`.
-- `test_ids` names the tests your verdict is about, as `head::<path>#<function>`, for
+  neighbouring lines of a function. `covered` needs, for each value, a test that would
+  fail if that value were undone. When only some have one, use `reached_only` and name
+  the others in `note`.
+- `test_ids` names the tests your verdict rests on, as `head::<path>#<function>`, for
   example `head::tests/test_api.py#test_refund`; a method is `#TestClass.test_name`.
-  A test static analysis did not link may be named; the report marks it as identified
-  by you. `not_reached` names no tests: describe near misses in `note`.
-- The CLI refuses a verdict the test sources contradict: `covered` when none of the named
-  tests contains an assertion, `not_reached` when a test calls the changed function
-  itself or requests its route, an unknown `change_id` or test. A refusal changes
-  nothing already accepted.
+  The tests static analysis linked stay listed after them. A test static analysis did
+  not link may be named; the report marks it as identified by you. `not_reached` names
+  no tests: describe near misses in `note`.
+- The CLI refuses a verdict the test sources contradict: `covered` with no `test_ids`,
+  or when none of the named tests contains an assertion, `not_reached` when a test
+  calls the changed function itself or requests its route, an unknown `change_id` or
+  test. A refusal changes nothing already accepted.
 - An observation you recorded on a flow is shown as `introduced` when its evidence cites
   code this change added, or when its whole flow is new, and as `persisting` when it
   cites code the change modified. Cite the changed lines when the risk comes from them.
@@ -793,10 +814,12 @@ asks for it.
   places nowhere, find the way in yourself and say that this part is your reading.
 - **Risks.** Genesis has no risk rules. Report the risks you see as your own reading,
   with the changed lines cited; on a described flow, record them as observations.
-- **Verdict words.** Use the user's words when they asked in their own terms. The four
-  verdicts read as covered; called by tests that miss the changed path or assert
-  nothing about it (`reached_only`); not reached by any test (`not_reached`); and cannot
-  tell (`unknown`, which from static analysis alone means no linked test was found).
+- **Verdict words.** Use the user's words when they asked in their own terms. The
+  verdicts read as covered (a test would fail if the change were undone); run by tests
+  that would not fail if it were undone (`reached_only` you assessed); called by tests,
+  not assessed (`reached_only` from static analysis alone, which says nothing about
+  what the tests miss); not reached by any test (`not_reached`); and cannot tell
+  (`unknown`, which from static analysis alone means no linked test was found).
 
 ## Later requests
 

@@ -88,24 +88,38 @@ RULES = (
     "tree, check what you quote against the frozen text.",
     "`summary` says in business terms what is different; `effect` says what that means for "
     "the flow. Do not describe line edits.",
-    "Give a `verdict` only after reading the listed tests. covered: a test's input takes the "
-    "changed path and the test asserts on the result. reached_only: tests call the code but "
-    "miss the changed path or do not assert on it; say what is missing in `note`. "
+    "Give a `verdict` only after reading the listed tests. A verdict answers one question: "
+    "would a test fail if the change were undone? covered: a test runs the changed code "
+    "and would fail if the change were undone; name it in `test_ids`. reached_only: tests "
+    "run the code but would not fail if the change were undone, because their input misses "
+    "the changed path or they check nothing it affects; say what is missing in `note`. "
     "not_reached: no test reaches it. unknown: you could not tell; say why.",
+    "A statement that runs on every call, such as an added argument or assignment, is "
+    "covered by a test that runs the code and would fail without it. An input value no "
+    "test uses is not a missed path.",
+    "An added definition is judged as a whole: covered when a test runs it and would fail "
+    "without it. Name in `note` the branches no test takes; they do not make it reached_only.",
+    "Tests that are skipped by default (a skip, skipif or xfail mark, importorskip, a marker "
+    "the default configuration deselects), or that need the network, a model download, "
+    "credentials or a service that is not there, do not count: they would not fail in a "
+    "normal test run. Name them in `note` and judge by the other tests.",
     "For removed code, the changed path is the input the removed code used to handle. "
-    "covered: a test gives such an input and asserts on what happens now. reached_only: "
-    "tests run the function but never with such an input. Code that replaces it is a change "
-    "of its own: do not copy the verdict from one to the other. The same holds when another "
-    "function now does what the removed code did: the input still has to go through the "
-    "function the code was removed from. A test that calls only the other function is a "
-    "near miss: describe it in `note`.",
+    "covered: a test gives such an input and would fail if the removed code were put back. "
+    "reached_only: tests run the function but never with such an input. Code that replaces "
+    "it is a change of its own: do not copy the verdict from one to the other. The same "
+    "holds when another function now does what the removed code did: the input still has "
+    "to go through the function the code was removed from. A test that calls only the "
+    "other function is a near miss: describe it in `note`.",
     "One `source_*` change can hold several values, such as two limits set on neighbouring "
-    "lines of a function. covered needs a test that asserts on the effect of each. When "
-    "tests assert on only some, use reached_only and name the others in `note`.",
-    "`test_ids` names the tests your verdict is about. You may name a test static analysis "
-    "did not link, for example one that goes through an HTTP client.",
+    "lines of a function. covered needs, for each value, a test that would fail if that "
+    "value were undone. When only some have one, use reached_only and name the others in "
+    "`note`.",
+    "`test_ids` names the tests your verdict rests on; the tests static analysis linked "
+    "stay listed after them. You may name a test static analysis did not link, for example "
+    "one that goes through an HTTP client.",
     "No test was run. Never state that a test passed or that a path executed.",
-    "Leave `verdict` out to keep the static result shown under `tests`.",
+    "Leave `verdict` out to keep the static result shown under `tests`: it reads as called "
+    "by tests, not assessed.",
 )
 
 
@@ -1311,6 +1325,7 @@ class ChangeAnalysis:
             **blank,
             "verdict": "reached_only",
             "basis": ["static_fact"],
+            # The viewer translates this note by its exact text.
             "note": "These tests call the changed code. Static analysis cannot tell whether "
             "their inputs take the changed path or whether they assert on its result." + more,
             "items": [self._case(test_id, True) for test_id in related[:MAX_CASES]],
@@ -1356,7 +1371,16 @@ class ChangeAnalysis:
             "note": verdict.note,
             "items": items,
         }
-        if verdict.verdict == "covered" and not any(
+        if verdict.verdict == "covered" and not named:
+            problems.append(
+                (
+                    "test_ids",
+                    "covered_names_tests",
+                    "covered names in `test_ids` the tests that run the change and would fail "
+                    "if it were undone.",
+                )
+            )
+        elif verdict.verdict == "covered" and not any(
             "assertion_found" in item["tags"] for item in judged
         ):
             problems.append(

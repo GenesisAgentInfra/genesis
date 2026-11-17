@@ -248,9 +248,10 @@ class SubmittedObservation(ContractModel):
 class ChangeAssessment(ContractModel):
     """An agent's reading of one change: what it means, and whether tests cover it.
 
-    Leave `verdict` out to keep the static result. A verdict needs a `note` that says
-    what the listed tests do or do not exercise; `test_ids` narrows the related tests to
-    the ones the assessment is about.
+    Leave `verdict` out to keep the static result. A verdict says whether a test would
+    fail if the change were undone, and needs a `note` that says what the tests do or do
+    not exercise. `test_ids` names the tests the verdict rests on; the report keeps the
+    other tests static analysis linked after them.
     """
 
     change_id: Identifier
