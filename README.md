@@ -82,6 +82,42 @@ the agent skips leaves the map marked `partial`.
 
 The CLI calls no model, sends nothing anywhere, and never runs your code.
 
+## Benchmark
+
+Claude Code and Codex were asked to review 10 commits from 5 open-source Python
+repositories, with and without Genesis installed, in the words a user would type:
+what does this commit change, could it break anything, do the tests cover it? Each
+answer was scored by automated readers against a reference answer built from the code
+and its tests.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/benchmark-dark.svg">
+    <img src="assets/readme/benchmark-light.svg" width="860" alt="Four measures for Claude Code and Codex, without and with Genesis. Correct test-coverage verdicts: 79% to 88% and 76% to 80%. Changes tests run but would not catch, flagged by the answer: 8% to 38% and 4% to 23%. Affected entry points named: 32% to 47% and 15% to 24%. Raised risks that are real: 44% to 64% and 54% to 72%.">
+  </picture>
+</p>
+
+|  | Claude Code | Claude Code + Genesis | Codex | Codex + Genesis |
+| --- | ---: | ---: | ---: | ---: |
+| Changes given a correct test-coverage verdict | 79% | 88% | 76% | 80% |
+| Changes that tests run but would not catch, flagged as such | 8% | 38% | 4% | 23% |
+| Affected entry points named | 32% | 47% | 15% | 24% |
+| Share of named entry points that are right | 67% | 68% | 71% | 54% |
+| Risks raised per run | 6.1 | 4.2 | 4.5 | 3.3 |
+| &nbsp;&nbsp;real | 2.9 | 2.8 | 2.4 | 2.4 |
+| &nbsp;&nbsp;not real | 2.1 | 0.7 | 1.4 | 0.5 |
+| &nbsp;&nbsp;unclear from the code alone | 1.2 | 0.7 | 0.7 | 0.4 |
+| Share of raised risks that are real | 44% | 64% | 54% | 72% |
+
+With Genesis, both agents flag more of the changes that tests run but would not catch,
+name more of the entry points a change affects, and raise fewer risks that fail a check
+against the code. They find about as many real risks as before. For Codex, a smaller
+share of the entry points it names are right. The sample is small: 10 commits, three
+runs each.
+
+What each measure means, and the full results:
+[change-analysis benchmark](docs/change-analysis-benchmark.md).
+
 ## Limits
 
 - Python gets the most accurate results, because Genesis parses it. Other languages
