@@ -6,28 +6,26 @@
   </picture>
 </p>
 
+<h1 align="center">Visualize your agent's changes.<br>See where they can break.</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/python-3.12-3776AB?style=flat-square" alt="Python 3.12">
+  <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square" alt="GitHub stars"></a>
+</p>
+
 <p align="center"><strong>English</strong> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a></p>
 
-Genesis turns a repository into a map of business flows, each step backed by the code
-it came from, and shows what a change does to those flows: which steps it touches and
-whether an existing test covers the new behaviour.
+<p align="center">
+  <a href="assets/readme/genesis-demo.mp4"><img src="assets/readme/flow-demo.webp" alt="A checkout flow drawing itself step by step, then its four changes landing with test verdicts; the card charge is marked as a risk" width="900"></a>
+  <br>
+  <a href="assets/readme/genesis-demo.mp4"><b>▶ Watch the 37-second demo</b></a>
+</p>
 
-- **The CLI is deterministic.** It freezes a snapshot of the code, extracts facts,
-  finds entry points, checks every description it is given and renders the result.
-  It calls no model and no service, and never imports or runs the code it reads.
-- **Your coding agent does the reading.** Through the bundled skill, Codex or Claude
-  Code describes each flow in business terms; the CLI accepts or rejects each
-  description as a whole against the code evidence.
+Genesis turns your codebase into a business flow map and shows which of your agent's
+changes are untested or risky. It runs as a skill inside Claude Code and Codex.
 
-## What is supported today
-
-- Python source.
-- A full map of the current code, and the changes since a revision placed on that map.
-- Test verdicts come from reading test source. Genesis does not run tests.
-
-## Get started
-
-Install the CLI outside the project you want to map:
+## Quick start
 
 ```sh
 git clone https://github.com/GenesisAgentInfra/genesis.git
@@ -36,46 +34,70 @@ uv sync --python 3.12 --package genesis-ci --no-dev --frozen
 uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
 ```
 
-`--agent` takes `codex`, `claude` or `both`. Then, in the project you want to map, ask
-your agent for the business flows of the project or for what a change does to them,
-or call the skill by name: `/genesis` in Claude Code, `$genesis` in Codex.
+Use `--agent codex` or `--agent both` if you work in Codex.
 
-The result is written under `.genesis/` in that project: a page to open in a browser
-(`view.html`) and a summary (`summary.md`).
+Now open your own project in Claude Code. There are two commands:
 
-## Commands
+```text
+/genesis map
+/genesis review main
+```
 
-| Command | What it does |
+`map` draws the system as it is now, so you can understand it. `review` shows what
+changed since a revision (here `main`) and whether a test checks it. You can also just
+ask in plain language.
+
+In Codex the skill is `$genesis`. When it finishes, open `.genesis/view.html` in a
+browser. The `summary.md` next to it is ready to paste into a pull request.
+
+## What you get
+
+Say you asked your agent for guest checkout. It built that, and changed three other
+things on the way. Genesis draws the checkout flow and puts all four changes on it:
+
+<p align="center">
+  <img src="assets/readme/flow-map.png" alt="The first half of the Place an order flow, branching on guest or signed in, stock, and the free-shipping threshold" width="820">
+</p>
+
+| What changed for shoppers | Is it tested? |
 | --- | --- |
-| `genesis agent install` | Make Genesis discoverable in your coding agent; no analysis or upload. |
-| `genesis agent status` | Inspect the installed skill files. |
-| `genesis map prepare` | Freeze a snapshot, extract facts and write the static skeleton. |
-| `genesis map plan` | Group entries into flows and create one task per flow. |
-| `genesis map status` | List tasks, their state and what is still missing. |
-| `genesis map context` | Everything needed to start one task. |
-| `genesis map query` | Look at one symbol and its neighbours, or search the frozen source. |
-| `genesis map read` | Read the frozen source behind one evidence reference. |
-| `genesis map submit` | Check one submission for a task; accepted or rejected as a whole. |
-| `genesis map diff` | List what changed since the base revision and where it lands on the map. |
-| `genesis map render` | Write the page and the summary for a session. |
+| A card charge that times out is retried up to 3 times, with no idempotency key. A shopper can be charged twice. | 🔴 Not reached. No test makes the payment time out. |
+| Stock is no longer held while the card is charged. Two shoppers can pay for the last unit. | 🟡 Reached only. Tests run this code but none buys the last unit twice. |
+| Shoppers can check out as a guest by leaving an email. | ⚪ Unknown. The guest test stubs out the email check. |
+| Free shipping starts above $35 instead of $50. | ✅ Covered. Tests place orders at $34.99, $35.00 and $35.01. |
 
-The agent runs the `map` commands for you; they are listed so you can see what it does.
+Click a step to see the code behind it and the tests that touch it:
 
-## Repository layout
+<p align="center">
+  <img src="assets/readme/change-detail.png" alt="The Charge the card step opened: the risk, what changed for shoppers, and the test evidence behind the verdict" width="640">
+</p>
 
-| Path | Holds |
-| --- | --- |
-| `packages/genesis_ci` | The CLI: snapshot, Python fact extraction, the map workflow, the agent skill. |
-| `packages/genesis_contracts` | The schemas of the files the CLI reads and writes. |
-| `viewer/` | The page `genesis map render` writes, as source. |
-| `fixtures/business-map` | A worked example of every contract. |
+## Can I trust it?
 
-## Development
+Your agent does the reading, but it doesn't get the last word. Every step it writes has
+to quote the lines of code it stands for, and the Genesis CLI checks each quote against
+a frozen snapshot of your repo. If one doesn't match, the whole description is rejected
+and the agent tries again. For Python, Genesis also parses the code itself, so a branch
+the agent skips leaves the map marked `partial`.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+The CLI calls no model, sends nothing anywhere, and never runs your code.
+
+## Limits
+
+- Python gets the most accurate results, because Genesis parses it. Other languages
+  work too: your agent reads the code and Genesis checks each step against the source,
+  but a path the agent misses is not flagged.
+- Test verdicts come from reading your tests. Genesis doesn't run them.
+- Risks are what your agent noticed while reading. There is no rule engine.
 
 ## License
 
-Original Genesis code is licensed under [Apache-2.0](LICENSE). Bundled components keep
-their own licenses; see [NOTICE](NOTICE) and
-[third-party notices](THIRD_PARTY_NOTICES.md).
+[Apache-2.0](LICENSE). Bundled components keep their own licenses, listed in
+[NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Want to help?
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Star history
+
+<p align="center">
+  <a href="https://star-history.com/#GenesisAgentInfra/genesis&Date"><img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&type=Date" alt="Star history of GenesisAgentInfra/genesis" width="640"></a>
+</p>

@@ -21,6 +21,7 @@ def main():
             if package == "genesis_ci":
                 required = {
                     "genesis_ci/assets/skills/genesis/SKILL.md",
+                    "genesis_ci/assets/skills/genesis/other-languages.md",
                     "genesis_ci/assets/skills/genesis/agents/openai.yaml",
                     "genesis_ci/assets/skills/genesis/scripts/run_genesis.py",
                     "genesis_ci/assets/viewer/index.html",

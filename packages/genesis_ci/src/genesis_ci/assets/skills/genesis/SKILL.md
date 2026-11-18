@@ -20,17 +20,25 @@ meets a requirement, that a test passed, or that a path was executed. Never pres
 your own reading of the code as a Genesis result: a Genesis result is what the CLI
 accepted and rendered.
 
-## Which path to take
+## Two requests
 
-- **A question about a change**: what a commit, pull request, branch or uncommitted
-  work does or could break, which entry points or flows it reaches, whether tests cover
-  it, what its risks are. Run `version` as in "Locate the CLI" below, then go to
-  section 5 and take its short path. It needs no full map: it takes a handful of
+The user asks for one of two things. `/genesis map` and `/genesis review` (`$genesis
+map` and `$genesis review` in Codex) name them outright; otherwise tell them apart by
+what the user says.
+
+- **review REV**: what a commit, pull request, branch or uncommitted work does or could
+  break, which entry points or flows it reaches, whether tests cover it, what its risks
+  are. Without a revision, compare with the one the branch started from; for
+  uncommitted work that is `HEAD`. Run `version` as in "Locate the CLI" below, then go
+  to section 5 and take its short path. It needs no full map: it takes a handful of
   commands, and you describe flows only where that pays off. Even a small change takes
-  the short path, as long as a changed file is Python; when none is, Genesis has
-  nothing to add, so say so and answer from the diff yourself.
-- **A map of the project**: sections 1 to 4.
-- **A question about an existing map**: see "Later requests" at the end.
+  the short path, as long as a changed file is in a language Genesis reads: Python, or
+  the project's main language when that is not Python (see below). When none is,
+  Genesis has nothing to add, so say so and answer from the diff yourself.
+- **map**: draw the system as it is now, so that someone can understand it. Sections 1
+  to 4. Nothing is compared and no change is reported.
+
+A question about an existing map: see "Later requests" at the end.
 
 Genesis does not import or run the project's code, installs nothing, never needs the
 project's dependencies and does not use the network. `prepare` reads files and Git
@@ -57,7 +65,15 @@ repository and the temporary directory it gives you. Long output, such as that o
 
 ## What is supported today
 
-- Python source. On a repository without analyzable Python, `map prepare` fails with
+- Python source is analyzed statically: the CLI extracts facts, finds the entry points
+  and checks that a flow leaves nothing out.
+- Any other language works without that analysis. `map prepare` then reports
+  `"engine": "agent"`: you find the entry points and read the code yourself, and the
+  CLI checks every citation against the frozen source. In that case read
+  `other-languages.md` next to this skill and follow it instead of sections 2, 3 and 5.
+  For a project whose main language is not Python but which has some Python files, run
+  `map prepare` with `--engine agent`; otherwise only the Python files are mapped.
+- On a repository with no source file Genesis can read, `map prepare` fails with
   `unsupported_repository`. For a map request, tell the user what it reported and stop.
   For a question about a change, say that Genesis could not analyze this repository,
   then answer from your own reading of the diff and mark it as such.
@@ -112,7 +128,8 @@ genesis map render --repo /absolute/app --session SESSION_ID --open
 
 `prepare` reads the working tree by default. Use `--head REV` for a specific commit.
 Add `--include-untracked` only when new, uncommitted files belong to the request.
-Its result has the `session_id`; `entries.adapter` is the number of framework entries
+Its result has the `session_id` and the `engine`. With `"engine": "agent"`, continue in
+`other-languages.md`. Otherwise `entries.adapter` is the number of framework entries
 found and `entries.root_heuristic` the number of further candidates. Running it again
 on unchanged code returns the same session with `"resumed": true` and keeps all
 accepted work.
@@ -485,6 +502,21 @@ Rules the CLI enforces:
   fold a whole flow into "call the service": the reader would see nothing.
 - **Observations** are optional risks you noticed while reading. They need evidence and
   a `severity` of `info`, `low` or `medium`.
+- **Stages.** A reader takes in about seven blocks across. A flow that is wider gets
+  `stages`: each folds a run of steps into one block, and the reader opens the block to
+  see its steps. This is where you abstract, so name a stage for what its steps get done
+  together ("Check the payment", not "Steps 3 to 6"):
+
+  ```
+  "stages": [
+    {"key": "pay", "name": "Charge the card and handle a decline", "steps": ["charge", "declined", "retry"]}
+  ]
+  ```
+
+  A stage holds two or more steps that run one after another; no step outside it may
+  run between them. The trigger stays outside. Keep outside the stages the decisions
+  and outcomes a reader needs to follow the flow, and fold the work in between. A step
+  belongs to one stage at most.
 
 Read the result:
 
@@ -498,6 +530,9 @@ Read the result:
   earlier accepted version is still in place.
 - `accepted` with `unaccounted` facts: the map stays partial, and `next_task` comes back
   to this task. Use those facts in a step or omit them with a reason, then submit again.
+- `accepted` with `too_wide`: with its stages folded the flow is more than seven blocks
+  across. The map stays partial and `next_task` comes back to this task. Add or widen
+  stages, then submit again.
 
 ## 4. Render and report
 
@@ -557,7 +592,8 @@ genesis map render  --repo /absolute/app --session SESSION_ID
      and the report names them.
 
    Running `prepare` again on the same revisions keeps your accepted explanations and
-   reports `"resumed": true`.
+   reports `"resumed": true`. When it reports `"engine": "agent"`, the project is not
+   Python: continue in `other-languages.md`.
 2. `diff` lists every change, where each sits, the tests static analysis links to it,
    and the flows (`possibly_affected`) and candidate entries (`possible_entries`) that
    reach it. Its output can be long: pipe it into `jq` or Python, or write it to a file

@@ -6,6 +6,7 @@ import {
   CircleX,
   Ellipsis,
   Flag,
+  Layers,
   Minus,
   Pencil,
   Play,
@@ -84,19 +85,23 @@ export function KindTile({
   kind,
   className,
   small,
+  stage,
 }: {
   kind: StepKind
   className?: string
   small?: boolean
+  /** A stage of several steps, not one step of this kind. */
+  stage?: boolean
 }) {
-  const Icon = TILE[kind]
+  const Icon = stage ? Layers : TILE[kind]
   return (
     <span
+      // Plain work and stages keep the grey tile; every other kind has its own colour.
+      data-kind={stage || kind === "action" ? undefined : kind}
       className={cn(
         "flex shrink-0 items-center justify-center transition-[filter,opacity] duration-160",
-        "corner-s bg-field text-ink-2",
+        "corner-s bg-(--kind-soft,var(--field)) text-(--kind,var(--ink-2))",
         small ? "size-7" : "size-8",
-        kind === "trigger" && "text-select",
         className
       )}
     >
@@ -152,6 +157,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     hasOut,
     slot,
     stub,
+    stage,
   } = data
 
   const look = canvas.step(id, { changed: coupons.length > 0, removedFlow })
@@ -190,7 +196,18 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     visited && !isCurrent && (tone ? "border-tone" : "border-edge-strong/35"),
     isCurrent && tone && "ring-tone",
     (isSelected || (isCurrent && !tone)) && "ring-select",
-    ghost && "border-dashed"
+    ghost && "border-dashed",
+    // A stage reads as a pile of steps: a second edge shows under the card.
+    stage &&
+      "cursor-zoom-in shadow-[3px_3px_0_-1px_var(--card),3px_3px_0_0_var(--line)]"
+  )
+  const count = stage && (
+    <span
+      title={t.openStage(stage)}
+      className="absolute -top-2 -right-2 z-[7] flex h-5 min-w-5 items-center justify-center corner-full bg-card px-xs text-body-s leading-none font-medium text-ink-2 tabular-nums ring-1 ring-line"
+    >
+      {stage}
+    </span>
   )
   const style = {
     width,
@@ -332,6 +349,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
         >
           {ring}
           {tag}
+          {count}
           {echoes.length > 0 && (
             // The change is told on its own card; here it is only its number, in grey.
             <span
@@ -354,6 +372,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
             <KindTile
               kind={step.kind}
               small
+              stage={Boolean(stage)}
               className={cn(quiet && "grayscale")}
             />
             <span
@@ -393,6 +412,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
       >
         {ring}
         {tag}
+        {count}
         {tone && shown && (
           <NumberDisc no={shown.no} className="absolute -top-2 -left-2 z-[7]" />
         )}
@@ -421,6 +441,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
           <CardHeader className="flex items-center gap-l px-0">
             <KindTile
               kind={step.kind}
+              stage={Boolean(stage)}
               className={cn(
                 (ghost || quiet) && "grayscale",
                 ghost && "opacity-70"

@@ -262,6 +262,7 @@
           "evidence_ids": []
         }
       ],
+      "stages": [],
       "accounting": {
         "accountable": 8,
         "covered": 7,
@@ -468,6 +469,7 @@
           ]
         }
       ],
+      "stages": [],
       "accounting": {
         "accountable": 5,
         "covered": 5,

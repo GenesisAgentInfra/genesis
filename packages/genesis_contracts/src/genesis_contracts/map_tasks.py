@@ -231,6 +231,14 @@ class SubmittedEdge(ContractModel):
         return self
 
 
+class SubmittedStage(ContractModel):
+    """Steps that read as one block until the reader opens it, named for what they get done."""
+
+    key: Identifier
+    name: Name
+    steps: tuple[Identifier, ...] = Field(min_length=2)
+
+
 class SubmittedOmission(ContractModel):
     anchor: Anchor
     reason: OmissionReason
@@ -327,6 +335,7 @@ class FlowSubmission(ContractModel):
     summary: Text | None = None
     steps: tuple[SubmittedStep, ...] = Field(min_length=1, max_length=MAX_STEPS)
     edges: tuple[SubmittedEdge, ...] = Field(default=(), max_length=MAX_EDGES)
+    stages: tuple[SubmittedStage, ...] = ()
     omitted: tuple[SubmittedOmission, ...] = ()
     observations: tuple[SubmittedObservation, ...] = Field(default=(), max_length=MAX_OBSERVATIONS)
 
@@ -342,6 +351,21 @@ class FlowSubmission(ContractModel):
                 *_repeated(
                     (("omitted", index, "anchor"), item.anchor)
                     for index, item in enumerate(self.omitted)
+                ),
+                *_repeated(
+                    (("stages", index, "key"), item.key) for index, item in enumerate(self.stages)
+                ),
+                # A step sits in one stage at most.
+                *_repeated(
+                    (("stages", index, "steps", position), key)
+                    for index, item in enumerate(self.stages)
+                    for position, key in enumerate(item.steps)
+                ),
+                *(
+                    _missing(("stages", index, "steps", position), key, step)
+                    for index, item in enumerate(self.stages)
+                    for position, key in enumerate(item.steps)
+                    if key not in keys
                 ),
                 *(
                     _missing(("edges", index, end), key, step)

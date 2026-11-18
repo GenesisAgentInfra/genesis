@@ -254,6 +254,7 @@
           ]
         }
       ],
+      "stages": [],
       "accounting": {
         "accountable": 8,
         "covered": 8,
@@ -457,6 +458,7 @@
           ]
         }
       ],
+      "stages": [],
       "accounting": {
         "accountable": 5,
         "covered": 5,

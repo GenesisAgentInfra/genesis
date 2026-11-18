@@ -66,6 +66,8 @@ const zh = {
   listTitle: "这次的改动",
   removedFlowRow: "流程被删除",
   openStub: "展开这条流程的全部步骤",
+  openStage: (n: number) => `展开这 ${n} 步`,
+  foldStage: "收起这个阶段",
   changesPass: (n: number) => `${n} 处改动会经过这里`,
   openModule: "展开全部步骤",
   openShort: "展开",
@@ -241,6 +243,8 @@ const en: Strings = {
   listTitle: "Changes in this comparison",
   removedFlowRow: "Flow removed",
   openStub: "Show every step of this flow",
+  openStage: (n) => `Show these ${n} steps`,
+  foldStage: "Fold this stage",
   changesPass: (n) =>
     `${n} change${n === 1 ? " passes" : "s pass"} through here`,
   openModule: "Show every step",
