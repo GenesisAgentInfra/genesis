@@ -79,12 +79,36 @@ VERDICT_TEXT = {
 }
 
 
+STATIC_REACHED = "called by tests, not assessed"
 VERDICT_LEGEND = (
-    "Test verdicts come from reading source, never from running tests. covered: a test takes "
-    "the changed path and asserts on the result. reached only: tests call the code but miss "
-    "the changed path or assert nothing about it. not reached: no test gets to it. "
-    "unknown: could not be told."
+    "Test verdicts come from reading source, never from running tests. covered: a test runs "
+    "the change and would fail if the change were undone. reached only: tests run the code "
+    "but would not fail if the change were undone; they miss its path or check nothing it "
+    f"affects. {STATIC_REACHED}: static analysis found tests that call the code, and nobody "
+    "has read them yet. not reached: no test gets to it. unknown: could not be told."
 )
+
+
+def verdict_text(tests) -> str:
+    """A verdict as the reader sees it.
+
+    A `reached_only` from static analysis alone says only that tests call the code: no
+    one has judged whether they miss the change, so it must not read as if they do.
+    """
+    judged = {"agent_assessment", "imported_coverage"} & {value.value for value in tests.basis}
+    if tests.verdict.value == "reached_only" and not judged:
+        return STATIC_REACHED
+    return VERDICT_TEXT[tests.verdict.value]
+
+
+def tests_line(tests) -> str:
+    """The tests of a verdict: those it rests on, then the others static analysis linked."""
+    named = [case.test_id for case in tests.items if "assessed" in case.tags]
+    linked = [case.test_id for case in tests.items if "assessed" not in case.tags]
+    if not named:
+        return ", ".join(linked)
+    shown = ", ".join(linked[:5]) + (f" and {len(linked) - 5} more" if len(linked) > 5 else "")
+    return ", ".join(named) + (f"; also linked: {shown}" if linked else "")
 
 
 def compared(report: ChangeReport) -> str:
@@ -177,13 +201,14 @@ def _change_card(item, refs, excerpts, reason: str | None, *, anchor: bool = Tru
             else "no execution data collected"
         )
         body += (
-            f"<p>Tests: <strong>{escape(VERDICT_TEXT[tests.verdict.value])}</strong>"
+            f"<p>Tests: <strong>{escape(verdict_text(tests))}</strong>"
             f"{_tag(basis) if basis else ''}{_tag(execution)}</p>"
         )
         if tests.note:
             body += f'<p class="muted">{escape(tests.note)}</p>'
         for case in tests.items:
-            body += f'<p class="muted" style="margin:2px 0 0 0">{escape(case.test_id)}</p>'
+            named = _tag("named") if "assessed" in case.tags else ""
+            body += f'<p class="muted" style="margin:2px 0 0 0">{escape(case.test_id)}{named}</p>'
             body += _evidence(case.evidence_ids, refs, excerpts)
     sides = [
         *(item.before.evidence_ids if item.before else ()),
@@ -373,8 +398,15 @@ def _off_map(report: ChangeReport, overlay: _Overlay, refs, excerpts) -> str:
         f"<li>{escape(item.path)} ({escape(item.change)}): {escape(item.reason)}</li>"
         for item in report.unanalyzed_changes
     )
+    risks = "".join(
+        f"<li>{escape(item.severity.value)}: {escape(item.statement)}{_tag('agent reading')}"
+        f'<span class="muted"> · {escape(", ".join(item.change_ids))}</span>'
+        f"{_evidence(item.evidence_ids, refs, excerpts)}</li>"
+        for item in report.risks
+    )
     return (
-        (f"<h2>Removed flows</h2>{removed}" if removed else "")
+        (f'<h2>Risks seen in the changes</h2><ul class="plain">{risks}</ul>' if risks else "")
+        + (f"<h2>Removed flows</h2>{removed}" if removed else "")
         + (
             f'<h2 id="off-map">Changes not on the map</h2><ul class="plain">'
             f"{''.join(overlay.off_map)}</ul>"
@@ -522,7 +554,7 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
                 text += " " + item.explanation.effect
         else:
             text = f"{item.kind.value.replace('_', ' ')} in {item.symbol_id}"
-        verdict = f" (tests: {VERDICT_TEXT[item.tests.verdict.value]})" if item.tests else ""
+        verdict = f" (tests: {verdict_text(item.tests)})" if item.tests else ""
         lines = [f"{indent}- {text}{verdict}"]
         if reason:
             # On the map this says how the step was chosen; off it, why there is none.
@@ -531,8 +563,7 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
         if item.tests and item.tests.note and item.explanation:
             lines.append(f"{indent}  - {item.tests.note}")
         if item.tests and item.tests.items:
-            tests = ", ".join(case.test_id for case in item.tests.items)
-            lines.append(f"{indent}  - tests: {tests}")
+            lines.append(f"{indent}  - tests: {tests_line(item.tests)}")
         return lines
 
     on_step: dict[tuple[str, str], list] = {}
@@ -575,6 +606,12 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
         lines += ["", "## Changes not on the map", ""]
         for item in apart:
             lines += told(item, "", item.projection.reason)
+    if report.risks:
+        lines += ["", "## Risks seen in the changes (agent reading)", ""]
+        lines += [
+            f"- {item.severity.value}: {item.statement} (changes: {', '.join(item.change_ids)})"
+            for item in report.risks
+        ]
     if report.finding_changes:
         lines += ["", "## Risk findings touched by the changes", ""]
         lines += [f"- {item.status}: {item.finding.statement}" for item in report.finding_changes]

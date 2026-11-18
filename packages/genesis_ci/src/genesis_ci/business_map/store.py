@@ -10,13 +10,14 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 from genesis_contracts.business_map import BusinessMap
 from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.evidence_bundle import EvidenceBundle, validate_evidence_bundle
+from genesis_contracts.snapshot import SnapshotLimits
 
+from genesis_ci.git_snapshot import SnapshotError, changed_paths
 from genesis_ci.snapshot import slice_source
 
 PRIVATE_DIRECTORIES = ("sessions/", "out/")
@@ -49,28 +50,28 @@ def keep_private(repo: Path) -> None:
         write_text(ignore, "\n".join([*present, *missing]) + "\n")
 
 
-def other_changes(repo: Path, base: str, head: str | None, captured: set[str]) -> list[dict]:
+def other_changes(
+    repo: Path,
+    base: str,
+    head: str | None,
+    captured: set[str],
+    limits: SnapshotLimits | None = None,
+) -> list[dict]:
     """Files changed between the two revisions that the snapshot did not capture.
 
-    Only their names are read. They are listed in the change report so that a change
-    outside the analyzed languages is never mistaken for no change.
+    Only their names are read, the way the snapshot reads Git: no hook or fsmonitor
+    runs and the index is not written. They are listed in the change report so that a
+    change outside the analyzed languages is never mistaken for no change.
     """
-    command = ["git", "diff", "--name-status", "--no-renames", "-z", base]
     try:
-        listing = subprocess.run(
-            [*command, *([head] if head else []), "--"],
-            cwd=repo,
-            capture_output=True,
-            check=True,
-            timeout=30,
-        ).stdout.decode("utf-8", "replace")
-    except (OSError, subprocess.SubprocessError):
+        listing = changed_paths(repo, base, head, limits)
+    except SnapshotError:
         return []
-    fields = listing.split("\0")
-    found = []
-    for status, path in zip(fields[::2], fields[1::2], strict=False):
-        if path and path not in captured and not path.startswith(".genesis/"):
-            found.append({"path": path, "change": _GIT_STATUS.get(status[:1], "modified")})
+    found = [
+        {"path": path, "change": _GIT_STATUS.get(status[:1], "modified")}
+        for status, path in listing
+        if path not in captured and not path.startswith(".genesis/")
+    ]
     return sorted(found, key=lambda item: item["path"])
 
 

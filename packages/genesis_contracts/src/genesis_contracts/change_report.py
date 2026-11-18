@@ -22,6 +22,7 @@ from .business_map import (
     MapFinding,
     MapFlow,
     Name,
+    RiskCategory,
     SymbolId,
     Text,
     _unique,
@@ -31,6 +32,7 @@ from .models import (
     EvidenceRef,
     EvidenceSide,
     Limitation,
+    Severity,
     validate_evidence_refs,
     validate_repo_path,
 )
@@ -90,6 +92,9 @@ class CaseTag(StrEnum):
     fixture_or_mock_related = "fixture_or_mock_related"
     # Named by the assessing agent; static analysis found no call path to the change.
     agent_identified = "agent_identified"
+    # Named by the assessing agent in `test_ids`: the verdict rests on this test. Tests
+    # without it are static links kept beside the agent's choice.
+    assessed = "assessed"
 
 
 class ChangeSide(ContractModel):
@@ -182,11 +187,15 @@ class CoverageAssessment(ContractModel):
             for item in self.items
             if item.executed or {CaseTag.related, CaseTag.agent_identified} & set(item.tags)
         ]
-        named = any(CaseTag.agent_identified in item.tags for item in self.items)
+        named = any(
+            {CaseTag.agent_identified, CaseTag.assessed} & set(item.tags) for item in self.items
+        )
         if named and CoverageBasis.agent_assessment not in self.basis:
             raise ValueError("a test named by an agent needs the agent_assessment basis")
+        # The tests the verdict rests on: those the agent named, when it named any.
+        judged = [item for item in reaches if CaseTag.assessed in item.tags] or reaches
         if self.verdict == CoverageVerdict.covered:
-            if not any(CaseTag.assertion_found in item.tags for item in reaches):
+            if not any(CaseTag.assertion_found in item.tags for item in judged):
                 raise ValueError("covered needs a test that reaches the change and asserts on it")
             if not {CoverageBasis.agent_assessment, CoverageBasis.imported_coverage} & set(
                 self.basis
@@ -242,9 +251,14 @@ class ChangeItem(ContractModel):
     explanation: ChangeExplanation | None = None
     tests: CoverageAssessment | None = None
     finding_ids: tuple[Identifier, ...] = ()
+    # Calls into this code base that could not be resolved and may lead here, counted
+    # when no resolved call does: such a change may be reachable after all.
+    unresolved_calls: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def sides_match_kind(self) -> ChangeItem:
+        if self.unresolved_calls and self.projection.status != ProjectionStatus.unassigned:
+            raise ValueError("only a change with no place on the map counts unresolved calls")
         if self.before is not None and self.before.side != EvidenceSide.base:
             raise ValueError("the before side of a change is the base snapshot")
         if self.after is not None and self.after.side != EvidenceSide.head:
@@ -273,6 +287,18 @@ class FindingChange(ContractModel):
     finding: MapFinding
     flow_id: Identifier | None = None
     step_id: Identifier | None = None
+
+
+class ChangeRisk(ContractModel):
+    """A risk an agent saw in the changes. Its own reading: never rated high, never a gate."""
+
+    risk_id: Identifier
+    statement: Text
+    severity: Literal[Severity.info, Severity.low, Severity.medium]
+    category: RiskCategory | None = None
+    support: Literal["agent_synthesis"] = "agent_synthesis"
+    change_ids: tuple[Identifier, ...] = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = ()
 
 
 class PropagatedImpact(ContractModel):
@@ -325,6 +351,7 @@ class ChangeReport(ContractModel):
     possible_entries: tuple[PossibleEntry, ...] = ()
     unanalyzed_changes: tuple[UnanalyzedChange, ...] = ()
     finding_changes: tuple[FindingChange, ...] = ()
+    risks: tuple[ChangeRisk, ...] = ()
     limitations: tuple[Limitation, ...] = ()
     evidence: tuple[EvidenceRef, ...] = ()
 
@@ -341,6 +368,9 @@ class ChangeReport(ContractModel):
             raise ValueError("a propagated impact refers to an unknown change")
         if any(set(item.change_ids) - changes for item in self.possible_entries):
             raise ValueError("a possible entry refers to an unknown change")
+        _unique((item.risk_id for item in self.risks), "risk_id values")
+        if any(set(item.change_ids) - changes for item in self.risks):
+            raise ValueError("a risk refers to an unknown change")
         self._check_evidence()
         if self.analysis_status == "complete":
             self._check_complete()
@@ -370,6 +400,7 @@ class ChangeReport(ContractModel):
             side = EvidenceSide.base if item.status == "resolved" else EvidenceSide.head
             sided.extend((side, ref) for ref in item.finding.evidence_ids)
         unsided = [ref for item in self.limitations for ref in item.evidence_ids]
+        unsided += [ref for item in self.risks for ref in item.evidence_ids]
         validate_evidence_refs(
             snapshot_id=self.snapshot_id,
             evidence=self.evidence,
@@ -380,16 +411,20 @@ class ChangeReport(ContractModel):
             raise ValueError("evidence is cited on the wrong side of the change")
 
     def owed(self) -> tuple[ChangeItem, ...]:
-        """The changes that have to be explained: on the map, or within reach of a flow.
+        """The changes that have to be explained: on the map, within reach of a flow, or
+        possibly reached through calls that could not be resolved.
 
         A change a flow can get to is not done with because no step covers it yet. It
-        comes onto the map as its flow is described, or it is explained where it is.
+        comes onto the map as its flow is described, or it is explained where it is. Nor
+        is one that looks unreachable only because the calls to it failed to resolve.
         """
         reached = {key for item in self.possibly_affected for key in item.change_ids}
         return tuple(
             item
             for item in self.changes
-            if item.projection.status != ProjectionStatus.unassigned or item.change_id in reached
+            if item.projection.status != ProjectionStatus.unassigned
+            or item.change_id in reached
+            or item.unresolved_calls
         )
 
     def _check_complete(self) -> None:

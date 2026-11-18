@@ -154,10 +154,11 @@ def test_prepare_lists_every_change_without_any_agent_work(source_repo):
         ("docs/guide.md", "modified")
     ]
     assert [flow.entries[0].attributes["path"] for flow in report.removed_flows] == ["/version"]
+    # With no plan, the skeleton flows under the changes are said but block nothing.
     limits = {item.code: item.affects_completeness for item in report.limitations}
     assert limits == {
         "changed_files_outside_languages": False,
-        "affected_flow_not_synthesized": True,
+        "affected_flow_not_synthesized": False,
         "no_execution_data": False,
     }
 
@@ -369,9 +370,10 @@ def test_removed_code_that_moved_keeps_the_tests_of_the_function_it_left(source_
     # The check went into another function. The removal is still judged where it was:
     # only the tests that run `export_rows` are about it.
     assert linked(by_kind(report, "condition_removed")) == ["test_export_keeps_values"]
+    # The test added with the new function comes first.
     assert linked(by_kind(report, "symbol_added")) == [
-        "test_export_keeps_values",
         "test_present_drops_missing_values",
+        "test_export_keeps_values",
     ]
 
 
@@ -535,7 +537,11 @@ def test_the_change_task_takes_explanations_and_checks_verdicts(change):
     assert item.explanation.short_summary == "保留完整说明的短文案"
     assert item.tests.verdict == "reached_only"
     assert item.tests.basis == ("static_fact", "agent_assessment")
-    assert [case.test_id for case in item.tests.items] == [SUBMIT_TEST]
+    # The named test comes first; the other static link stays after it.
+    assert [(case.test_id, "assessed" in case.tags) for case in item.tests.items] == [
+        (SUBMIT_TEST, True),
+        (SMOKE_TEST, False),
+    ]
     gone = by_kind(final, "call_removed", "#approve_report")
     # Nothing static supports it, so the basis is the agent's assessment alone.
     assert gone.tests.verdict == "not_reached" and gone.tests.items == ()
@@ -556,7 +562,7 @@ def test_the_change_task_takes_explanations_and_checks_verdicts(change):
     assert change.submit(CHANGE_TASK, {"changes": [named]})["status"] == "accepted"
     gone = by_kind(change.stored_report(), "call_removed", "#approve_report")
     assert gone.tests.verdict == "covered" and gone.tests.basis == ("agent_assessment",)
-    assert gone.tests.items[0].tags == ("agent_identified", "assertion_found")
+    assert gone.tests.items[0].tags == ("agent_identified", "assessed", "assertion_found")
     assert gone.explanation.effect == "状态直接变为 approved。"
     # Earlier assessments of other changes are kept.
     assert by_kind(change.stored_report(), "loop_added").explanation is not None
@@ -712,12 +718,12 @@ def test_cli_runs_a_change_session_end_to_end(source_repo, tmp_path, monkeypatch
     )
     assert "## Removed flows" in summary and "(tests: reached only)" in summary
     assert "## Changes not on the map\n\n- symbol removed in expense/api.py#version" in summary
-    assert "  - This code is not reachable from any entry on the map." in summary
+    assert "  - No entry on the map reaches this code through calls static analysis" in summary
     assert "- Compared base (" in summary and ") with HEAD (" in summary
     assert "    - tests: " + SUBMIT_TEST in summary and "    - 测试只用了 50 和 500" in summary
     assert "    - placement: This step's code refers to `THRESHOLD`" in summary
     assert "- 提交报销 (7 steps, synthesized, changed)" in summary
-    assert "covered: a test takes the changed path" in summary
+    assert "covered: a test runs the change and would fail if the change were undone" in summary
     assert "Compared base (" in page and "1 changed file outside the supported languages" in page
     # The changes come before the map they are placed on.
     assert summary.index("## Changes on") < summary.index("# Map") < summary.index("## 报销")
@@ -749,12 +755,23 @@ def test_the_change_example_in_the_bundled_skill_is_accepted(change):
     from importlib.resources import files
 
     text = files("genesis_ci").joinpath("assets/skills/genesis/SKILL.md").read_text()
-    example = json.loads(re.findall(r"```json\n(.*?)```", text, re.S)[2])
-    result = change.submit(CHANGE_TASK, example)
-    assert result["status"] == "accepted" and result["assessed"] == 2, result
+    explained, risks = [
+        json.loads(block) for block in re.findall(r"```json\n(.*?)```", text, re.S)[2:4]
+    ]
+    result = change.submit(CHANGE_TASK, explained)
+    # One of the explanations covers two changes.
+    assert result["status"] == "accepted" and result["assessed"] == 4, result
     report = change.stored_report()
     assert by_kind(report, "condition_modified").tests.verdict == "reached_only"
     assert by_kind(report, "call_removed", "#approve_report").tests.verdict == "not_reached"
+    cleanup = by_kind(report, "call_removed", "#nightly_cleanup").explanation
+    assert cleanup == by_kind(report, "symbol_removed", "#archive_reports").explanation
+    # The risks come in a submission of their own, and the report keeps them apart.
+    result = change.submit(CHANGE_TASK, risks)
+    assert result["status"] == "accepted" and "evidence_moved" not in result, result
+    assert result["risks"] == 1 and change.stored_report().risks[0].change_ids == (
+        by_kind(report, "condition_modified").change_id,
+    )
 
 
 def test_swapping_the_two_branches_of_a_condition_is_a_change(source_repo):
@@ -1085,8 +1102,8 @@ def test_the_change_task_says_what_to_read_and_how_to_judge_removed_code(change)
     assert "do not copy the verdict" in rules
     # Also when another function now does what the removed code did.
     assert "the input still has to go through the function the code was removed from" in rules
-    # One source change that sets several values is covered only when each is asserted on.
-    assert "When tests assert on only some, use reached_only" in rules
+    # One source change that sets several values is covered only when each would be missed.
+    assert "for each value, a test that would fail if that value were undone" in rules
 
 
 def test_a_copy_of_an_assignment_added_or_removed_is_listed(source_repo):

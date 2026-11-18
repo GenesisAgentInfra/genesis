@@ -24,7 +24,13 @@ from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, S
 from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet, Language
 from genesis_contracts.fingerprint import fact_fingerprint
-from genesis_contracts.map_tasks import EvidenceCite, FlowSubmission, MapPlan, SkipReason
+from genesis_contracts.map_tasks import (
+    ChangeSubmission,
+    EvidenceCite,
+    FlowSubmission,
+    MapPlan,
+    SkipReason,
+)
 from genesis_contracts.models import EvidenceRef, EvidenceSide, ReferenceRange
 from pydantic import ValidationError
 
@@ -301,9 +307,26 @@ class Workspace:
     def _submit_change(self, raw) -> dict:
         """Check explanations and coverage verdicts for changes; all or nothing."""
         folder = self.root / "changes"
+        risks, moved = {}, []
         try:
             accepted, found = self.changes.check(raw)
             problems = [_problem(*item) for item in found]
+            for index, risk in enumerate(ChangeSubmission.model_validate(raw).risks):
+                evidence = self._cite(risk.evidence, f"risks[{index}].evidence", problems, moved)
+                changes = sorted(risk.change_ids)
+                key = (
+                    "risk_"
+                    + hashlib.sha256(
+                        "\n".join([risk.statement, *changes]).encode("utf-8")
+                    ).hexdigest()[:16]
+                )
+                risks[key] = {
+                    "statement": risk.statement,
+                    "severity": risk.severity.value,
+                    **({"category": risk.category.value} if risk.category else {}),
+                    "change_ids": list(risk.change_ids),
+                    "evidence_ids": evidence,
+                }
         except ValidationError as error:
             accepted, problems = {}, _pydantic_problems(error)
         if problems:
@@ -320,18 +343,32 @@ class Workspace:
                 "accepted_version_kept": True,
                 "errors": problems,
             }
+        # Submissions add up: an assessment replaces the one of the same change, and a
+        # risk with the same statement about the same changes replaces the earlier one.
+        stored = {**self.changes.risks(), **risks}
         write_json(
             folder / "accepted.json",
-            {"assessments": {**self.changes.assessments(), **accepted}},
+            {"assessments": {**self.changes.assessments(), **accepted}, "risks": stored},
         )
         report = self.refresh_change()
-        return {
+        progress = self._change_progress(report)
+        result = {
             "task_id": CHANGE_TASK,
             "status": "accepted",
             "assessed": len(accepted),
-            **self._change_progress(report),
+            "risks": len(stored),
+            **progress,
+            **({"evidence_moved": moved} if moved else {}),
             "errors": [],
         }
+        if accepted and progress["changes_waiting"] == 0:
+            # Every owed change is explained: what the risk pass reads next lies outside
+            # the changes, in the code that calls them and the files Genesis did not read.
+            result["read_for_risks"] = {
+                "unchanged_callers": self.changes.unchanged_callers(report),
+                "unanalyzed_changes": [item.path for item in report.unanalyzed_changes],
+            }
+        return result
 
     def _change_progress(self, report: ChangeReport) -> dict:
         placed = [item for item in report.changes if item.projection.status != "unassigned"]
@@ -626,8 +663,16 @@ class Workspace:
             )
         return ref
 
-    def _cite(self, cites: tuple[EvidenceCite, ...], where: str, problems: list) -> list[str]:
-        """Resolve citations against the frozen snapshot; report every one that fails."""
+    def _cite(
+        self, cites: tuple[EvidenceCite, ...], where: str, problems: list, moved=None
+    ) -> list[str]:
+        """Resolve citations against the frozen snapshot; report every one that fails.
+
+        With a `moved` list, a quote that is not in the lines given is looked for in a range
+        of as many lines up to `loop.NEARBY_LINES` away, and the range found is recorded
+        there.
+        Only evidence that decides no anchor is cited this way: a risk or an observation.
+        """
         resolved = []
         for index, cite in enumerate(cites):
             at = f"{where}[{index}]"
@@ -637,7 +682,7 @@ class Workspace:
                 else:
                     resolved.append(cite.evidence_id)
                 continue
-            span = cited_range(self.snapshot.source, cite, at, problems)
+            span = cited_range(self.snapshot.source, cite, at, problems, moved)
             if span is not None:
                 resolved.append(self._register(cite.side, cite.path, span).evidence_id)
         return list(dict.fromkeys(resolved))
@@ -1440,9 +1485,9 @@ class Workspace:
                 }
                 for callee in sorted(hidden)
             ]
-        findings = []
+        findings, moved = [], []
         for index, item in enumerate(submission.observations):
-            evidence = self._cite(item.evidence, f"observations[{index}].evidence", problems)
+            evidence = self._cite(item.evidence, f"observations[{index}].evidence", problems, moved)
             cited.update(evidence)
             finding_id = "find_" + _digest(task["flow_id"] + "\0" + item.statement)
             if evidence:
@@ -1510,6 +1555,8 @@ class Workspace:
         }
         if ignored:
             result["ignored"] = ignored
+        if moved:
+            result["evidence_moved"] = moved
         accepted = self._task_file(task_id, "accepted.json")
         previous = accepted.read_text(encoding="utf-8") if accepted.is_file() else None
         write_json(
@@ -1727,13 +1774,15 @@ class Workspace:
                 }
             }
         if self.plan is None:
+            # Explanations need no plan: with changes waiting, the change task is next.
+            waiting = change and change["change"]["changes_waiting"]
             return {
                 **self.session,
                 "plan": None,
                 **overall,
                 **change,
                 "tasks": [],
-                "next_task": None,
+                "next_task": CHANGE_TASK if waiting else None,
             }
         flows = {flow["key"]: flow for flow in self.plan["plan"].get("flows", [])}
         tasks = []

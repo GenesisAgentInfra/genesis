@@ -23,6 +23,9 @@ CHANGE_TASK = "task_change"
 TOO_WIDE = "flow_too_wide"
 SOURCE_CHARS = 12000
 SEARCH_LIMIT = 40
+# How far a quote cited as evidence for a risk or an observation may sit from the lines
+# given for it. Such a citation decides no anchor, so the nearest match stands in.
+NEARBY_LINES = 5
 
 
 class LoopError(ValueError):
@@ -39,6 +42,7 @@ def problem(path: str, code: str, message: str) -> dict:
 
 
 _ITEM = re.compile(r"^(steps|edges|omitted|observations|changes)\[(\d+)\]")
+_GROUPED = re.compile(r"^changes\[\d+\]\.change_ids\[(\d+)\]")
 _NAMED_BY = {
     "steps": ("step {}", ("key",)),
     "edges": ("edge {} -> {}", ("source", "target")),
@@ -61,6 +65,12 @@ def named(problems: list[dict], raw, describe=None) -> list[dict]:
         if not isinstance(items, list) or int(found.group(2)) >= len(items):
             continue
         entry = items[int(found.group(2))]
+        grouped = _GROUPED.match(item["path"])
+        ids = entry.get("change_ids") if grouped and isinstance(entry, dict) else None
+        if isinstance(ids, list) and int(grouped.group(1)) < len(ids):
+            # One explanation of several changes: name the change the problem is about.
+            item["item"] = f"change {ids[int(grouped.group(1))]}"
+            continue
         wording, fields = _NAMED_BY[found.group(1)]
         values = [entry.get(field) for field in fields] if isinstance(entry, dict) else []
         if values and all(isinstance(value, str) for value in values):
@@ -90,8 +100,32 @@ def pydantic_problems(error: ValidationError) -> list[dict]:
     ]
 
 
-def cited_range(source, cite: EvidenceCite, at: str, problems: list) -> ReferenceRange | None:
-    """The range a path-and-quote citation names, once the frozen source confirms it."""
+def _near(text: str, span: ReferenceRange, quote: str) -> ReferenceRange | None:
+    """The range of as many lines nearest to `span` that holds `quote`, earlier first."""
+    for distance in range(1, NEARBY_LINES + 1):
+        for shift in (-distance, distance):
+            if span.start_line + shift < 1:
+                continue
+            found = ReferenceRange(
+                start_line=span.start_line + shift, end_line=span.end_line + shift
+            )
+            try:
+                if quote in slice_source(text, found):
+                    return found
+            except ValueError:
+                continue
+    return None
+
+
+def cited_range(
+    source, cite: EvidenceCite, at: str, problems: list, moved: list | None = None
+) -> ReferenceRange | None:
+    """The range a path-and-quote citation names, once the frozen source confirms it.
+
+    With a `moved` list, a quote that is not in the lines given is looked for in a range
+    of as many lines up to `NEARBY_LINES` away; the range found stands in and is recorded
+    there. Pass one only for evidence that decides no anchor: a risk or an observation.
+    """
     if cite.side != HEAD:
         problems.append(problem(at, "wrong_side", "Only head-side source can be cited here."))
         return None
@@ -101,12 +135,16 @@ def cited_range(source, cite: EvidenceCite, at: str, problems: list) -> Referenc
         )
         return None
     span = ReferenceRange(start_line=cite.start_line, end_line=cite.end_line)
+    whole = source.read_text(cite.side, cite.path)
     try:
-        text = slice_source(source.read_text(cite.side, cite.path), span)
+        text = slice_source(whole, span)
     except ValueError:
         problems.append(problem(at, "range_out_of_bounds", "The line range is outside the file."))
         return None
-    if cite.quote not in text:
+    if cite.quote in text:
+        return span
+    found = None if moved is None else _near(whole, span, cite.quote)
+    if found is None:
         problems.append(
             problem(
                 at,
@@ -115,7 +153,14 @@ def cited_range(source, cite: EvidenceCite, at: str, problems: list) -> Referenc
             )
         )
         return None
-    return span
+    moved.append(
+        {
+            "path": at,
+            "cited": [span.start_line, span.end_line],
+            "found": [found.start_line, found.end_line],
+        }
+    )
+    return found
 
 
 def search_source(source, text: str, register) -> dict:

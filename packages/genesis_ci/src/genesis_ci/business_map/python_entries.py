@@ -7,9 +7,12 @@ guard marks the functions it calls. The root heuristic lists public functions no
 code outside the tests is seen to call; it is deliberately broad and is never
 treated as a confirmed entry.
 
-Recognition is by the shape of the source only. Routers registered by a call such
-as `app.add_api_route(...)`, tables of functions, and decorators a project defines
-for its own registry are not detected.
+Recognition is by the shape of the source only. A framework decorator called on a
+function, as in `mcp.tool(name="search")(search)`, counts like the decorator, and so
+does an argparse subcommand handler set with `set_defaults(func=...)` on a parser from
+`add_parser("name")`. Routers registered by a call such as `app.add_api_route(...)`,
+tables of functions, and decorators a project defines for its own registry are not
+detected.
 """
 
 from __future__ import annotations
@@ -281,6 +284,90 @@ def _registered(extraction: Extraction, by_symbol: dict, facts: list[CodeFact]):
                         )
 
 
+def _functions(extraction: Extraction, by_symbol: dict, value, side, path) -> list:
+    """The functions of this code base a plain reference names, or none."""
+    if value.kind not in {"name", "attribute"}:
+        return []
+    targets = extraction.resolver.resolve(value, side, path).targets
+    found = [by_symbol.get((side, item)) for item in targets]
+    if not found or any(item is None or item.kind != "function" for item in found):
+        return []
+    return found
+
+
+def _subcommand(value) -> str | None:
+    """The name `sub.add_parser("name", ...)` gives a subcommand."""
+    if value.kind != "call" or not value.children:
+        return None
+    callee = value.children[0]
+    if callee.kind != "attribute" or callee.attribute != "add_parser":
+        return None
+    return _literal(value.arguments, {None})
+
+
+def _called_registrations(extraction: Extraction, by_symbol: dict, catalog: dict, imports: dict):
+    """Entries registered by a call: (symbol, kind, framework, attributes, evidence).
+
+    A decorator can be called on a function instead of written above it:
+    `mcp.tool(name="search")(search)` is classified as the decorator would be. An
+    argparse handler is registered with `p.set_defaults(func=handler)`, where `p` came
+    from `sub.add_parser("name")`: the last value given to `p` before that line, in the
+    same definition, has to be such a parser.
+    """
+
+    def line(evidence_ids) -> int:
+        ref = catalog.get(evidence_ids[0]) if evidence_ids else None
+        return ref.range.start_line if ref is not None else 0
+
+    for (side, path), file in sorted(
+        extraction.files.items(), key=lambda item: (item[0][0].value, item[0][1])
+    ):
+        if _is_test_path(path):
+            continue
+        imported = imports.get((side, path), set())
+        parsers: dict[tuple[str, str], list[tuple[int, str | None]]] = {}
+        for binding in file.bindings:
+            if binding.target.kind == "name":
+                parsers.setdefault((binding.symbol_id, binding.target.text), []).append(
+                    (line(binding.evidence_ids), _subcommand(binding.value))
+                )
+        for call in file.calls:
+            callee = call.callee
+            if callee.kind == "call" and callee.children:
+                match = _classify(callee, imported)
+                if match is None:
+                    continue
+                kind, framework, attributes = match
+                for argument in call.arguments:
+                    if argument.name is None and not argument.spread:
+                        for symbol in _functions(extraction, by_symbol, argument.value, side, path):
+                            yield symbol, kind, framework, attributes, call.evidence_ids
+                continue
+            if callee.kind != "attribute" or callee.attribute != "set_defaults":
+                continue
+            handler = next((item for item in call.arguments if item.name == "func"), None)
+            if handler is None or not callee.children:
+                continue
+            holder = callee.children[0]
+            command = _subcommand(holder)
+            if command is None and holder.kind == "name":
+                at = line(call.evidence_ids)
+                earlier = [
+                    item for item in parsers.get((call.symbol_id, holder.text), ()) if item[0] < at
+                ]
+                command = max(earlier, key=lambda item: item[0])[1] if earlier else None
+            if command is None:
+                continue
+            for symbol in _functions(extraction, by_symbol, handler.value, side, path):
+                yield (
+                    symbol,
+                    EntryKind.cli_command,
+                    "argparse",
+                    {"command": command},
+                    (call.evidence_ids),
+                )
+
+
 def detect_python_entries(
     extraction: Extraction, symbols: tuple[CodeSymbol, ...], facts: list[CodeFact]
 ) -> tuple[list[CodeEntry], dict]:
@@ -339,6 +426,11 @@ def detect_python_entries(
 
     for symbol, attributes, evidence in _registered(extraction, by_symbol, facts):
         add(symbol, EntryKind.handler, EntryDetection.adapter, None, attributes, evidence)
+
+    for symbol, kind, framework, attributes, evidence in _called_registrations(
+        extraction, by_symbol, catalog, imports
+    ):
+        add(symbol, kind, EntryDetection.adapter, framework, attributes, evidence)
 
     guards = {
         (fact.side, fact.fingerprint)

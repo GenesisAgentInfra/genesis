@@ -1,6 +1,6 @@
 ---
 name: genesis
-description: Map the business flows of a codebase with Genesis, backed by code evidence, and show what a change does to them. Use when the user wants to understand what a project does as business flows, asks for a business flow map or diagram that product and engineering can both read, asks what a branch, commit range or uncommitted change alters in business terms, asks whether existing tests cover a change, asks to update or continue such a map, or asks about an existing Genesis map. Match the intent in any language, not exact keywords. Explain an existing map from its files without starting a new analysis.
+description: Show what a code change in a Python codebase does, and map its business flows, with Genesis, backed by code evidence. Use when the user asks what a commit, pull request, branch, commit range or uncommitted change does or affects, whether it could break something or is safe to merge or release, which business flows or entry points it reaches, or whether tests cover it, for example when reviewing a change before pushing, merging or releasing. Also use it when the user wants to understand what a project does as business flows, asks for a business flow map or diagram that product and engineering can both read, asks to update or continue such a map, or asks about an existing Genesis map. Match the intent in any language, not exact keywords.
 ---
 
 # Genesis business map
@@ -12,8 +12,8 @@ QA can read together. The work is split in two:
   facts, finds entry points, checks everything you submit, and renders the result.
   It calls no model and no service.
 - **You** read the code and say what it means in business terms. You never write the
-  map yourself: you submit a plan and one description per flow, and the CLI accepts
-  or rejects each as a whole.
+  map yourself: you submit a plan and one description per flow, or, for a change, one
+  explanation per change, and the CLI accepts or rejects each submission as a whole.
 
 The map describes what the code currently does. It is not a statement that the code
 meets a requirement, that a test passed, or that a path was executed. Never present
@@ -26,11 +26,42 @@ The user asks for one of two things. `/genesis map` and `/genesis review` (`$gen
 map` and `$genesis review` in Codex) name them outright; otherwise tell them apart by
 what the user says.
 
+- **review REV**: what a commit, pull request, branch or uncommitted work does or could
+  break, which entry points or flows it reaches, whether tests cover it, what its risks
+  are. Without a revision, compare with the one the branch started from; for
+  uncommitted work that is `HEAD`. Run `version` as in "Locate the CLI" below, then go
+  to section 5 and take its short path. It needs no full map: it takes a handful of
+  commands, and you describe flows only where that pays off. Even a small change takes
+  the short path, as long as a changed file is in a language Genesis reads: Python, or
+  the project's main language when that is not Python (see below). When none is,
+  Genesis has nothing to add, so say so and answer from the diff yourself.
 - **map**: draw the system as it is now, so that someone can understand it. Sections 1
   to 4. Nothing is compared and no change is reported.
-- **review REV**: what changed since a revision, where it lands in the flows and whether
-  tests cover it. Section 5. Without a revision, compare with the one the branch
-  started from; for uncommitted work that is `HEAD`.
+
+A question about an existing map: see "Later requests" at the end.
+
+Genesis does not import or run the project's code, installs nothing, never needs the
+project's dependencies and does not use the network. `prepare` reads files and Git
+objects; with `--head` nothing is checked out. It writes its results under `.genesis/`
+in the repository. If `prepare` fails with "Operation not permitted" or "Read-only
+file system", the sandbox does not let it write there: tell the user that Genesis
+needs write access to `.genesis/`, and do not present your own reading as a Genesis
+result. After a review, mention that `.genesis/` now exists.
+
+Hand `plan` and `submit` their JSON on standard input with `--input -` and a quoted
+heredoc, so that no file is needed:
+
+```
+genesis map submit --repo /absolute/app --session SESSION_ID --task task_change --input - <<'EOF'
+{"changes": [...]}
+EOF
+```
+
+A file works too: write it into the scratchpad or temporary directory your environment
+names and pass its absolute path. Do not use a fixed path, such as one in `/tmp`, or a
+directory next to the repository: a sandbox may let you write only into the
+repository and the temporary directory it gives you. Long output, such as that of
+`diff`, can go straight into `jq` or Python instead of into a file.
 
 ## What is supported today
 
@@ -42,9 +73,14 @@ what the user says.
   `other-languages.md` next to this skill and follow it instead of sections 2, 3 and 5.
   For a project whose main language is not Python but which has some Python files, run
   `map prepare` with `--engine agent`; otherwise only the Python files are mapped.
+- On a repository with no source file Genesis can read, `map prepare` fails with
+  `unsupported_repository`. For a map request, tell the user what it reported and stop.
+  For a question about a change, say that Genesis could not analyze this repository,
+  then answer from your own reading of the diff and mark it as such.
 - A full map of the current code.
-- The changes since a revision, placed on the steps of that map, with an assessment of
-  whether existing tests cover each one (section 5).
+- The changes since a revision, each explained with whether existing tests cover it,
+  and placed on the steps of the map, or of its static skeleton when no flow is
+  described (section 5).
 - Two pages show the result. `view.html` is the one for the user: it draws each flow
   you described as a diagram of steps and arrows, and needs a browser that runs
   scripts. Its fixed labels exist in Chinese and English only, and the page picks
@@ -194,8 +230,11 @@ The plan can be submitted again when flows should merge or split; a flow whose e
 did not change keeps its accepted description.
 
 Now tell the user the scope before the long part: how many entries were found, how
-many flows you are about to describe, and what you skipped. If there are many flows,
-propose starting with the area the user cares about.
+many flows you are about to describe, and what you skipped. When the user named an area,
+start with it. When there are many flows and the user named none, describe the primary
+flows first, render and report, then offer to do the supporting ones. If you cannot
+describe every flow now, render after the ones you did and say which are still open;
+running `prepare` again resumes the session.
 
 ## 3. Describe each flow
 
@@ -522,13 +561,122 @@ Changing code or tests needs its own request from the user.
 
 ## 5. Changes since a revision
 
-Use this when the user asks what a branch, a commit range or their uncommitted work
-changes, where a change lands in the business flows, or whether tests cover it.
+Use this when the user asks what a commit, a pull request, a branch, a commit range or
+their uncommitted work changes or could break, which entry points or flows it reaches,
+whether tests cover it, or what its risks are.
+
+### The short path
 
 ```
-genesis map prepare --repo /absolute/app --base main
+genesis map prepare --repo /absolute/app --base MERGE_BASE --head HEAD
 genesis map diff    --repo /absolute/app --session SESSION_ID
+genesis map context --repo /absolute/app --session SESSION_ID --task task_change
+genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change --input -
+genesis map render  --repo /absolute/app --session SESSION_ID
 ```
+
+1. `prepare`, with `--base` where the change starts and `--head` where it ends:
+   - one commit: `--base COMMIT~1 --head COMMIT` (write `~1`, since zsh may read `^` as a
+     pattern); a commit with no parent cannot be compared this way;
+   - a commit range `A..B`: `--base A --head B`;
+   - a branch or a pull request: `--head` the branch or `HEAD`, and as `--base` the
+     commit `git merge-base main HEAD` prints, with the base branch of the pull request
+     in place of `main` (or `origin/main` when there is no local `main`). `--base main`
+     alone would also report what `main` gained since the branch started, as changes
+     undone. A pull request that is not in the local repository has to be fetched
+     first, for example with `git fetch origin pull/N/head` and `--head FETCH_HEAD`;
+     Genesis does not fetch;
+   - uncommitted work: `--base HEAD` and no `--head`. When `git status -s` shows
+     new files (`??`) that belong to the change, add `--include-untracked`: untracked
+     files are otherwise left out; `prepare` counts them under `untracked_left_out`
+     and the report names them.
+
+   Running `prepare` again on the same revisions keeps your accepted explanations and
+   reports `"resumed": true`. When it reports `"engine": "agent"`, the project is not
+   Python: continue in `other-languages.md`.
+2. `diff` lists every change, where each sits, the tests static analysis links to it,
+   and the flows (`possibly_affected`) and candidate entries (`possible_entries`) that
+   reach it. Its output can be long: pipe it into `jq` or Python, or write it to a file
+   in your temporary directory, and read it in parts, for example with
+   `jq '.changes[] | {change_id, kind, symbol_id, placement}'`. `possibly_affected`, `possible_entries` and
+   `unanalyzed_changes` are top-level keys. Check each candidate in `possible_entries`
+   by reading its code: name a real way in as an entry point of its changes, as your
+   reading, and say which candidates you could not check. Record them in a plan
+   (proposed, or skipped as `not_an_entry`) only when you also place changes on flows.
+3. Explain what the CLI owes, and only that. `context --task task_change` lists first
+   the changes that need an explanation, 30 at a time, with both sides and their
+   tests: those on the map, those a flow reaches, and those calls that failed to
+   resolve may reach (`unresolved_calls`). `changes_waiting` counts them. Read them,
+   decide each verdict, and `submit` your explanations ("Explaining the changes"
+   below). Changes that are parts of one change in behaviour take one explanation that
+   lists them all in `change_ids`. Ask for the context again until `changes_waiting`
+   is 0; `status` offers `task_change` as `next_task` while any wait. Do not write
+   explanations for the rest, such as changes to tests and import lines no entry
+   reaches: the report lists them anyway, and the time is better spent on step 4. When
+   the user asked nothing about tests, you may leave `verdict` out and keep the static
+   result.
+4. Read for risks, as a pass of its own, once the explanations are accepted and before
+   you render. The explanations say what changed; this pass asks what goes wrong, in
+   which situation, and for whom. It is what a reviewer reads first. It is a reading
+   pass: a list written from what you noticed while explaining misses most of what a
+   review finds, so open the code below before you write a risk. The result that
+   accepts the last explanations holds `read_for_risks`, and the context lists the same
+   callers under `unchanged_callers`. Read in this order:
+   - **The callers outside the changes** (`unchanged_callers`): for each changed
+     function, the code that calls it and is not part of the change. Read each one:
+     what it does with the new result, error, value or delay, and what its own callers
+     and users then see. A caller with a `loop` runs the changed code once per item:
+     time, requests, log lines and scans add up with the number of items.
+   - **The changed files Genesis did not analyze** (`unanalyzed_changes`):
+     documentation, example configuration, prompts and skill files. Do what each tells
+     a user or an agent to do, as written: copy the example values as they are, follow
+     a skill's steps with the flags it gives, and see what the new code does with that.
+   - **Inputs.** For new or changed code that parses, matches, filters, validates or
+     formats, list the inputs it may get wrong: empty or missing values, case and
+     encoding, nesting, escapes and the other forms the same syntax allows, very large
+     inputs, and the forms the docs, the tests or the neighbouring code accept. Follow
+     each through the code. Where a function runs on its own without side effects, try
+     the inputs you suspect from a small script in your temporary directory.
+   - **The same input, before and after.** For every existing caller, user or stored
+     output of the changed code, what does the input it already sends give now: a
+     different value, type, format, order or id; an error where there was a result, or
+     the reverse; a delay; a log line, message or metric that now means something
+     else. Ids, keys, names, orderings and numbers that users or files have kept from
+     before (snapshots, ledgers, caches, exports, stored results) break when an
+     unchanged input now gives a different one. `lands_on` in the context shows where
+     a new `break`, `continue` or `return` goes.
+   - **Size.** How the cost grows with the input: a scan over every item for each item,
+     a file read or a request per call, everything held in memory before the first
+     result comes out.
+   - **Failures.** What happens when a service, file or call the code relies on fails,
+     is slow, or answers with success but carries an error or an unexpected shape, and
+     what the caller then sees.
+   - **Reach.** What the changed code now runs, reads or sends that it did not before:
+     programs started from configuration, paths built from input, data that leaves the
+     machine. Check that disabled entries, untrusted folders and secrets stay out.
+   - **Other readers.** Code that reads the same value, setting, file or record, and
+     whether two readers now disagree.
+
+   Not a risk on its own: a gap in the tests (it goes in the verdict's `note`); a
+   failure that needs code nobody has written yet; behaviour the change did not touch,
+   unless it now happens more often or matters more; what the change sets out to do,
+   for the inputs it is meant for. The same behaviour reaching inputs it was not meant
+   for is a risk. A risk names the input or situation, what goes wrong, and for whom.
+   Submit every risk you confirm as `risks`, in a submission of its own ("Explaining
+   the changes" below).
+5. `render`. Once every owed change is explained it exits 0 with `change_status:
+   complete`. When you described no flows, `affected_flow_not_synthesized` stays among
+   the limitations: it says that no flow was described and does not keep the report
+   from being complete. Then report as the end of this section says.
+
+The CLI takes explanations at any point of a change session: no plan and no flow
+description has to come first. Describe flows, as set out under "Placing changes on
+flows", only when the user wants to see the changes in the business flows, or when
+`diff` lists for a change neither a flow under `possibly_affected` nor a candidate
+under `possible_entries`. An `unassigned` change that a flow reaches already has its
+way in: explain it where it is.
+
+### What `prepare` and `diff` return
 
 `--base REV` compares that revision with the working tree, or with `--head REV`. The
 result of `prepare` adds `changes`, `changes_placed`, `change_status` and
@@ -537,8 +685,10 @@ shows it before you do anything; rendering at this point is optional and gives t
 same list on the static structure.
 
 In `diff` and `status`, `changes_placed` counts the changes with a place on the map.
-`changes_waiting` counts the changes you have not explained yet, on the map or only
-within reach of a flow. Describing flows raises `changes_placed` and does not lower
+`changes_waiting` counts the changes you have not explained yet that the report needs:
+on the map, within reach of a flow, or possibly reached through calls that failed to
+resolve. `changes_unexplained` in the context counts every change without an
+explanation. Describing flows raises `changes_placed` and does not lower
 `changes_waiting`: that one goes down as `task_change` accepts explanations.
 
 - `changes` has one entry per changed condition, call, loop, result or definition, and
@@ -548,21 +698,194 @@ within reach of a flow. Describing flows raises `changes_placed` and does not lo
   `evidence_id`; a side with `"excerpt": true` shows less than the lines it cites.
 - `placement` is the step of the current map a change belongs to. Without a `reason`,
   a step rests on the changed code itself. A `reason` says how the place was chosen
-  otherwise. An `unassigned` change has no place on the map; report it as such.
+  otherwise. An `unassigned` change has no place on the map, and its `reason` says
+  whether a flow reaches it, whether calls that failed to resolve may reach it
+  (`unresolved_calls`), or that no entry reaches it through resolved calls. The last
+  is not proof that nothing does.
 - `tests` is what the test sources alone show. A test is linked when it calls the
   changed function, directly or through other calls, or requests a route that leads to
   it with an HTTP test client. `reached_only` at this point means only that; `unknown`
-  means no such test was found.
+  means no such test was found. The linked tests come most relevant first: those this
+  change adds or edits (`changed_with_it`), then by `calls_away` (1: the test calls
+  the changed function itself). A handler registered with
+  `set_defaults(func=...)` on an argparse subcommand is linked only to tests whose
+  strings name that subcommand. Static analysis does not follow pytest fixtures,
+  `subprocess` runs of the program, decorators that call a function later, property
+  reads, or chains longer than five calls: look for such tests yourself.
 - `possibly_affected` lists flows that can reach changed code without a step on it;
   `removed_flows` the entries that no longer exist; `unanalyzed_changes` the changed
-  files Genesis did not analyze, such as other languages. Mention all three.
+  files Genesis did not analyze, such as other languages. Mention those that are not
+  empty. A changed document or skill file can describe or drive the changed code:
+  read it against the Python change.
+- `limitations` says what the analysis could not do. `unresolved_local_calls` means
+  calls into the code base's own modules failed to resolve: changes that look
+  unreachable may be reached, and their tests may not be linked.
 - `closest_flow` says where to describe changed code that no flow has expanded yet
   (see below).
 - `possible_entries` lists functions no code calls that lead to the changed code and
   start no flow. Each has its `entry_id`, its `symbol_id` and the `change_ids` it
   leads to. They are checked below, not reported as they are.
 
-Bring the changes onto the map before you report them as off it. A change listed under
+### Explaining the changes
+
+Explain the changes with `task_change`, whether or not you described flows. `status`
+offers it as `next_task` while changes wait for an explanation.
+
+```
+genesis map context --repo /absolute/app --session SESSION_ID --task task_change
+```
+
+It returns up to 30 changes, those that still need an explanation first. Each one carries the
+frozen text of both sides under `before` and `after`: read both, read the tests listed
+for it, and search for tests that reach it another way. A side marked
+`"excerpt": true` is shorter than its lines: an added or removed definition shows
+its header only, a long block is cut at 800 characters, and a statement written over
+several lines is shown on one. Read such a side in full with
+`genesis map read --evidence <id>`; any other side already is the full text. For the
+code around a change, read the files at the two revisions of the session, or a diff
+between them.
+When the head side is the working tree, the files may have changed since `prepare`:
+check what you quote against the frozen text. A linked test may still not reach the
+change, for example when it replaces the changed function with a stub. Then submit:
+
+```json
+{
+  "changes": [
+    {"change_id": "chg_9603691aeade3d47",
+     "summary": "The review threshold now includes the boundary amount.",
+     "effect": "A report of exactly the threshold amount goes to model review instead of being approved at once.",
+     "verdict": "reached_only",
+     "note": "The test submits 50 and 500 and accepts either status, so the boundary amount is never exercised.",
+     "test_ids": ["head::tests/test_submit.py#test_submit_report_status"]},
+    {"change_id": "chg_f1c02c12d9463145",
+     "summary": "Approval no longer records the intermediate reviewed status.",
+     "verdict": "not_reached",
+     "note": "No test calls the approval route or approve_report."},
+    {"change_ids": ["chg_03a420c71b4e228d", "chg_da88254492c7c41b"],
+     "summary": "The nightly cleanup no longer archives the reports before it clears them.",
+     "verdict": "not_reached",
+     "note": "No test calls nightly_cleanup."}
+  ]
+}
+```
+
+```
+genesis map submit --repo /absolute/app --session SESSION_ID --task task_change --input - <<'EOF'
+...
+EOF
+```
+
+After the risk pass of step 4, submit the risks on their own:
+
+```json
+{
+  "risks": [
+    {"statement": "A report of exactly the threshold amount now goes to model review, so while the model service is slow or down its submission waits on that call instead of being approved at once.",
+     "severity": "medium",
+     "category": "reliability",
+     "change_ids": ["chg_9603691aeade3d47"],
+     "evidence": [{"path": "expense/api.py", "start_line": 14, "end_line": 14,
+                   "quote": "verdict = await review_with_model(report)"}]}
+  ]
+}
+```
+
+- `summary` says in business terms what is different, and `effect` what it means for the
+  flow. Do not describe the line edit. Write both in the user's language.
+- Add `short_summary` for the map card: one short clause (up to 120 characters), preserving
+  the triggering condition and consequence. Keep the complete explanation in `summary`
+  and `effect`; do not omit qualifications to make an uncertain claim sound definite.
+- `verdict` is your reading of the tests, and it answers one question: would a test
+  fail if this change were undone? `covered`: a test runs the changed code and would
+  fail if the change were undone; name it in `test_ids`. `reached_only`: tests run the
+  code but would not fail if the change were undone, because their input misses the
+  changed path or they check nothing it affects; `note` says what is missing.
+  `not_reached`: no test reaches it. `unknown`: you could not tell; `note` says why.
+  Every verdict needs a `note`. Leave `verdict` out to keep the static result, which
+  the report shows as "called by tests, not assessed".
+- A statement that runs on every call, such as an added `add_argument` or an
+  assignment, is `covered` by a test that runs the code and would fail without it.
+  An input value no test uses is not a missed path.
+- An added definition (`symbol_added`) is one change, so judge it as a whole:
+  `covered` when a test runs it and would fail without it. Name the branches no test
+  takes in `note`; they do not make it `reached_only`.
+- A test counts when the project's default test command runs it. Tests skipped by
+  default do not count: a `skip` mark, a `skipif` whose condition holds in a normal
+  run (such as a missing environment variable or credential), a marker the default
+  configuration deselects. Name them in `note` and judge by the other tests. Needing
+  the network or a model download does not by itself exclude a test; you may say so
+  in `note`.
+- For a change that replaces code (both sides present), undoing it puts the `before`
+  side back, so take the test's input through the `before` side too. When the old
+  code gives the same outcome for that input (the same exception, the same value, the
+  same call), the test still passes and does not make the change `covered`. A test
+  that checks only an exception type or a field name often passes on both sides: five
+  validators replaced by a `Literal` type both raise `ValidationError` for an unknown
+  value, so a test that only matches the field name in the error is `reached_only`.
+  `covered` needs a test whose input gets a different outcome on the two sides.
+- A verdict answers only whether a test would fail. What the tests leave unchecked
+  goes in its `note`, not into `risks`.
+- For code that was removed, the changed path is the input the removed code used to
+  handle. `covered`: a test gives such an input and would fail if the removed code
+  were put back. `reached_only`: tests run the function but never with such an input. Code that
+  replaces it is a change of its own: judge each on its own input, and do not copy
+  the verdict from one to the other. The same holds when another function now does
+  what the removed code did: the input still has to go through the function the
+  code was removed from. A test that calls only the other function is a near miss:
+  describe it in `note`.
+- One `source_*` change can hold several values, such as two limits set on
+  neighbouring lines of a function. `covered` needs, for each value, a test that would
+  fail if that value were undone. When only some have one, use `reached_only` and name
+  the others in `note`.
+- `test_ids` names the tests your verdict rests on, as `head::<path>#<function>`, for
+  example `head::tests/test_api.py#test_refund`; a method is `#TestClass.test_name`.
+  The tests static analysis linked stay listed after them. A test static analysis did
+  not link may be named; the report marks it as identified by you. `not_reached` names
+  no tests: describe near misses in `note`.
+- The CLI refuses a verdict the test sources contradict: `covered` with no `test_ids`,
+  or when none of the named tests contains an assertion, `not_reached` when a test
+  calls the changed function itself or requests its route, an unknown `change_id` or
+  test. A refusal changes nothing already accepted.
+- `risks` lists the risks you see in the changes, each with the `change_ids` it comes
+  from and a `severity` of `info`, `low` (the default) or `medium`; there is no
+  `high`, since it is your reading and no rule checked it. `category` is optional:
+  `reliability`, `correctness`, `data_integrity`, `security`, `performance` or
+  `other`. `evidence` may cite code beyond the changed lines that the risk lands on,
+  as flow observations do (`path`, `start_line`, `end_line` and a `quote` from those
+  lines, or an `evidence_id`). When the quote is not on the lines given, the CLI
+  takes the nearest range of as many lines, up to five lines away, that holds it, and
+  says so under `evidence_moved` in the result. The same statement about the same
+  changes replaces the earlier one. The report lists them under "Risks seen in the
+  changes", as your reading.
+- `unchanged_callers` in the context lists, for each changed function, up to three
+  places that call it and are not part of the change, those in a loop first with the
+  loop they run in (`callers_total` counts them all). Calls from tests are left out:
+  they are with each change. Once nothing waits for an explanation, the result of
+  `submit` repeats them under `read_for_risks`, with the changed files Genesis did not
+  analyze. They are where step 4 starts reading.
+- `change_ids` in an explanation lists several changes in place of `change_id`. Each
+  of them is checked and stored as if explained alone; a problem with one of them is
+  reported at its place in the list.
+- An observation you recorded on a flow is shown as `introduced` when its evidence cites
+  code this change added, or when its whole flow is new, and as `persisting` when it
+  cites code the change modified. Cite the changed lines when the risk comes from them.
+- A change to a test (its `kind` starts with `test_`) needs no explanation. If you
+  give one, it takes a `summary` and no `verdict`; with a verdict, the whole
+  submission is refused with `verdict_on_test`.
+- Submissions add up. Ask for the context again until `changes_waiting` is 0. A
+  change that no step covers but a flow can reach counts in `changes_waiting` from
+  the start, so a session is not done because nothing is on the map yet. On the short
+  path, explain such a change where it is and name the flows that reach it; bring it
+  onto the map by describing its flow only when the user wants the flows shown. So
+  does a change that calls which failed to resolve may reach. A change no entry
+  reaches, such as an import line, does not count; the context lists it after the
+  others, and you explain it only when it matters to the user's question.
+
+### Placing changes on flows
+
+Do this when the user wants the changes shown in the business flows, or to settle what
+reaches a change that has no place. Bring the changes onto the map before you report
+them as off it. A change listed under
 `possibly_affected` for a flow sits in a function that flow calls, or hands to a thread
 or a task runner, with no step on it yet. Expand the functions on the way to it by
 anchoring steps inside them; `status` shows `changes_placed` going up as they land.
@@ -623,86 +946,6 @@ counted as not handled, which is expected in a change review, and the map status
 answers for the flows you planned. Plan the rest of the product only when the user
 also asked for the whole map.
 
-When the affected flows are done, `next_task` is `task_change`:
-
-```
-genesis map context --repo /absolute/app --session SESSION_ID --task task_change
-```
-
-It returns up to 30 changes that still need an explanation. Each one carries the
-frozen text of both sides under `before` and `after`: read both, read the tests listed
-for it, and search for tests that reach it another way. A side marked
-`"excerpt": true` is shorter than its lines: an added or removed definition shows
-its header only, a long block is cut at 800 characters, and a statement written over
-several lines is shown on one. Read such a side in full with
-`genesis map read --evidence <id>`; any other side already is the full text. For the
-code around a change, read the files at the two revisions of the session, or a diff
-between them.
-When the head side is the working tree, the files may have changed since `prepare`:
-check what you quote against the frozen text. A linked test may still not reach the
-change, for example when it replaces the changed function with a stub. Then submit:
-
-```json
-{
-  "changes": [
-    {"change_id": "chg_9603691aeade3d47",
-     "summary": "The review threshold now includes the boundary amount.",
-     "effect": "A report of exactly the threshold amount goes to model review instead of being approved at once.",
-     "verdict": "reached_only",
-     "note": "The test submits 50 and 500 and accepts either status, so the boundary amount is never exercised.",
-     "test_ids": ["head::tests/test_submit.py#test_submit_report_status"]},
-    {"change_id": "chg_f1c02c12d9463145",
-     "summary": "Approval no longer records the intermediate reviewed status.",
-     "verdict": "not_reached",
-     "note": "No test calls the approval route or approve_report."}
-  ]
-}
-```
-
-```
-genesis map submit --repo /absolute/app --session SESSION_ID --task task_change --input /absolute/changes.json
-```
-
-- `summary` says in business terms what is different, and `effect` what it means for the
-  flow. Do not describe the line edit. Write both in the user's language.
-- Add `short_summary` for the map card: one short clause (up to 120 characters), preserving
-  the triggering condition and consequence. Keep the complete explanation in `summary`
-  and `effect`; do not omit qualifications to make an uncertain claim sound definite.
-- `verdict` is your reading of the tests. `covered`: a test's input takes the changed
-  path and the test asserts on the result. `reached_only`: tests call the code but miss
-  the changed path or assert nothing about it; `note` says what is missing.
-  `not_reached`: no test reaches it. `unknown`: you could not tell; `note` says why.
-  Every verdict needs a `note`. Leave `verdict` out to keep the static result.
-- For code that was removed, the changed path is the input the removed code used to
-  handle. `covered`: a test gives such an input and asserts on what happens now.
-  `reached_only`: tests run the function but never with such an input. Code that
-  replaces it is a change of its own: judge each on its own input, and do not copy
-  the verdict from one to the other. The same holds when another function now does
-  what the removed code did: the input still has to go through the function the
-  code was removed from. A test that calls only the other function is a near miss:
-  describe it in `note`.
-- One `source_*` change can hold several values, such as two limits set on
-  neighbouring lines of a function. `covered` needs a test that asserts on the
-  effect of each. When tests assert on only some, use `reached_only` and name the
-  others in `note`.
-- `test_ids` names the tests your verdict is about, as `head::<path>#<function>`, for
-  example `head::tests/test_api.py#test_refund`; a method is `#TestClass.test_name`.
-  A test static analysis did not link may be named; the report marks it as identified
-  by you. `not_reached` names no tests: describe near misses in `note`.
-- The CLI refuses a verdict the test sources contradict: `covered` when none of the named
-  tests contains an assertion, `not_reached` when a test calls the changed function
-  itself or requests its route, an unknown `change_id` or test. A refusal changes
-  nothing already accepted.
-- An observation you recorded on a flow is shown as `introduced` when its evidence cites
-  code this change added, or when its whole flow is new, and as `persisting` when it
-  cites code the change modified. Cite the changed lines when the risk comes from them.
-- Submissions add up. Ask for the context again until `changes_waiting` is 0. A
-  change that no step covers but a flow can reach counts in `changes_waiting` from
-  the start, so a session is not done because nothing is on the map yet. Bring such
-  a change onto the map by describing its flow; where that is not worth it, explain
-  it as it is and report it as off the map. A change no entry reaches, such as an
-  import line, may be explained too, but nothing requires it.
-
 Render as in section 4. In a change session both pages are the map with the changes
 on it: each change is shown on the step it belongs to, with your explanation and
 what the tests say about it. `graph.html` also prints both sides of every change,
@@ -711,19 +954,39 @@ after the map. `summary.md` lists the same changes by flow and step, and
 `change-report.json` holds them as data. Exit code 0 means every change on the map is
 explained and assessed, the flows they sit on are described, and every change a flow
 can reach without a step on it is explained. The rest of the map may still be a
-static skeleton.
+static skeleton. On the short path, with no plan, the report is complete once every
+owed change is explained, and `render` exits 0.
 
-Tell the user, in their language: what changed in business terms, flow by flow; for each
+Tell the user, in their language: what changed in business terms, flow by flow, or entry
+by entry when you described no flows; for each
 change whether tests cover it and what is missing; the changes with no place on the map;
 flows that are possibly affected or removed; and the files that were not analyzed. Say
 that no test was run: a verdict is a reading of the test source, by static analysis or by
 you, and never a statement that a test passed. Do not run tests yourself unless the user
 asks for it.
 
+- **Entry points.** For each change, name the entry points that reach it: those of the
+  flow it sits on, of the flows that possibly reach it, and the candidates you
+  confirmed. List the candidates you could not check as such. For a change Genesis
+  places nowhere, find the way in yourself and say that this part is your reading.
+- **Risks.** Genesis has no risk rules: the risks in the report are the ones you
+  submitted in step 4. Give every one of them right after what changed, most serious
+  first, as your own reading, each with the input or situation, what goes wrong and
+  for whom, and the changed lines and the code they land on cited. On a described flow
+  you may also record them as observations.
+- **Limitations.** When `unresolved_local_calls` is among them, say that changes
+  shown as unreachable may be reached through calls Genesis could not resolve.
+- **Verdict words.** Use the user's words when they asked in their own terms. The
+  verdicts read as covered (a test would fail if the change were undone); run by tests
+  that would not fail if it were undone (`reached_only` you assessed); called by tests,
+  not assessed (`reached_only` from static analysis alone, which says nothing about
+  what the tests miss); not reached by any test (`not_reached`); and cannot tell
+  (`unknown`, which from static analysis alone means no linked test was found).
+
 ## Later requests
 
-- **What a branch or a pending change does:** section 5, with `--base` set to the
-  revision it started from.
+- **What a commit, a branch or a pending change does:** section 5, with `--base` and
+  `--head` set as its short path says.
 
 - **A question about an existing map:** read `.genesis/out/latest/summary.md` and
   `business-map.json`, and answer from them. Do not start a new analysis.

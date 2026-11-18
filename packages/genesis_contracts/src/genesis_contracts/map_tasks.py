@@ -37,6 +37,9 @@ from .models import ContractModel, EvidenceSide, Severity, validate_repo_path
 MAX_STEPS = 60
 MAX_EDGES = 150
 MAX_OBSERVATIONS = 8
+MAX_CHANGE_RISKS = 20
+# How many changes one explanation may cover: the parts of one change in behaviour.
+MAX_GROUPED_CHANGES = 50
 
 
 def place(parts) -> str:
@@ -254,14 +257,18 @@ class SubmittedObservation(ContractModel):
 
 
 class ChangeAssessment(ContractModel):
-    """An agent's reading of one change: what it means, and whether tests cover it.
+    """An agent's reading of a change: what it means, and whether tests cover it.
 
-    Leave `verdict` out to keep the static result. A verdict needs a `note` that says
-    what the listed tests do or do not exercise; `test_ids` narrows the related tests to
-    the ones the assessment is about.
+    `change_id` names the change. `change_ids` instead names several changes that are
+    parts of one change in behaviour; each is checked and stored as if explained alone.
+    Leave `verdict` out to keep the static result. A verdict says whether a test would
+    fail if the change were undone, and needs a `note` that says what the tests do or do
+    not exercise. `test_ids` names the tests the verdict rests on; the report keeps the
+    other tests static analysis linked after them.
     """
 
-    change_id: Identifier
+    change_id: Identifier | None = None
+    change_ids: tuple[Identifier, ...] = Field(default=(), max_length=MAX_GROUPED_CHANGES)
     summary: Text
     short_summary: str | None = Field(default=None, min_length=1, max_length=120)
     effect: Text | None = None
@@ -271,6 +278,8 @@ class ChangeAssessment(ContractModel):
 
     @model_validator(mode="after")
     def verdict_is_explained(self) -> ChangeAssessment:
+        if (self.change_id is None) == (not self.change_ids):
+            raise ValueError("name one change in `change_id`, or several in `change_ids`")
         _refuse(_repeated((("test_ids", index), item) for index, item in enumerate(self.test_ids)))
         if self.verdict is not None and not self.note:
             raise ValueError("a coverage verdict needs a note explaining it")
@@ -278,17 +287,43 @@ class ChangeAssessment(ContractModel):
             raise ValueError("test ids belong to a coverage verdict")
         return self
 
+    def places(self) -> tuple[tuple[tuple, str], ...]:
+        """Each change this explanation covers, with where the submission names it."""
+        if self.change_id is not None:
+            return ((("change_id",), self.change_id),)
+        return tuple((("change_ids", index), item) for index, item in enumerate(self.change_ids))
+
+
+class SubmittedChangeRisk(ContractModel):
+    """A risk the agent sees in the changes: its own reading, never rated high.
+
+    `change_ids` names the changes it comes from. `evidence` may cite code beyond the
+    changed lines that the risk lands on, such as what runs after a new `break`.
+    """
+
+    statement: Text
+    severity: Literal[Severity.info, Severity.low, Severity.medium] = Severity.low
+    category: RiskCategory | None = None
+    change_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=20)
+    evidence: tuple[EvidenceCite, ...] = Field(default=(), max_length=10)
+
 
 class ChangeSubmission(ContractModel):
+    """Explanations of changes, risks seen in them, or both."""
+
     schema_version: Literal["0.1.0"] = "0.1.0"
-    changes: tuple[ChangeAssessment, ...] = Field(min_length=1, max_length=200)
+    changes: tuple[ChangeAssessment, ...] = Field(default=(), max_length=200)
+    risks: tuple[SubmittedChangeRisk, ...] = Field(default=(), max_length=MAX_CHANGE_RISKS)
 
     @model_validator(mode="after")
     def one_assessment_per_change(self) -> ChangeSubmission:
+        if not self.changes and not self.risks:
+            raise ValueError("a change submission explains changes or names risks")
         _refuse(
             _repeated(
-                (("changes", index, "change_id"), item.change_id)
+                (("changes", index, *at), change_id)
                 for index, item in enumerate(self.changes)
+                for at, change_id in item.places()
             )
         )
         return self

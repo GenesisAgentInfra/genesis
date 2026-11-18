@@ -1,6 +1,6 @@
 interface:
   display_name: "Genesis"
-  short_description: "Map the business flows of a codebase, with code evidence"
-  default_prompt: "Use $genesis to map the business flows of this project and show me the result."
+  short_description: "Show what a code change does and what it could break, and map business flows, with code evidence"
+  default_prompt: "Use $genesis to show what my latest commit changes, what it could break and whether tests cover it."
 policy:
   allow_implicit_invocation: true

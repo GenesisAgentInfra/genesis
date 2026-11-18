@@ -46,6 +46,10 @@ MAX_PROJECTIONS = 6
 MAX_CASES = 20
 MAX_REMOVED_FLOWS = 20
 MAX_UNANALYZED = 100
+# How many changed functions the unchanged callers are listed for, and how many
+# callers each: enough to read in the risk pass, not a call graph.
+CALLER_SYMBOLS = 15
+CALLERS_SHOWN = 3
 _SOURCE_KINDS = {ChangeKind.source_added, ChangeKind.source_removed, ChangeKind.source_modified}
 _ADDED_KINDS = {
     ChangeKind.condition_added,
@@ -76,6 +80,28 @@ _HTTP_CALL = re.compile(
     r"\.(get|post|put|patch|delete|head|options)\(\s*f?[\"'](/[^\"'?#]*)", re.IGNORECASE
 )
 _PATH_PARAMETER = re.compile(r"^(\{.*\}|<.*>|:\w+)$")
+# The reason the facts give a function handed to another call, and an argparse subparser.
+_HANDED = "Handed to "
+_SUBCOMMAND = re.compile(r"\.add_parser\(\s*[\"']([^\"']+)[\"']")
+NO_ENTRY = "No entry on the map reaches this code through calls static analysis resolved."
+UNRESOLVED = (
+    "No resolved call leads here from an entry on the map; {count} that could not be "
+    "resolved may lead here, such as {example}."
+)
+# Why a call into this code base's own modules could not be resolved, as the resolver
+# words it. A receiver of unknown type is dynamic by nature and is not among these.
+_LOCAL_FAILURES = (
+    "Target is absent from captured module",
+    "Local module member is not captured",
+    "Ambiguous module across source roots",
+    "Captured or omitted local module was not analyzed",
+    "Imported module has dynamic namespace mutation",
+    "Relative import escapes configured package roots",
+    "Cyclic re-export or import alias",
+    "Captured namespace package may shadow this external import",
+)
+# Problems that concern the tests an explanation names, whichever change it is about.
+_ABOUT_THE_TESTS = {"unknown_test", "covered_names_tests"}
 RULES = (
     "`before` and `after` are the frozen text of each side: read both before explaining a "
     "change. A side marked `excerpt` is shorter than its lines (a definition's header, a "
@@ -85,24 +111,47 @@ RULES = (
     "tree, check what you quote against the frozen text.",
     "`summary` says in business terms what is different; `effect` says what that means for "
     "the flow. Do not describe line edits.",
-    "Give a `verdict` only after reading the listed tests. covered: a test's input takes the "
-    "changed path and the test asserts on the result. reached_only: tests call the code but "
-    "miss the changed path or do not assert on it; say what is missing in `note`. "
+    "Give a `verdict` only after reading the listed tests. A verdict answers one question: "
+    "would a test fail if the change were undone? covered: a test runs the changed code "
+    "and would fail if the change were undone; name it in `test_ids`. reached_only: tests "
+    "run the code but would not fail if the change were undone, because their input misses "
+    "the changed path or they check nothing it affects; say what is missing in `note`. "
     "not_reached: no test reaches it. unknown: you could not tell; say why.",
+    "A statement that runs on every call, such as an added argument or assignment, is "
+    "covered by a test that runs the code and would fail without it. An input value no "
+    "test uses is not a missed path.",
+    "An added definition is judged as a whole: covered when a test runs it and would fail "
+    "without it. Name in `note` the branches no test takes; they do not make it reached_only.",
+    "A test counts when the project's default test command runs it. Tests skipped by "
+    "default do not count: a skip mark, a skipif whose condition holds in a normal run (such "
+    "as a missing environment variable or credential), a marker the default configuration "
+    "deselects. Name them in `note` and judge by the other tests. Needing the network or a "
+    "model download does not by itself exclude a test; you may say so in `note`.",
+    "For a change that replaces code (both sides present), undoing it puts the `before` side "
+    "back: take the test's input through the `before` side. When the old code gives the same "
+    "outcome for that input (the same exception, the same value, the same call), the test "
+    "still passes and does not make the change covered; a test that checks only an "
+    "exception type or a field name often passes on both sides. covered needs a test whose "
+    "input gets a different outcome on the two sides.",
     "For removed code, the changed path is the input the removed code used to handle. "
-    "covered: a test gives such an input and asserts on what happens now. reached_only: "
-    "tests run the function but never with such an input. Code that replaces it is a change "
-    "of its own: do not copy the verdict from one to the other. The same holds when another "
-    "function now does what the removed code did: the input still has to go through the "
-    "function the code was removed from. A test that calls only the other function is a "
-    "near miss: describe it in `note`.",
+    "covered: a test gives such an input and would fail if the removed code were put back. "
+    "reached_only: tests run the function but never with such an input. Code that replaces "
+    "it is a change of its own: do not copy the verdict from one to the other. The same "
+    "holds when another function now does what the removed code did: the input still has "
+    "to go through the function the code was removed from. A test that calls only the "
+    "other function is a near miss: describe it in `note`.",
     "One `source_*` change can hold several values, such as two limits set on neighbouring "
-    "lines of a function. covered needs a test that asserts on the effect of each. When "
-    "tests assert on only some, use reached_only and name the others in `note`.",
-    "`test_ids` names the tests your verdict is about. You may name a test static analysis "
-    "did not link, for example one that goes through an HTTP client.",
+    "lines of a function. covered needs, for each value, a test that would fail if that "
+    "value were undone. When only some have one, use reached_only and name the others in "
+    "`note`.",
+    "`test_ids` names the tests your verdict rests on; the tests static analysis linked "
+    "stay listed after them. You may name a test static analysis did not link, for example "
+    "one that goes through an HTTP client.",
+    "A verdict answers only whether a test would fail. What the tests leave unchecked goes "
+    "in its `note`, not into `risks`.",
     "No test was run. Never state that a test passed or that a path executed.",
-    "Leave `verdict` out to keep the static result shown under `tests`.",
+    "Leave `verdict` out to keep the static result shown under `tests`: it reads as called "
+    "by tests, not assessed.",
 )
 
 
@@ -456,6 +505,8 @@ class _Placement:
         self.cited: dict[str, list[tuple[int, int, str, str]]] = {}
         refs = {ref.evidence_id: ref for ref in business_map.evidence}
         self.reach: dict[str, set[str]] = {}
+        # Changes no resolved call leads to: how many unresolved calls may lead to each.
+        self.unresolved: dict[str, int] = {}
         # Calls from a flow's entries to each definition it reaches, and its first entry.
         self.calls_to: dict[str, dict[str, int]] = {}
         self.first_entry: dict[str, str] = {}
@@ -798,7 +849,74 @@ class _Placement:
                     "as possibly affected."
                 )
             ], reaching
-        return [_unassigned("This code is not reachable from any entry on the map.")], set()
+        # No resolved call leads here. That is not the same as no call at all.
+        might = analysis.unresolved_into(symbols)
+        if might:
+            self.unresolved[change.change_id] = len(might)
+            count = f"{len(might)} call{'s' * (len(might) != 1)}"
+            return [_unassigned(UNRESOLVED.format(count=count, example=_where(might[0])))], set()
+        return [_unassigned(NO_ENTRY)], set()
+
+
+_LANDING = {FactKind.breaks, FactKind.continues, FactKind.returns}
+_LOOPS = (ast.For, ast.AsyncFor, ast.While)
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module, ast.Lambda)
+
+
+def _landing(tree: ast.Module | None, lines: list[str], kind: FactKind, line: int) -> dict | None:
+    """The statement a `break` or `continue` on `line` leads to: its line and text."""
+    if tree is None:
+        return None
+    parents: dict[int, ast.AST] = {}
+    jump = None
+    wanted = ast.Break if kind == FactKind.breaks else ast.Continue
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[id(child)] = node
+        if isinstance(node, wanted) and node.lineno == line:
+            jump = node
+    loop = parents.get(id(jump)) if jump is not None else None
+    while loop is not None and not isinstance(loop, (*_LOOPS, *_SCOPES)):
+        loop = parents.get(id(loop))
+    if not isinstance(loop, _LOOPS):
+        return None
+
+    def at(node) -> dict:
+        return {"line": node.lineno, "text": _short(lines[node.lineno - 1].strip(), 120)}
+
+    if kind == FactKind.continues:
+        return at(loop)
+    # After the loop: the statement that follows it, or, when it ends a block, whatever
+    # follows that block. An outer loop goes round again; the end of a function returns.
+    node = loop
+    while True:
+        parent = parents.get(id(node))
+        if parent is None:
+            return None
+        for field in ("body", "orelse", "finalbody"):
+            block = getattr(parent, field, None)
+            if isinstance(block, list) and node in block:
+                index = block.index(node)
+                if index + 1 < len(block):
+                    return at(block[index + 1])
+                if isinstance(parent, _LOOPS) and field == "body":
+                    return at(parent)
+                break
+        if isinstance(parent, _SCOPES):
+            return {"line": node.end_lineno, "text": "the end of the function: it returns"}
+        node = parent
+
+
+def _callee(text: str) -> str | None:
+    """The name a call calls: the last name before its arguments."""
+    names = re.findall(r"[A-Za-z_]\w*", text.split("(", 1)[0])
+    return names[-1] if names else None
+
+
+def _where(fact: CodeFact) -> str:
+    return (
+        f"`{_short(fact.text, 80)}` in {fact.symbol_id.partition('#')[0]}:{fact.range.start_line}"
+    )
 
 
 class ChangeAnalysis:
@@ -948,12 +1066,16 @@ class ChangeAnalysis:
     @cached_property
     def calls(self) -> dict:
         """Calls between definitions of one side: caller to callees."""
+        return self._graph()
+
+    def _graph(self, skip=frozenset()) -> dict:
+        """The call graph of both sides, leaving out the call facts in `skip`."""
         graph = {BASE: {}, HEAD: {}}
         known = {BASE: set(), HEAD: set()}
         for symbol in self.workspace.facts.symbols:
             known[symbol.side].add(symbol.symbol_id)
         for fact in self.workspace.facts.facts:
-            if fact.kind == FactKind.call:
+            if fact.kind == FactKind.call and (fact.side, fact.fingerprint) not in skip:
                 internal = [item for item in fact.target.targets if item in known[fact.side]]
                 # Creating an object also runs its initializer.
                 internal += [
@@ -963,6 +1085,146 @@ class ChangeAnalysis:
                 ]
                 graph[fact.side].setdefault(fact.symbol_id, set()).update(internal)
         return graph
+
+    @cached_property
+    def _dispatch(self) -> tuple[dict[str, list[tuple[frozenset[str], str]]], frozenset]:
+        """Head handlers that run only for one argparse subcommand.
+
+        `p = sub.add_parser("voice")` then `p.set_defaults(func=cmd_voice)` hands
+        `cmd_voice` over, so the facts read it as a deferred call. But the function that
+        builds the parser never calls it: `main` does, when the command line says `voice`.
+        Returns, by the function that registers them, the subcommand names and the
+        handler; and the call facts that hand them over.
+        """
+        found: dict[str, list[tuple[frozenset[str], str]]] = {}
+        facts = set()
+        for fact in self.workspace.facts.facts:
+            reason = fact.target.reason if fact.kind == FactKind.call else None
+            if fact.side != HEAD or not fact.deferred or not (reason or "").startswith(_HANDED):
+                continue
+            receiver = reason[len(_HANDED) :].rsplit("; it runs", 1)[0]
+            holder, _, method = receiver.rpartition(".")
+            if method != "set_defaults":
+                continue
+            names = set(_SUBCOMMAND.findall(holder))
+            if not names and holder.isidentifier():
+                names = {self._subparser(fact, holder)} - {None}
+            if names:
+                facts.add((fact.side, fact.fingerprint))
+                for target in fact.target.targets:
+                    found.setdefault(fact.symbol_id, []).append((frozenset(names), target))
+        return found, frozenset(facts)
+
+    def _subparser(self, fact: CodeFact, name: str) -> str | None:
+        """The subcommand of the parser a local name holds where `fact` hands a handler over.
+
+        The last assignment to the name before that line in the same definition counts:
+        `p = sub.add_parser("voice")` gives `voice`; any other value gives nothing.
+        """
+        path = fact.symbol_id.partition("#")[0]
+        cache = self.__dict__.setdefault("_parsers", {})
+        if path not in cache:
+            tree = self.tree(HEAD, path)
+            found = []
+            for node in ast.walk(tree) if tree is not None else ():
+                if not isinstance(node, ast.Assign | ast.AnnAssign):
+                    continue
+                value = node.value
+                command = None
+                if (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and value.func.attr == "add_parser"
+                    and value.args
+                    and isinstance(value.args[0], ast.Constant)
+                    and isinstance(value.args[0].value, str)
+                ):
+                    command = value.args[0].value
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                found += [(node.lineno, bound, command) for bound in _bound(targets)]
+            cache[path] = sorted(found, key=lambda item: item[0])
+        symbol = self.workspace.symbols.get(fact.symbol_id)
+        first = symbol.range.start_line if symbol is not None else 1
+        command = None
+        for line, bound, value in cache[path]:
+            if first <= line < fact.range.start_line and bound == name:
+                command = value
+        return command
+
+    def _words(self, test_id: str) -> frozenset[str]:
+        """The words of the string literals a test function writes, its decorators included."""
+        test = self.tests[test_id]
+        symbol = self.workspace.symbols.get(test.symbol_id)
+        path = test.symbol_id.partition("#")[0]
+        tree = self.tree(HEAD, path)
+        if symbol is None or tree is None:
+            return frozenset()
+        cache = self.__dict__.setdefault("_literals", {})
+        if path not in cache:
+            cache[path] = [
+                (node.lineno, node.value)
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            ]
+        span = symbol.range
+        return frozenset(
+            word
+            for line, text in cache[path]
+            if span.start_line <= line <= span.end_line
+            for word in text.split()
+        )
+
+    @cached_property
+    def unresolved(self) -> list[CodeFact]:
+        """Head calls into this code base's own modules that could not be resolved."""
+        return [
+            fact
+            for fact in self.workspace.facts.facts
+            if fact.side == HEAD
+            and fact.kind == FactKind.call
+            and fact.target.status == "unknown"
+            and any(text in (fact.target.reason or "") for text in _LOCAL_FAILURES)
+        ]
+
+    @cached_property
+    def _unresolved_by_name(self) -> dict[str, list[CodeFact]]:
+        """Unresolved calls outside the tests, by the name they call."""
+        tests = {
+            item.path
+            for item in self.workspace.snapshot.capture.manifest.files
+            if item.side == HEAD and item.kind == "test"
+        }
+        found: dict[str, list[CodeFact]] = {}
+        for fact in self.unresolved:
+            name = _callee(fact.text)
+            if name and fact.symbol_id.partition("#")[0] not in tests:
+                found.setdefault(name, []).append(fact)
+        return found
+
+    def unresolved_into(self, symbols) -> list[CodeFact]:
+        """Unresolved calls that may lead to these head definitions.
+
+        A call counts when the name it calls is the name of one of them, or of a
+        definition that leads to them through resolved calls. Matching by name finds
+        too many rather than too few: a change wrongly found here only asks for one
+        more explanation, while one missed would look unreachable without a word.
+        """
+        if not symbols or not self._unresolved_by_name:
+            return []
+        leading = _closure(symbols, self._called_by, REACH_DEPTH)
+        names = {
+            part
+            for symbol in leading
+            for part in symbol.partition("#")[2].split(".")
+            if part and part != "<module>"
+        }
+        found = {
+            fact.fingerprint: fact
+            for name in names
+            for fact in self._unresolved_by_name.get(name, ())
+            if fact.symbol_id not in leading
+        }
+        return sorted(found.values(), key=lambda fact: (fact.symbol_id, fact.range.start_line))
 
     @cached_property
     def _called_by(self) -> dict[str, set[str]]:
@@ -1065,8 +1327,14 @@ class ChangeAnalysis:
 
     @cached_property
     def _test_calls(self) -> dict[str, set[str]]:
-        """Head calls as tests make them: a request to a route path calls its handler."""
-        graph = {symbol: set(targets) for symbol, targets in self.calls[HEAD].items()}
+        """Head calls as tests make them: a request to a route path calls its handler.
+
+        A handler registered for one subcommand is left out: whether a test gets to it
+        depends on the command line the test gives, which `_reached` checks per test.
+        """
+        _, handed = self._dispatch
+        calls = self._graph(handed)[HEAD] if handed else self.calls[HEAD]
+        graph = {symbol: set(targets) for symbol, targets in calls.items()}
         if not self._routes:
             return graph
         test_paths = {
@@ -1098,27 +1366,81 @@ class ChangeAnalysis:
         return found
 
     @cached_property
-    def _reached(self) -> dict[str, list[str]]:
-        """Head tests by the definitions they call, directly or through other calls."""
-        found: dict[str, list[str]] = {}
+    def _reached(self) -> dict[str, dict[str, int]]:
+        """Head tests by the definitions they call, directly or through other calls: how
+        many calls away each test is.
+
+        A handler registered for an argparse subcommand counts only for a test whose
+        string literals name that subcommand.
+        """
+        graph = self._test_calls
+        dispatch, _ = self._dispatch
+        found: dict[str, dict[str, int]] = {}
         for test_id in sorted(self.tests):
             symbol_id = self.tests[test_id].symbol_id
-            reached = _closure([symbol_id], self._test_calls, TEST_DEPTH + 1) - {symbol_id}
-            for symbol in reached:
-                found.setdefault(symbol, []).append(test_id)
+            words = self._words(test_id) if dispatch else frozenset()
+            distances, frontier = {symbol_id: 0}, [symbol_id]
+            for calls in range(1, TEST_DEPTH + 2):
+                following = []
+                for symbol in frontier:
+                    chosen = [target for names, target in dispatch.get(symbol, ()) if names & words]
+                    for target in (*graph.get(symbol, ()), *chosen):
+                        if target not in distances:
+                            distances[target] = calls
+                            following.append(target)
+                frontier = following
+            for symbol, calls in distances.items():
+                if symbol != symbol_id:
+                    found.setdefault(symbol, {})[test_id] = calls
         return found
+
+    @cached_property
+    def _changed_tests(self) -> set[str]:
+        """Head tests this change adds or edits: the likeliest to be about it."""
+        kinds = {ChangeKind.test_added, ChangeKind.test_modified}
+        return {
+            f"head::{change.symbol_id}"
+            for change in self.diff.changes
+            if change.is_test and change.kind in kinds
+        }
 
     # ----- tests ---------------------------------------------------------------------
 
-    def _case(self, test_id: str, related: bool) -> dict:
+    def _case(self, test_id: str, related: bool, assessed: bool = False) -> dict:
         test = self.tests[test_id]
         tags = ["related" if related else "agent_identified"]
+        if assessed:
+            tags.append("assessed")
         if test.assertions:
             tags.append("assertion_found")
         return {"test_id": test_id, "tags": tags, "evidence_ids": list(test.evidence_ids)}
 
     def _related(self, change: RawChange, symbols) -> list[str]:
-        return sorted({test for symbol in symbols for test in self._reached.get(symbol, ())})
+        """Tests that reach a change, the most relevant first.
+
+        First the tests this change adds or edits, then by how many calls away a test is
+        (one: it calls the changed definition itself), tests with an assertion before
+        those without, then by id.
+        """
+        reach: dict[str, int] = {}
+        for symbol in symbols:
+            for test_id, calls in self._reached.get(symbol, {}).items():
+                reach[test_id] = min(calls, reach.get(test_id, calls))
+        changed = self._changed_tests
+        ranked = sorted(
+            reach,
+            key=lambda test_id: (
+                test_id not in changed,
+                reach[test_id],
+                not self.tests[test_id].assertions,
+                test_id,
+            ),
+        )
+        self.__dict__.setdefault("_reach_of", {})[change.change_id] = {
+            test_id: {"calls_away": reach[test_id], "changed_with_it": test_id in changed}
+            for test_id in ranked
+        }
+        return ranked
 
     def static_tests(self, change: RawChange, symbols) -> dict | None:
         """What the test sources alone say about a change."""
@@ -1154,6 +1476,7 @@ class ChangeAnalysis:
             **blank,
             "verdict": "reached_only",
             "basis": ["static_fact"],
+            # The viewer translates this note by its exact text.
             "note": "These tests call the changed code. Static analysis cannot tell whether "
             "their inputs take the changed path or whether they assert on its result." + more,
             "items": [self._case(test_id, True) for test_id in related[:MAX_CASES]],
@@ -1184,18 +1507,32 @@ class ChangeAnalysis:
         if problems:
             return static, problems
         related = self._related(change, symbols)
-        named = list(dict.fromkeys(named)) or related[:MAX_CASES]
-        items = [self._case(test_id, test_id in related) for test_id in named]
-        basis = ["static_fact"] * any(test_id in related for test_id in named)
+        named = list(dict.fromkeys(named))
+        # The tests the verdict rests on come first; the static links stay after them.
+        items = [self._case(test_id, test_id in related, assessed=True) for test_id in named]
+        items += [self._case(test_id, True) for test_id in related if test_id not in named][
+            : max(0, MAX_CASES - len(items))
+        ]
+        static = any(test_id in related for test_id in named) or (not named and related)
+        judged = items[: len(named)] or items
         result = {
             "verdict": verdict.verdict,
-            "basis": [*basis, "agent_assessment"],
+            "basis": [*["static_fact"] * bool(static), "agent_assessment"],
             "execution_data": "not_collected",
             "note": verdict.note,
             "items": items,
         }
-        if verdict.verdict == "covered" and not any(
-            "assertion_found" in item["tags"] for item in items
+        if verdict.verdict == "covered" and not named:
+            problems.append(
+                (
+                    "test_ids",
+                    "covered_names_tests",
+                    "covered names in `test_ids` the tests that run the change and would fail "
+                    "if it were undone.",
+                )
+            )
+        elif verdict.verdict == "covered" and not any(
+            "assertion_found" in item["tags"] for item in judged
         ):
             problems.append(
                 (
@@ -1252,6 +1589,12 @@ class ChangeAnalysis:
             return {}
         return json.loads(self._store.read_text(encoding="utf-8"))["assessments"]
 
+    def risks(self) -> dict[str, dict]:
+        """Risks an agent submitted with the changes, by their id."""
+        if not self._store.is_file():
+            return {}
+        return json.loads(self._store.read_text(encoding="utf-8")).get("risks", {})
+
     # ----- report --------------------------------------------------------------------
 
     def _unanalyzed(self) -> tuple[list[dict], list[dict]]:
@@ -1301,6 +1644,26 @@ class ChangeAnalysis:
                     "message": f"{total} changed file{'s' * (total != 1)} outside the supported "
                     "languages: not analyzed.",
                     "affects_completeness": False,
+                }
+            )
+        untracked = outside.get("untracked")
+        if untracked and untracked["total"]:
+            count, readable = untracked["total"], untracked["analyzable"]
+            names = untracked["files"][:5]
+            more = ", ..." if count > len(names) else ""
+            limits.append(
+                {
+                    "code": "untracked_files_left_out",
+                    "message": f"{count} untracked file{'s' * (count != 1)} left out of the "
+                    "comparison"
+                    + (f", {readable} of them source Genesis analyzes" if readable else "")
+                    + ": "
+                    + ", ".join(names)
+                    + more
+                    + ". If they belong to the change, run `prepare` again with "
+                    "`--include-untracked`; `--exclude PATH` leaves one out on purpose.",
+                    # Source left out may hold changes the report does not show.
+                    "affects_completeness": bool(readable),
                 }
             )
         return listed[:MAX_UNANALYZED], limits
@@ -1439,6 +1802,8 @@ class ChangeAnalysis:
                     cited.update(part.evidence_ids)
             if change.details:
                 item["detail"] = _short(" ".join(change.details), 2000)
+            if placement.unresolved.get(change.change_id):
+                item["unresolved_calls"] = placement.unresolved[change.change_id]
             symbols = placement._symbols(change)
             stored = assessments.get(change.change_id)
             if stored is None:
@@ -1498,16 +1863,32 @@ class ChangeAnalysis:
                 cited.update(finding.evidence_ids)
         removed_flows, removed_refs = self._removed_flows(business_map)
         cited |= removed_refs
+        known = {change.change_id for change in diff.changes}
+        risks = [
+            {"risk_id": key, **risk}
+            for key, risk in sorted(self.risks().items())
+            if set(risk["change_ids"]) <= known
+        ]
+        cited.update(ref for risk in risks for ref in risk.get("evidence_ids", ()))
         unanalyzed, limitations = self._unanalyzed()
         waiting = [flows[key].name for key in sorted(touched) if flows[key].stage == "skeleton"]
         if waiting:
+            named = ", ".join(waiting[:5]) + (", ..." if len(waiting) > 5 else "")
+            # A session with no plan set out to explain the changes, not to describe flows:
+            # its report is complete once they are explained. A plan takes on its flows.
+            planned = workspace.plan is not None
             limitations.append(
                 {
                     "code": "affected_flow_not_synthesized",
-                    "message": "Changes are placed on flows that are still a static skeleton: "
-                    + ", ".join(waiting[:5])
-                    + ".",
-                    "affects_completeness": True,
+                    "message": (
+                        f"Changes are placed on flows that are still a static skeleton: {named}."
+                        if planned
+                        else "No flow was described: changes are placed on flows that are "
+                        f"still a static skeleton: {named}. This does not keep the report "
+                        "from being complete; describe these flows to see the changes in "
+                        "business steps."
+                    ),
+                    "affects_completeness": planned,
                 }
             )
         if diff.truncated:
@@ -1526,6 +1907,32 @@ class ChangeAnalysis:
                     + ", ".join(diff.skipped_files[:5])
                     + ".",
                     "affects_completeness": True,
+                }
+            )
+        if self.unresolved:
+            # The most common reason, by its first call, stands for all of them.
+            reasons = Counter(fact.target.reason for fact in self.unresolved)
+            reason = reasons.most_common(1)[0][0]
+            example = next(fact for fact in self.unresolved if fact.target.reason == reason)
+            count = len(self.unresolved)
+            owed = sum(1 for item in items if item.get("unresolved_calls"))
+            limitations.append(
+                {
+                    "code": "unresolved_local_calls",
+                    "message": _short(
+                        f"{count} call{'s' * (count != 1)} into this code base's own modules "
+                        f"could not be resolved, such as {_where(example)} ({reason}). Code "
+                        "reached only through such calls looks unreachable, and its tests may "
+                        "not be linked."
+                        + (
+                            f" {owed} change{'s' * (owed != 1)} may be reached this way and "
+                            "need an explanation."
+                            if owed
+                            else ""
+                        ),
+                        2000,
+                    ),
+                    "affects_completeness": False,
                 }
             )
         limitations.append(
@@ -1557,6 +1964,7 @@ class ChangeAnalysis:
             "possible_entries": self._possible_entries(business_map, placement),
             "unanalyzed_changes": unanalyzed,
             "finding_changes": finding_changes,
+            "risks": risks,
             "limitations": limitations,
             "evidence": [
                 (workspace.evidence(key) or diff.evidence[key]).model_dump(mode="json")
@@ -1638,7 +2046,13 @@ class ChangeAnalysis:
                 view["also_placed"] = [place(target) for target in item.other_projections]
             if item.detail:
                 view["detail"] = item.detail
+            if item.unresolved_calls:
+                view["unresolved_calls"] = item.unresolved_calls
+            landing = self.lands_on(change)
+            if landing:
+                view["lands_on"] = landing
             if item.tests is not None:
+                reach = self.__dict__.get("_reach_of", {}).get(item.change_id, {})
                 view["tests"] = {
                     "verdict": item.tests.verdict.value,
                     "basis": [value.value for value in item.tests.basis],
@@ -1648,6 +2062,12 @@ class ChangeAnalysis:
                             "test_id": case.test_id,
                             "evidence_id": case.evidence_ids[0],
                             "assertions": list(self.tests[case.test_id].assertions[:5]),
+                            # How many calls away from the change, and whether this change
+                            # edits the test; unset for a test static analysis did not link.
+                            **reach.get(
+                                case.test_id, {"calls_away": None, "changed_with_it": False}
+                            ),
+                            **({"named": True} if "assessed" in case.tags else {}),
                         }
                         for case in item.tests.items
                     ],
@@ -1655,13 +2075,135 @@ class ChangeAnalysis:
             views.append(view)
         return views
 
+    def lands_on(self, change: RawChange) -> list[dict]:
+        """Where each new `break`, `continue` or `return` of a change takes the code.
+
+        The code that runs next is not part of the change, so neither the diff nor the
+        change shows it. `break` goes on after its loop, `continue` back to the loop
+        header, `return` to the callers. Only for a definition both sides have: in a
+        new one there is no earlier path to leave.
+        """
+        pairs = self.diff.same.get(change.symbol_id)
+        if change.is_test or change.after is None or pairs is None:
+            return []
+        kept = set(pairs.values())
+        part = change.after
+        found = []
+        for fact in self.ordered(HEAD, change.symbol_id):
+            if fact.kind not in _LANDING or fact.fingerprint in kept:
+                continue
+            line = fact.range.start_line
+            inside = part.start[0] <= line <= part.end[0]
+            in_loop = change.kind == ChangeKind.loop_bound_changed and part.anchor in fact.loops
+            if not (inside or in_loop):
+                continue
+            item = {"jump": _short(fact.text, 80), "line": line}
+            if fact.kind == FactKind.returns:
+                callers = [
+                    {
+                        "path": caller.symbol_id.partition("#")[0],
+                        "line": caller.range.start_line,
+                        "text": _short(caller.text, 120),
+                    }
+                    for caller in self.callers[HEAD].get(change.symbol_id, ())[:3]
+                ]
+                item["callers"] = callers
+            else:
+                lines = self.workspace.snapshot.source.read_text(HEAD, part.path).split("\n")
+                after = _landing(self.tree(HEAD, part.path), lines, fact.kind, line)
+                if after is None:
+                    continue
+                item["next"] = {"path": part.path, **after}
+            found.append(item)
+        return found
+
+    @cached_property
+    def _changed_lines(self) -> dict[str, list[tuple[int, int]]]:
+        """The head-side lines each file's changes cover."""
+        found: dict[str, list[tuple[int, int]]] = {}
+        for change in self.diff.changes:
+            if change.after is not None:
+                found.setdefault(change.after.path, []).append(
+                    (change.after.start[0], change.after.end[0])
+                )
+            for side, path, first, last in change.covers:
+                if side == HEAD:
+                    found.setdefault(path, []).append((first, last))
+        return found
+
+    def unchanged_callers(self, report: ChangeReport) -> list[dict]:
+        """For each changed function, the code that calls it and is not itself changed.
+
+        The changes show what is different; what the callers do with it is outside the
+        diff. A call in a loop runs once per item, so those come first, with the loop.
+        Tests are left out: they are listed with each change.
+        """
+        tests = {
+            item.path
+            for item in self.workspace.snapshot.capture.manifest.files
+            if item.side == HEAD and item.kind == "test"
+        }
+        raw = {change.change_id: change for change in self.diff.changes}
+        changed: dict[str, list[str]] = {}
+        for item in report.changes:
+            change = raw.get(item.change_id)
+            if change is None or change.is_test or change.after is None:
+                continue
+            if item.symbol_id.endswith("#<module>"):
+                continue
+            changed.setdefault(item.symbol_id, []).append(item.change_id)
+        loops = self.workspace.by_fingerprint
+
+        def untouched(fact) -> bool:
+            path = fact.symbol_id.partition("#")[0]
+            line = fact.range.start_line
+            return path not in tests and not any(
+                first <= line <= last for first, last in self._changed_lines.get(path, ())
+            )
+
+        def shown(fact) -> dict:
+            item = {
+                "path": fact.symbol_id.partition("#")[0],
+                "line": fact.range.start_line,
+                "text": _short(fact.text, 120),
+            }
+            loop = loops.get(fact.loops[-1]) if fact.loops else None
+            if loop is not None:
+                item["loop"] = _short(loop.text, 80)
+            return item
+
+        found = []
+        for symbol, change_ids in changed.items():
+            calls = [fact for fact in self.callers[HEAD].get(symbol, ()) if untouched(fact)]
+            if not calls:
+                continue
+            calls.sort(key=lambda fact: (not fact.loops, fact.symbol_id, fact.range.start_line))
+            found.append(
+                {
+                    "symbol_id": symbol,
+                    "change_ids": change_ids[:5],
+                    "callers": [shown(fact) for fact in calls[:CALLERS_SHOWN]],
+                    "callers_total": len(calls),
+                }
+            )
+        found.sort(key=lambda item: ("loop" not in item["callers"][0], item["symbol_id"]))
+        return found[:CALLER_SYMBOLS]
+
     def context(self, business_map: BusinessMap) -> dict:
         """The changes still to explain, with both sides and the tests that reach them."""
         report = self.build(business_map)
-        assessments = self.assessments()
         placed = [item for item in report.changes if item.projection.status != "unassigned"]
-        waiting = [item for item in report.owed() if item.change_id not in assessments]
-        shown = (waiting or report.changes)[:CONTEXT_LIMIT]
+        waiting = [item for item in report.owed() if item.explanation is None]
+        # Then the changes no flow reaches, which need no explanation for the report to
+        # be complete but still say nothing until they have one, then the explained ones.
+        owed = {item.change_id for item in waiting}
+        rest = [
+            item
+            for item in report.changes
+            if item.explanation is None and item.change_id not in owed
+        ]
+        done = [item for item in report.changes if item.explanation is not None]
+        shown = [*waiting, *rest, *done][:CONTEXT_LIMIT]
         return {
             "task_id": CHANGE_TASK,
             "kind": "change",
@@ -1670,9 +2212,13 @@ class ChangeAnalysis:
             "changes_total": len(report.changes),
             "changes_placed": len(placed),
             "changes_waiting": len(waiting),
-            # Up to this many per call; submit them and ask again for the rest.
+            # Every change without an explanation, including those no flow reaches.
+            "changes_unexplained": len(waiting) + len(rest),
+            # Up to this many per call, unexplained first; submit them and ask again.
             "changes_listed": len(shown),
             "changes": self._views(shown, business_map),
+            # Outside the changes: who calls the changed functions, for the risk pass.
+            "unchanged_callers": self.unchanged_callers(report),
             "tests_total": len(self.tests),
             "rules": list(RULES),
         }
@@ -1705,6 +2251,11 @@ class ChangeAnalysis:
             # lists them: a plan needs the entry id to skip one or give it a flow.
             **unchecked_entries(report),
             "removed_flows": [flow.name for flow in report.removed_flows],
+            # Risks an agent submitted with the changes: its own reading.
+            "risks": [
+                item.model_dump(mode="json", exclude={"support"}, exclude_none=True)
+                for item in report.risks
+            ],
             # Observations an agent recorded on the map, as far as this change touches them.
             "risk_findings": [
                 {
@@ -1734,23 +2285,41 @@ class ChangeAnalysis:
         placement = _Placement(self, self.workspace.stored_map())
         accepted, problems = {}, []
         for index, item in enumerate(submission.changes):
-            where = f"changes[{index}]"
-            change = known.get(item.change_id)
-            if change is None:
-                problems.append(
-                    (where + ".change_id", "unknown_change", f"No change {item.change_id}.")
-                )
-                continue
-            if change.is_test and item.verdict is not None:
+            stored = item.model_dump(mode="json", exclude_none=True, exclude={"change_ids"})
+            # A problem about the tests named, not about one change, is said once per item.
+            said = set()
+            for at, change_id in item.places():
+                # One change of several is named at its place in `change_ids`.
+                where = f"changes[{index}]" + ("" if item.change_id else f".{at[0]}[{at[1]}]")
+                change = known.get(change_id)
+                if change is None:
+                    named = where + (".change_id" if item.change_id else "")
+                    problems.append((named, "unknown_change", f"No change {change_id}."))
+                    continue
+                if change.is_test and item.verdict is not None:
+                    problems.append(
+                        (
+                            where + ".verdict",
+                            "verdict_on_test",
+                            "A change to a test carries no coverage verdict of itself.",
+                        )
+                    )
+                    continue
+                _, found = self.assessed_tests(change, placement._symbols(change), item)
+                for field, code, message in found:
+                    if code in _ABOUT_THE_TESTS and (field, code, message) in said:
+                        continue
+                    said.add((field, code, message))
+                    problems.append((f"{where}.{field}", code, message))
+                accepted[change_id] = {**stored, "change_id": change_id}
+        for index, risk in enumerate(submission.risks):
+            missing = [key for key in risk.change_ids if key not in known]
+            if missing:
                 problems.append(
                     (
-                        where + ".verdict",
-                        "verdict_on_test",
-                        "A change to a test carries no coverage verdict of itself.",
+                        f"risks[{index}].change_ids",
+                        "unknown_change",
+                        f"No change {', '.join(missing)}.",
                     )
                 )
-                continue
-            _, found = self.assessed_tests(change, placement._symbols(change), item)
-            problems += [(f"{where}.{field}", code, message) for field, code, message in found]
-            accepted[item.change_id] = item.model_dump(mode="json", exclude_none=True)
         return accepted, problems

@@ -704,3 +704,119 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
         },
     )
     return CapturedSnapshot(capture, source)
+
+
+# ----- names only ----------------------------------------------------------------------
+#
+# A change session lists by name the changed files a capture did not read. They are read
+# the way a capture reads: no hook, filter or fsmonitor runs, and the index is never
+# written. A plain `git diff` against the working tree refreshes the index and writes it
+# back even with optional locks off, so the working tree is compared through
+# `diff-index`, which only reads it. That still re-reads a file whose index entry its
+# timestamps cannot vouch for, through the clean filter its attributes name, so every
+# filter driver the repository configures is switched off for it.
+
+
+def _names(raw: bytes) -> list[str]:
+    """The paths of a NUL-separated listing; a path that is not safe is skipped."""
+    found = []
+    for item in raw.split(b"\0"):
+        if not item:
+            continue
+        try:
+            found.append(_path(item))
+        except SnapshotError:
+            continue
+    return found
+
+
+def tracked_paths(repo: Path, limits: SnapshotLimits | None = None) -> list[str]:
+    """The paths in the index."""
+    git = _Git(repo.expanduser().resolve(strict=True), limits or SnapshotLimits())
+    return _names(git.run("ls-files", "-z"))
+
+
+def untracked_paths(repo: Path, spec: SnapshotSpec) -> list[str]:
+    """Working files Git neither tracks nor ignores, less those no capture would read.
+
+    Secrets, caches, `.genesis/` and the paths `spec` excludes are left out: including
+    untracked files would not bring them in either.
+    """
+    git = _Git(repo.expanduser().resolve(strict=True), spec.limits)
+    listing = _names(git.run("ls-files", "--others", "--exclude-standard", "-z"))
+    return [path for path in listing if _kind(path, spec)[1] not in {"excluded", "secret_path"}]
+
+
+def _without_filters(git: _Git) -> list[str]:
+    """`-c` options that turn off every filter driver the repository configures."""
+    names = set()
+    for item in git.run("config", "--list", "-z").split(b"\0"):
+        key = item.split(b"\n", 1)[0].decode("utf-8", "replace")
+        if key.startswith("filter.") and key.count(".") >= 2:
+            names.add(key[len("filter.") : key.rindex(".")])
+    options = []
+    for name in sorted(names):
+        if "=" in name:
+            raise SnapshotError("unsafe_config", "A filter driver could not be switched off.")
+        for setting in ("clean=", "process=", "required=false"):
+            options += ["-c", f"filter.{name}.{setting}"]
+    return options
+
+
+def _blob_id(root: Path, path: str, length: int, limit: int) -> str | None:
+    """The Git id of a working file's bytes as they are, or None if it cannot be read."""
+    try:
+        raw, _, _ = _read_worktree(root, path, limit)
+    except (SnapshotError, _ChangedDuringCapture):
+        return None
+    if raw is None:
+        return None
+    digest = hashlib.sha256() if length == 64 else hashlib.sha1(usedforsecurity=False)
+    digest.update(b"blob %d\0" % len(raw))
+    digest.update(raw)
+    return digest.hexdigest()
+
+
+def changed_paths(
+    repo: Path, base: str, head: str | None, limits: SnapshotLimits | None = None
+) -> list[tuple[str, str]]:
+    """`(status, path)` for each path that differs between `base` and `head`.
+
+    Without `head` the other side is the working tree. `status` is Git's letter (`A`,
+    `D`, `M`, `T`). A tracked file whose metadata changed since the index last saw it
+    is hashed here from its bytes as they are, with no filter: one whose bytes match
+    the base is not listed, one larger than the file budget is listed as modified.
+    """
+    root = repo.expanduser().resolve(strict=True)
+    limits = limits or SnapshotLimits()
+    git = _Git(root, limits)
+    if head is not None:
+        raw = git.run("diff-tree", "-r", "--no-renames", "--no-commit-id", "-z", base, head, "--")
+    else:
+        # Submodules are compared by the commit recorded, never by running Git in them.
+        raw = git.run(
+            *_without_filters(git),
+            "diff-index",
+            "--no-renames",
+            "--ignore-submodules=dirty",
+            "-z",
+            base,
+            "--",
+        )
+    fields = raw.split(b"\0")
+    found = []
+    for meta, raw_path in zip(fields[::2], fields[1::2], strict=False):
+        parts = meta.decode("ascii", "replace").lstrip(":").split()
+        if len(parts) != 5:
+            continue
+        _, new_mode, old_oid, new_oid, status = parts
+        try:
+            path = _path(raw_path)
+        except SnapshotError:
+            continue
+        unread = head is None and not new_oid.strip("0") and status in {"M", "T"}
+        if unread and new_mode in _REGULAR:
+            if _blob_id(root, path, len(old_oid), limits.max_file_bytes) == old_oid:
+                continue
+        found.append((status, path))
+    return found
