@@ -42,6 +42,16 @@ def test_template_ships_in_the_package_with_one_empty_data_slot():
     assert not re.search(r'(?:src|href)="(?:https?:)?//', template)
 
 
+def test_every_page_carries_the_current_third_party_notices():
+    # A view.html or view.share.html passed on alone must still carry the notices of the
+    # code compiled into it, and they must be the ones in the repository now.
+    notices = (Path(__file__).resolve().parents[1] / "THIRD_PARTY_NOTICES.md").read_text()
+    head = viewer_template().split("</head>", 1)[0]
+    comment = notices.replace("-->", "- ->").replace("<!--", "<! --")
+    assert head.startswith(f'<!doctype html>\n<html lang="en">\n  <head>\n    <!--\n{comment}')
+    assert "Copyright (c) Meta Platforms" in head
+
+
 def test_view_carries_the_map_the_report_and_the_excerpts():
     head, bundle, report = change_sample()
     payload = embedded(render_view(head, bundle, report))

@@ -125,6 +125,17 @@ def compared(report: ChangeReport) -> str:
     return f"Compared {base} with {head}."
 
 
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
+
+
+def _where(ref) -> str:
+    """path:line of a piece of evidence, marked when it is on the side before the change."""
+    start, end = ref.range.start_line, ref.range.end_line
+    lines = str(start) if start == end else f"{start}-{end}"
+    return f"{ref.path}:{lines}" + (" (before)" if ref.side == "base" else "")
+
+
 def _tag(text: str, tone: str = "") -> str:
     return f'<span class="tag {tone}">{escape(text)}</span>'
 
@@ -546,6 +557,15 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
     """The changes as they sit on the map: by flow, then by step."""
     flows = {flow.flow_id: flow for flow in business_map.flows}
     placed = sum(1 for item in report.changes if item.projection.status != "unassigned")
+    refs = {ref.evidence_id: ref for ref in (*business_map.evidence, *report.evidence)}
+    symbols = {item.change_id: item.symbol_id for item in report.changes}
+
+    def _cited(risk) -> str:
+        # summary.md is pasted into pull requests, where a change id means nothing: name
+        # the code the risk cites, or else the functions of the changes it is about.
+        where = [_where(refs[item]) for item in risk.evidence_ids if item in refs]
+        where = where or [symbols[item] for item in risk.change_ids if item in symbols]
+        return f" (at {', '.join(dict.fromkeys(where))})" if where else ""
 
     def told(item, indent: str, reason: str | None) -> list[str]:
         if item.explanation:
@@ -584,8 +604,8 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
         "",
         f"- {compared(report)}",
         f"- Status: {report.analysis_status}",
-        f"- {len(report.changes)} changes, {placed} on the map in {len(touched)} flows, "
-        f"{len(apart)} not on the map",
+        f"- {_count(len(report.changes), 'change')}, {placed} on the map in "
+        f"{_count(len(touched), 'flow')}, {len(apart)} not on the map",
     ]
     lines += [f"- Limitation: {item.message}" for item in report.limitations]
     lines += ["", VERDICT_LEGEND]
@@ -609,8 +629,7 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
     if report.risks:
         lines += ["", "## Risks seen in the changes (agent reading)", ""]
         lines += [
-            f"- {item.severity.value}: {item.statement} (changes: {', '.join(item.change_ids)})"
-            for item in report.risks
+            f"- {item.severity.value}: {item.statement}{_cited(item)}" for item in report.risks
         ]
     if report.finding_changes:
         lines += ["", "## Risk findings touched by the changes", ""]
@@ -618,7 +637,7 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
     if report.possibly_affected:
         lines += ["", "## Flows that can reach changed code", ""]
         lines += [
-            f"- {flows[item.flow_id].name}: {len(item.change_ids)} changes"
+            f"- {flows[item.flow_id].name}: {_count(len(item.change_ids), 'change')}"
             for item in report.possibly_affected
         ]
     if report.possible_entries:
