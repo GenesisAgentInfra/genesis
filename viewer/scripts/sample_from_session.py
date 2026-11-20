@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from genesis_ci.business_map.session import load, load_report
+from genesis_ci.business_map.store import load, load_report
 from genesis_ci.business_map.view import view_payload
 
 

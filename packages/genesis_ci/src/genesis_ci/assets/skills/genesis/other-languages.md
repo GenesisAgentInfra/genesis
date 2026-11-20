@@ -1,10 +1,11 @@
 # Genesis for a project that is not Python
 
 Follow this file when `map prepare` reports `"engine": "agent"`. It replaces sections
-2, 3 and 5 of `SKILL.md`; locating the CLI, rendering and the later requests stay as
-described there. The pages the user gets are the same. `plan` and `submit` take
-their JSON the way `SKILL.md` says: on standard input with `--input -` and a quoted
-heredoc, or from a file in the temporary directory your environment names.
+2, 3 and 5 of `SKILL.md`, except the parts of section 5 this file sends you to;
+locating the CLI, rendering and the later requests stay as described there. The pages
+the user gets are the same. `plan` and `submit` take their JSON the way `SKILL.md`
+says: on standard input with `--input -` and a quoted heredoc, or from a file in the
+temporary directory your environment names.
 
 What differs is who finds things. Genesis has no analyzer for this language, so there
 are no facts, no detected entries and no check that a flow leaves nothing out:
@@ -21,19 +22,31 @@ including the failure paths, before you submit.
 
 ```
 genesis map prepare --repo /absolute/app
-genesis map prepare --repo /absolute/app --base main
+genesis map prepare --repo /absolute/app --base MERGE_BASE --head REV
 ```
 
 Without `--base` the session maps the code as it is. With `--base REV` it also lists
 what changed since that revision. For one commit, a commit range, a branch, a pull
 request or uncommitted work, choose `--base` and `--head` as step 1 of section 5 in
-`SKILL.md` says; the flags mean the same here. The result has `session_id`, `files`
-(how many source files were frozen) and `file_types`. Tests are told apart by their path:
-`tests/`, `__tests__/`, `*.test.*`, `*.spec.*`, `*_test.*`.
+`SKILL.md` says; the flags mean the same here. Two things differ. This engine does
+not count untracked files and the report does not name them: check `git status -s`
+yourself and add `--include-untracked` when new files belong to the change. And
+`resumed` is true only once a plan is accepted; accepted explanations are kept either
+way. Run `map size` first as `SKILL.md` says: here `prepare` only freezes the files
+and takes seconds, but the file limit applies the same way. The result has
+`session_id`, `files` (how many source files were frozen) and `file_types`.
 
-If the project's main language is not Python but it has some Python files, `prepare`
-answers with `"engine": "python"` and maps only those. Run it again with
-`--engine agent`.
+Tests are told apart by their path: a folder named `test`, `tests`, `__tests__`,
+`spec`, `specs` or `e2e` anywhere in it, or a file name that starts with `test_` or
+contains `.test.`, `.spec.`, `_test.` or `_spec.`. In `diff`, a test change has a
+`kind` that starts with `test_`: go by that. A test file the rule misses is listed as
+source and needs a verdict: use `unknown` and say in the note that it is a test.
+
+If the project has some Python files, `prepare` answers with `"engine": "python"` and
+reads only those. When its result has `other_languages.note`, most of the source, or
+in a review most of the changed source, is in other languages: run it again with
+`--engine agent`. The agent engine reads the
+Python files too, without the Python analysis.
 
 ## 2. Plan
 
@@ -94,12 +107,16 @@ Take `next_task` from `status` and repeat until it is null or `task_change`.
 genesis map status  --repo /absolute/app --session SESSION_ID
 genesis map context --repo /absolute/app --session SESSION_ID --task TASK_ID
 genesis map submit  --repo /absolute/app --session SESSION_ID --task TASK_ID --input -
+genesis map query   --repo /absolute/app --session SESSION_ID --search "text"
 ```
 
 `context` gives the entries with their source and, in a change session, the changes
-this flow carries or could carry. Read on from there in the repository with your own
-tools; `genesis map query --search TEXT` finds lines in the frozen source and gives
-each an `evidence_id` you can cite instead of a range.
+this flow carries or could carry. Read on from there with your own tools; `query
+--search` finds lines in the frozen source and gives each an `evidence_id` you can
+cite instead of a range. With `--head REV` the frozen files are those of that
+revision, not what is checked out: read them with `git show REV:path`, and take line
+numbers from them or from `query`, never from the working tree. Without `--head` they
+are the working tree as it was when `prepare` ran.
 
 ```json
 {
@@ -145,11 +162,14 @@ each an `evidence_id` you can cite instead of a range.
   leaves a `decision` and names in `branch` the outcome it takes, in words a reader
   understands. A decision has an edge for each way it can go.
 - Draw the failure paths and retry loops the code has.
-- If the code does not show a relation, set `"resolution": "candidate"` or `"unknown"`
-  with a `reason`. The page marks such a step as unconfirmed.
+- When the code does not show that a step happens, or that one step leads to another,
+  set `"resolution": "candidate"` (likely) or `"unknown"` on that step or edge, with a
+  `reason`. Only an `unknown` step may come without `evidence`. The page marks such a
+  step as Unconfirmed or Unknown and draws such an edge as uncertain.
 - `observations` are risks you noticed, each on a step with the lines that show it.
   `severity` is `info`, `low` or `medium`; `category` is `reliability`, `correctness`,
   `data_integrity`, `security`, `performance` or `other`.
+- A flow takes at most 60 steps, 150 edges and 8 observations; more is refused.
 - Do not send `anchors`, `omitted` or `unexpanded_reason`.
 - **Stages.** A reader takes in about seven blocks across. The width of a flow is its
   longest path from the trigger to an end: branches that run side by side do not add
@@ -175,22 +195,37 @@ or widen stages.
 
 A submission is accepted or rejected as a whole. `errors` names each problem by the
 step or edge it is about; fix them and submit again. `quote_not_found` means the text
-is not in those lines of the frozen file: read the file again and correct the range.
+is not in those lines of the frozen file: find the line with `query --search`, or read
+the file at the session's head revision, and correct the range or cite the
+`evidence_id`.
 
 ## 4. Changes since a revision
 
-In a change session, `genesis map diff` lists the changes at any time: each is a run of
-changed lines with `before` and `after`, and a `placement`.
+```
+genesis map diff --repo /absolute/app --session SESSION_ID
+```
+
+In a change session, `diff` lists the changes at any time: each is a run of changed
+lines with `before` and `after`, and a `placement`.
 
 - A change is `projected` when a step cites its lines. Describing the flows is what
   brings changes onto the map.
 - For an `unassigned` change in code a flow runs through, add or widen a step so that it
   cites those lines, and submit the flow again. Leave a change unassigned only when no
   flow passes through it; report it as off the map.
-- A change that only removes lines has no line in the current code for a step to cite.
-  It stays off the map: explain it like any other change and report it as off the map.
-- `unanalyzed_changes` are changed files that are not source, such as configuration.
-  Mention them.
+- A change that only removes lines belongs to a step that cites the line just before
+  or just after the place they were removed from. When the removed code was part of a
+  flow, make that flow's step cite one of those lines. Only a deleted file has no line
+  left to cite: its change stays off the map, so explain it and report it as off it.
+- `unanalyzed_changes` are changed files Genesis does not read: configuration,
+  documents, and code with an extension it does not read, such as `.mts`. Read them as
+  step 4 of section 5 in `SKILL.md` says, and report what they change as your own
+  reading.
+- A session lists the first 200 changes. With more, the rest are not listed, `render`
+  exits 2 even when every listed change is explained, and the report's limitations say
+  `changes_truncated`. Tell the user the review covers only part of the change, and
+  review a smaller range (fewer commits, or `--exclude PATH` for generated folders) to
+  cover the rest.
 
 The CLI takes explanations before any flow is described, but a change then has no
 place on the map and is only listed as off it. So plan and describe the flows the
@@ -255,17 +290,35 @@ Anything else is refused:
 - Tests are cited under `tests`, with evidence. There is no `test_ids`.
 - `short_summary` and `effect` are optional, as in `SKILL.md`.
 - There is no `risks` list. Read for risks as step 4 of section 5 in `SKILL.md`
-  describes, then record each risk as an `observation` on the step it concerns and
-  submit that flow again.
+  describes, with two differences: the CLI gives no `read_for_risks`,
+  `unchanged_callers` or `lands_on` here, so find the callers of each changed function
+  yourself, with `query --search` or your own search, and read them first. Then record
+  each risk as an `observation` on the step it concerns and submit that flow again.
+  The report ties an observation to a change only when one of its evidence items cites
+  lines inside that change's `after` range in `diff`: cite those as well as the code
+  the risk lands on. A risk that comes only from removed lines cannot be tied to a
+  change; state it in your report as your own reading. A flow holds at most 8
+  observations, map and review together: when there are more, keep the most serious
+  and give the rest in your report as your own reading.
 
 Assessments can be sent in several submissions; each replaces what was said before
 about the changes it names.
 
 ## 5. Render and report
 
-Render as in section 4 of `SKILL.md`. Exit code 0 means every planned flow is accepted
-and, in a change session, every change is explained.
+Render as in section 4 of `SKILL.md`. In a map session exit code 0 means every planned
+flow is accepted. In a change session it means every listed change is explained, with
+a verdict on each one outside the tests, and no more than 200 changes were found.
+Planned flows you have not described do not change that exit code, so check `status`
+before you call the map finished.
 
 Report as described there, with one addition. Say in one sentence that Genesis has no
 analyzer for this language: each step was checked against the source, and a path you
 did not draw would not have been flagged.
+
+After a change review, report instead as "Rendering and reporting a review" in section
+5 of `SKILL.md` says, from "Give the user the path of `view.html`" to "Verdict words",
+and add the same sentence. This engine lists no possibly affected or removed flows and
+no possible entries, so leave those parts out. The risks are the observations you
+recorded. Every verdict is your own reading of the tests, and the CLI checks only that
+the lines you quote exist.

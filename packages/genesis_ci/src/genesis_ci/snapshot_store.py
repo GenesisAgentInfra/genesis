@@ -38,8 +38,18 @@ def save_snapshot(snapshot: CapturedSnapshot, destination: Path) -> None:
         stream.write(payload + "\n")
 
 
+def _wider(default: SnapshotLimits, captured: SnapshotLimits) -> SnapshotLimits:
+    return SnapshotLimits(
+        max_files=max(default.max_files, captured.max_files),
+        max_file_bytes=max(default.max_file_bytes, captured.max_file_bytes),
+        max_total_bytes=max(default.max_total_bytes, captured.max_total_bytes),
+        max_metadata_bytes=default.max_metadata_bytes,
+    )
+
+
 def load_snapshot(destination: Path, *, limits: SnapshotLimits | None = None) -> CapturedSnapshot:
     """Loading is repository-independent and never falls back to live files."""
+    given = limits
     limits = limits or SnapshotLimits()
     root = destination.absolute()
     if any(path.is_symlink() for path in (root, *root.parents)):
@@ -48,6 +58,9 @@ def load_snapshot(destination: Path, *, limits: SnapshotLimits | None = None) ->
     if raw is None or reason:
         raise SnapshotError("invalid_artifact", "Snapshot metadata is missing or exceeds limits.")
     capture = SnapshotCapture.model_validate_json(raw)
+    # Without limits of its own, the loader allows what the capture was taken with: a
+    # run given a higher file limit must be able to read its own snapshot back.
+    limits = given or _wider(SnapshotLimits(), capture.spec.limits)
     # The limits count distinct content, as capturing does: both sides of a change
     # name mostly the same blobs, and each is stored and read once.
     if len({item.content_digest for item in capture.manifest.files}) > limits.max_files:

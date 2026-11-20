@@ -8,16 +8,18 @@ from pathlib import Path
 
 from genesis_contracts.facts import FactSet
 from genesis_contracts.python import PythonOptions
-from genesis_contracts.snapshot import SnapshotSpec
+from genesis_contracts.snapshot import SnapshotLimits, SnapshotSpec
 
 from genesis_ci.git_snapshot import (
     SnapshotError,
     capture_snapshot,
+    changed_paths,
     tracked_paths,
     untracked_paths,
 )
 from genesis_ci.python import extract_python
 from genesis_ci.python.extract import gc_paused
+from genesis_ci.size import left_out as size_left_out
 from genesis_ci.snapshot_store import save_snapshot
 
 from .python_facts import collect_file, python_facts, python_source_roots
@@ -58,6 +60,51 @@ def _tracked_extensions(repo: Path) -> list[str]:
     return [f"{suffix or '(none)'}: {count}" for suffix, count in counts.most_common(5)]
 
 
+def _other_languages(
+    repo: Path, base: str | None, head: str | None, untracked: bool
+) -> dict | None:
+    """Source files in languages the Python engine does not read, counted by file type.
+
+    One run reads a project one way. When most of what it is asked about is in another
+    language, the Python engine covers a minority of it and the agent engine is the
+    better choice: the result says so, so that the choice does not rest on a guess. A
+    map is asked about the whole project; a review only about the files it changes.
+    """
+    from genesis_ci.agent_map.session import _is_source, source_paths
+
+    try:
+        if base is None:
+            paths = source_paths(repo, base, head, untracked)
+        else:
+            changed = [path for _, path in changed_paths(repo, base, head)]
+            if head is None and untracked:
+                changed += untracked_paths(repo, SnapshotSpec(base=base, include_untracked=True))
+            paths = sorted({path for path in changed if _is_source(path)})
+    except SnapshotError:
+        return None
+    python = sum(1 for path in paths if path.endswith((".py", ".pyi")))
+    others = Counter(
+        Path(path).suffix.lower() for path in paths if not path.endswith((".py", ".pyi"))
+    )
+    if not others:
+        return None
+    total = sum(others.values())
+    found = {
+        "scope": "project" if base is None else "changed",
+        "python_files": python,
+        "other_files": total,
+        "by_type": dict(others.most_common(5)),
+    }
+    if total > python:
+        what = "source files" if base is None else "changed source files"
+        found["note"] = (
+            f"{total} {what} are in other languages and {python} in Python; this run "
+            "reads the Python files only. Run prepare again with --engine agent to read "
+            "them all."
+        )
+    return found
+
+
 def _workers(files) -> int:
     """How many processes to analyze source files in. `GENESIS_WORKERS` overrides it."""
     configured = os.environ.get("GENESIS_WORKERS", "")
@@ -83,11 +130,16 @@ def prepare(
     head: str | None = None,
     include_untracked: bool = False,
     exclude: tuple[str, ...] = (),
+    max_files: int | None = None,
 ) -> dict:
     """Freeze a snapshot, extract facts and write the static skeleton. No model is called."""
     repo = repo.expanduser().resolve(strict=True)
     spec = SnapshotSpec(
-        base=base, head=head, include_untracked=include_untracked, exclude_paths=exclude
+        base=base,
+        head=head,
+        include_untracked=include_untracked,
+        exclude_paths=exclude,
+        **({"limits": SnapshotLimits(max_files=max_files)} if max_files else {}),
     )
     snapshot = capture_snapshot(repo, spec)
     roots = python_source_roots(item.path for item in snapshot.capture.manifest.files)
@@ -126,6 +178,9 @@ def prepare(
         "head_revision": manifest.head_revision,
         "integrity_status": manifest.integrity_status,
     }
+    missing = size_left_out(snapshot.capture)
+    if missing:
+        session["files_over_size_limit"] = missing
     left_out = {}
     if base is not None:
         captured = {item.path for item in manifest.files}
@@ -208,6 +263,7 @@ def prepare(
             change["untracked_left_out"] = left_out["untracked"]["total"]
     entries = Counter(entry.detection.value for entry in facts.entries if entry.side == "head")
     unsupported = [item.path for item in facts.files if item.status == "unsupported"]
+    other = _other_languages(repo, base, head, include_untracked)
     return {
         **session,
         "analysis_status": skeleton.analysis_status,
@@ -220,6 +276,7 @@ def prepare(
         "steps": sum(len(flow.steps) for flow in skeleton.flows),
         "limitations": [item.code for item in skeleton.limitations],
         **change,
+        **({"other_languages": other} if other else {}),
     }
 
 

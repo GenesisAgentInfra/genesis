@@ -134,11 +134,15 @@ def install_skills(
             current = _installed_files(destination)
             if current == desired:
                 action = "unchanged"
-            elif not update or not _can_update(current):
+            elif not _can_update(current):
                 raise ValueError(
-                    f"Skill already exists or was edited: {destination}. "
-                    "Use --update for an unmodified Genesis-managed install; "
-                    "otherwise preserve/move your existing skill first."
+                    f"Skill folder was edited, or was not installed by Genesis: {destination}. "
+                    "Move it away, then install again."
+                )
+            elif not update:
+                raise ValueError(
+                    f"Another version of the Genesis skill is installed: {destination}. "
+                    "Add --update to replace it."
                 )
             else:
                 action = "update"
@@ -204,7 +208,13 @@ def skill_status(agent: Agent, scope: Scope, repo: Path | None) -> list[tuple[Pa
             state = "installed (current)" if content == desired else "different or locally edited"
         result.append((destination, state))
         result += [
-            (path, f"earlier name; run install to replace it with {SKILL_NAME}")
-            for path, _ in _legacy_installs(destination)
+            (
+                path,
+                f"earlier name; install replaces it with {SKILL_NAME}"
+                if removable
+                else "earlier name, edited or not installed by Genesis; install keeps it, "
+                "remove it yourself if unused",
+            )
+            for path, removable in _legacy_installs(destination)
         ]
     return result

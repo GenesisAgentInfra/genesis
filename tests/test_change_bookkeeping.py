@@ -117,7 +117,7 @@ def test_the_skill_reads_for_risks_in_a_pass_of_its_own():
     from importlib.resources import files
 
     text = files("genesis_ci").joinpath("assets/skills/genesis/SKILL.md").read_text()
-    step = text.split("4. Read for risks", 1)[1].split("5. `render`", 1)[0]
+    step = text.split("4. Read for risks", 1)[1].split("5. Put the changes on business flows", 1)[0]
     for angle in (
         "**The callers outside the changes**",
         "**The changed files Genesis did not analyze**",
