@@ -94,6 +94,8 @@ Python 的结果最准：Genesis 会自己解析代码、自己找入口，流�
 
 其他语言靠你的 agent：它来找入口、读代码，Genesis 拿源码核对它写下的每一步。agent 漏掉的路径不会被标出来，它在汇报里会说明这一点。
 
+Genesis 能读这些语言的源码文件：C、C++、C#、Clojure、Dart、Elixir、Erlang、Go、Java、JavaScript、Julia、Kotlin、Lua、Objective-C、Perl、PHP、Python、R、Ruby、Rust、Scala、shell 脚本、SQL、Svelte、Swift、TypeScript 和 Vue。项目里一个这样的文件都没有，就画不了。
+
 ## Genesis 不做的事
 
 - 不运行你的代码和测试，也不读取覆盖率数据。

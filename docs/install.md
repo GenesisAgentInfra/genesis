@@ -58,13 +58,23 @@ self-contained, so it can also be copied whole into another skills directory.
 
 ```sh
 "$(uv tool dir --bin)/genesis" agent status
-python3 -I ~/.claude/skills/genesis/scripts/run_genesis.py version
-python3 -I ~/.agents/skills/genesis/scripts/run_genesis.py version
 ```
 
-The first prints `installed (current)` for each directory you installed into. The
-other two run the CLI the way the skill does, one line per directory: run the one for
-the directory you installed into. It prints `genesis-ci` with its version.
+This prints `installed (current)` for each directory you installed into, and
+`not installed` for the other.
+
+Then run the CLI the way the skill does. It prints `genesis-ci` with its version. After
+`--agent claude`:
+
+```sh
+python3 -I ~/.claude/skills/genesis/scripts/run_genesis.py version
+```
+
+After `--agent codex`:
+
+```sh
+python3 -I ~/.agents/skills/genesis/scripts/run_genesis.py version
+```
 
 ## Start using it
 
