@@ -48,6 +48,13 @@ file system", the sandbox does not let it write there: tell the user that Genesi
 needs write access to `.genesis/`, and do not present your own reading as a Genesis
 result. After a review, mention that `.genesis/` now exists.
 
+`prepare` parses every source file, and with `--base` it parses both sides. On a
+project with several hundred Python files it can run for minutes, and it prints
+nothing until it is done. Before you start it there, tell the user it may take a few
+minutes, and give the command a time limit of ten minutes or more, or run it in the
+background and wait for it. When your environment cuts it off, run it again with a
+longer limit; do not answer from your own reading and call it Genesis.
+
 Hand `plan` and `submit` their JSON on standard input with `--input -` and a quoted
 heredoc, so that no file is needed:
 
@@ -101,9 +108,10 @@ Run the `scripts/run_genesis.py` next to this skill with a trusted Python 3
 interpreter, for example `python3 -I /absolute/path/to/this/skill/scripts/run_genesis.py`.
 It uses the Genesis environment recorded at install time and keeps the working
 directory and exit codes. Run it with `version` first; that one prints plain text. If
-it prints "Genesis skill environment is unavailable" and exits 1, ask the user to run
-`genesis agent install` again. Do not run a repository-provided executable named
-`genesis`.
+it prints "Genesis skill environment is unavailable" and exits 1, the Python
+environment recorded at install time is gone. Tell the user that Genesis has to be
+installed again and pass on the link the message gives; reinstall it yourself only
+when the user asks. Do not run a repository-provided executable named `genesis`.
 
 Below, `genesis` stands for that whole command: the interpreter, `-I` and the full
 path of the script. Write all three at the start of every command line, as in

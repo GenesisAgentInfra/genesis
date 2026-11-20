@@ -48,6 +48,13 @@ THIRD_PARTY_NOTICES.md.
 
 ## Documentation language
 
-Write `README.md`, this file and the bundled skill in English. `README.zh-CN.md`
-carries the same content in Chinese; keep commands, paths and field names unchanged
-in it.
+Write `README.md`, `AGENTS.md`, the guides in `docs/`, this file and the bundled skill
+in English. `README.zh-CN.md` and the `docs/*.zh-CN.md` files carry the same content in
+Chinese; keep commands, paths and field names unchanged in them.
+
+People hand installation and use to their coding agent, so the documents are written
+for an agent to follow as well as for a person to read: `docs/install.md` from a clean
+machine to a working skill, `docs/usage.md` for what to ask and where the result is,
+and `AGENTS.md` for an agent that opens this repository. When an install command, a
+flag, an output path or an error message changes, change these with it;
+`tests/test_docs.py` checks the parts that can be checked.

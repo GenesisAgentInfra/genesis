@@ -19,7 +19,10 @@ def main() -> int:
             raise ValueError("Genesis environment is missing")
     except (OSError, ValueError, TypeError, KeyError):
         print(
-            "Genesis skill environment is unavailable. Reinstall with genesis agent install.",
+            "Genesis skill environment is unavailable: the Python environment recorded at "
+            "install time is missing. Reinstall Genesis, then run its agent install command "
+            "with --update: "
+            "https://github.com/GenesisAgentInfra/genesis/blob/main/docs/install.md",
             file=sys.stderr,
         )
         return 1

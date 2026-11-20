@@ -25,3 +25,9 @@ jobs:
           uv build --package genesis-ci --wheel
           uv build --package genesis-contracts --wheel
           uv run --all-packages --frozen python scripts/check_packages.py
+      - name: Install the way docs/install.md says, without the lockfile
+        run: |
+          uv tool install --python 3.12 ./packages/genesis_ci
+          "$(uv tool dir --bin)/genesis" agent install --agent claude
+          "$(uv tool dir --bin)/genesis" agent status --agent claude
+          python3 -I ~/.claude/skills/genesis/scripts/run_genesis.py version

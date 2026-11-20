@@ -27,14 +27,23 @@ changes are untested or risky. It runs as a skill inside Claude Code and Codex.
 
 ## Quick start
 
-```sh
-git clone https://github.com/GenesisAgentInfra/genesis.git
-cd genesis
-uv sync --python 3.12 --package genesis-ci --no-dev --frozen
-uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
+The quickest way is to let your coding agent do it. Open your own project in the agent
+and paste:
+
+```text
+Install Genesis by following https://raw.githubusercontent.com/GenesisAgentInfra/genesis/main/docs/install.md, then review my latest commit with it and tell me how to open the result.
 ```
 
-Use `--agent codex` or `--agent both` if you work in Codex.
+Or install it yourself. You need [uv](https://docs.astral.sh/uv/getting-started/installation/)
+and Git, on macOS or Linux:
+
+```sh
+uv tool install --python 3.12 "git+https://github.com/GenesisAgentInfra/genesis#subdirectory=packages/genesis_ci"
+"$(uv tool dir --bin)/genesis" agent install --agent claude
+```
+
+Use `--agent codex` for Codex and `--agent both` for both. Other agents, updating,
+uninstalling and troubleshooting are in the [install guide](docs/install.md).
 
 Now open your own project in Claude Code. There are two commands:
 
@@ -47,8 +56,9 @@ Now open your own project in Claude Code. There are two commands:
 changed since a revision (here `main`) and whether a test checks it. You can also just
 ask in plain language.
 
-In Codex the skill is `$genesis`. When it finishes, open `.genesis/view.html` in a
-browser. The `summary.md` next to it is ready to paste into a pull request.
+In Codex the skill is `$genesis`. When it finishes, open `.genesis/out/latest/view.html`
+in a browser. The `summary.md` next to it is ready to paste into a pull request. The
+[usage guide](docs/usage.md) explains the page and the other files.
 
 ## What you get
 
@@ -125,6 +135,14 @@ What each measure means, and the full results:
   but a path the agent misses is not flagged.
 - Test verdicts come from reading your tests. Genesis doesn't run them.
 - Risks are what your agent noticed while reading. There is no rule engine.
+
+## Documentation
+
+- [Install](docs/install.md): requirements, which flag for which agent, updating,
+  uninstalling, and what to do when something goes wrong.
+- [Use](docs/usage.md): what to ask, where the result is, how to read the page.
+- [Benchmark](docs/change-analysis-benchmark.md): what was measured and the full results.
+- [AGENTS.md](AGENTS.md): for a coding agent that was pointed at this repository.
 
 ## License
 

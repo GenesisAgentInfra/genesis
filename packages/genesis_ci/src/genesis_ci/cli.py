@@ -290,7 +290,12 @@ def map_render(
 
 @agent_app.command("install")
 def agent_install(
-    agent: Agent = typer.Option(..., "--agent", help="codex, claude, or both"),
+    agent: Agent = typer.Option(
+        ...,
+        "--agent",
+        help="claude: ~/.claude/skills. codex: ~/.agents/skills, which other agents "
+        "read too. both: both directories.",
+    ),
     scope: Scope = typer.Option(Scope.user, "--scope", help="user or project"),
     repo: Path | None = typer.Option(None, "--repo", help="Application Git root for project scope"),
     update: bool = typer.Option(False, "--update", help="Refresh an unmodified managed install"),

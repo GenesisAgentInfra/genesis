@@ -26,14 +26,20 @@ Genesis 把你的代码库画成一张业务流程图，告诉你 agent 的哪�
 
 ## 快速开始
 
-```sh
-git clone https://github.com/GenesisAgentInfra/genesis.git
-cd genesis
-uv sync --python 3.12 --package genesis-ci --no-dev --frozen
-uv run --package genesis-ci --no-dev --frozen genesis agent install --agent claude
+最省事的办法是让你的 coding agent 来装。在 agent 里打开你自己的项目，把下面这句话发给它：
+
+```text
+按 https://raw.githubusercontent.com/GenesisAgentInfra/genesis/main/docs/install.zh-CN.md 安装 Genesis，然后用它看看我最近一次提交改了什么，最后告诉我怎么打开结果。
 ```
 
-用 Codex 的话，把最后的参数换成 `--agent codex` 或 `--agent both`。
+也可以自己装。需要先有 [uv](https://docs.astral.sh/uv/getting-started/installation/) 和 Git，系统是 macOS 或 Linux：
+
+```sh
+uv tool install --python 3.12 "git+https://github.com/GenesisAgentInfra/genesis#subdirectory=packages/genesis_ci"
+"$(uv tool dir --bin)/genesis" agent install --agent claude
+```
+
+用 Codex 就把参数换成 `--agent codex`，两个都用就换成 `--agent both`。其他 agent 怎么装，以及更新、卸载和常见问题，见[安装说明](docs/install.zh-CN.md)。
 
 然后在 Claude Code 里打开你自己的项目。一共两个命令：
 
@@ -44,7 +50,7 @@ uv run --package genesis-ci --no-dev --frozen genesis agent install --agent clau
 
 `map` 画出系统现在的样子，帮你看懂它。`review` 告诉你相对某个版本（这里是 `main`）改了什么，有没有测试管着。你也可以直接用大白话问。
 
-Codex 里对应的是 `$genesis`。跑完之后用浏览器打开 `.genesis/view.html`。旁边的 `summary.md` 可以直接贴进 PR。
+Codex 里对应的是 `$genesis`。跑完之后用浏览器打开 `.genesis/out/latest/view.html`。旁边的 `summary.md` 可以直接贴进 PR。页面怎么看、还有哪些文件，见[使用说明](docs/usage.zh-CN.md)。
 
 ## 你会看到什么
 
@@ -105,6 +111,13 @@ Claude Code 和 Codex 分别在装和不装 Genesis 的情况下，分析了 5 �
 - Python 的结果最准确，因为 Genesis 会解析它。其他语言也能用：由你的 agent 读代码，Genesis 逐步对照源码核对，但 agent 漏掉的路径不会被标出来。
 - 测试结论是读测试代码得出的，Genesis 不会去跑测试。
 - 风险是 agent 读代码时注意到的，没有规则引擎。
+
+## 文档
+
+- [安装说明](docs/install.zh-CN.md)：需要什么，哪个 agent 用哪个参数，怎么更新、卸载，出问题怎么办。
+- [使用说明](docs/usage.zh-CN.md)：怎么问，结果在哪里，页面怎么看。
+- [评测](docs/change-analysis-benchmark.zh-CN.md)：测了什么，以及完整结果。
+- [AGENTS.md](AGENTS.md)：写给被指到这个仓库来的 coding agent。
 
 ## 许可证
 
