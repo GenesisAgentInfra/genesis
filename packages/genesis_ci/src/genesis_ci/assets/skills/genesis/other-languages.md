@@ -23,8 +23,10 @@ genesis map prepare --repo /absolute/app --base main
 ```
 
 Without `--base` the session maps the code as it is. With `--base REV` it also lists
-what changed since that revision. The result has `session_id`, `files` (how many
-source files were frozen) and `file_types`. Tests are told apart by their path:
+what changed since that revision. For one commit, a commit range, a branch, a pull
+request or uncommitted work, choose `--base` and `--head` as step 1 of section 5 in
+`SKILL.md` says; the flags mean the same here. The result has `session_id`, `files`
+(how many source files were frozen) and `file_types`. Tests are told apart by their path:
 `tests/`, `__tests__/`, `*.test.*`, `*.spec.*`, `*_test.*`.
 
 If the project's main language is not Python but it has some Python files, `prepare`
@@ -181,8 +183,14 @@ changed lines with `before` and `after`, and a `placement`.
 - For an `unassigned` change in code a flow runs through, add or widen a step so that it
   cites those lines, and submit the flow again. Leave a change unassigned only when no
   flow passes through it; report it as off the map.
+- A change that only removes lines has no line in the current code for a step to cite.
+  It stays off the map: explain it like any other change and report it as off the map.
 - `unanalyzed_changes` are changed files that are not source, such as configuration.
   Mention them.
+
+The CLI takes explanations before any flow is described, but a change then has no
+place on the map and is only listed as off it. So plan and describe the flows the
+changed code belongs to first; only those flows are needed.
 
 When the flows are done, `next_task` is `task_change`:
 
@@ -227,6 +235,17 @@ genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change
   - `unknown`: it could not be told; the note says why.
 - A change to a test file gets a `summary` and no verdict.
 - Verdicts come from reading tests. Never say a test ran or passed.
+
+This submission takes less than the one section 5 of `SKILL.md` describes for Python.
+Anything else is refused:
+
+- One entry per change, with `change_id`. There is no `change_ids`: when several
+  changes are parts of one change in behaviour, give each its own entry.
+- Tests are cited under `tests`, with evidence. There is no `test_ids`.
+- `short_summary` and `effect` are optional, as in `SKILL.md`.
+- There is no `risks` list. Read for risks as step 4 of section 5 in `SKILL.md`
+  describes, then record each risk as an `observation` on the step it concerns and
+  submit that flow again.
 
 Assessments can be sent in several submissions; each replaces what was said before
 about the changes it names.
