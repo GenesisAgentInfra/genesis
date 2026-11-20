@@ -1,6 +1,6 @@
 ---
 name: genesis
-description: Show what a code change in a Python codebase does, and map its business flows, with Genesis, backed by code evidence. Use when the user asks what a commit, pull request, branch, commit range or uncommitted change does or affects, whether it could break something or is safe to merge or release, which business flows or entry points it reaches, or whether tests cover it, for example when reviewing a change before pushing, merging or releasing. Also use it when the user wants to understand what a project does as business flows, asks for a business flow map or diagram that product and engineering can both read, asks to update or continue such a map, or asks about an existing Genesis map. Match the intent in any language, not exact keywords.
+description: Show what a code change does, and map a project's business flows, with Genesis, backed by code evidence. Works on Python and on most other common programming languages. Use when the user asks what a commit, pull request, branch, commit range or uncommitted change does or affects, whether it could break something or is safe to merge or release, which business flows or entry points it reaches, or whether tests cover it, for example when reviewing a change before pushing, merging or releasing. Also use it when the user wants to understand what a project does as business flows, asks for a business flow map or diagram that product and engineering can both read, asks to update or continue such a map, or asks about an existing Genesis map. Match the intent whatever language the user writes in, not exact keywords.
 ---
 
 # Genesis business map
@@ -30,7 +30,10 @@ what the user says.
   break, which entry points or flows it reaches, whether tests cover it, what its risks
   are. Without a revision, compare with the one the branch started from; for
   uncommitted work that is `HEAD`. Run `version` as in "Locate the CLI" below, then go
-  to section 5 and take its short path. It needs no full map: it takes a handful of
+  to section 5 and take its short path. When `prepare` there reports
+  `"engine": "agent"`, the project is not Python: leave section 5 and continue in
+  `other-languages.md`, which has you describe the flows the change touches before
+  you explain it. The short path needs no full map: it takes a handful of
   commands, and you describe flows only where that pays off. Even a small change takes
   the short path, as long as a changed file is in a language Genesis reads: Python, or
   the project's main language when that is not Python (see below). When none is,
@@ -210,7 +213,7 @@ the code. So write it as what the product does, not as a list of its endpoints.
 ```
 
 ```
-genesis map plan --repo /absolute/app --session SESSION_ID --input /absolute/plan.json
+genesis map plan --repo /absolute/app --session SESSION_ID --input -
 ```
 
 - Skip reasons: `infrastructure`, `test_helper`, `duplicate`, `out_of_scope`, `budget`,
@@ -348,7 +351,7 @@ Then write the flow and submit it. This example leaves nothing unaccounted:
 ```
 
 ```
-genesis map submit --repo /absolute/app --session SESSION_ID --task TASK_ID --input /absolute/flow.json
+genesis map submit --repo /absolute/app --session SESSION_ID --task TASK_ID --input -
 ```
 
 Write every name, summary, branch label, note and observation in the user's language,
@@ -510,9 +513,11 @@ Rules the CLI enforces:
   fold a whole flow into "call the service": the reader would see nothing.
 - **Observations** are optional risks you noticed while reading. They need evidence and
   a `severity` of `info`, `low` or `medium`.
-- **Stages.** A reader takes in about seven blocks across. A flow that is wider gets
-  `stages`: each folds a run of steps into one block, and the reader opens the block to
-  see its steps. This is where you abstract, so name a stage for what its steps get done
+- **Stages.** A reader takes in about seven blocks across. The width of a flow is its
+  longest path from the trigger to an end: branches that run side by side do not add
+  to it. A flow that is wider gets `stages`: each folds a run of steps into one block
+  that counts as one, and the reader opens the block to see its steps. Count before
+  your first submission and put the stages in it. This is where you abstract, so name a stage for what its steps get done
   together ("Check the payment", not "Steps 3 to 6"):
 
   ```

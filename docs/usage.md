@@ -121,6 +121,11 @@ Other languages work through your agent. It finds the entry points and reads the
 and Genesis checks every step it writes against the source. A path the agent misses is
 not flagged, and the agent says so in its report.
 
+Genesis reads source files in these languages: C, C++, C#, Clojure, Dart, Elixir,
+Erlang, Go, Java, JavaScript, Julia, Kotlin, Lua, Objective-C, Perl, PHP, Python, R,
+Ruby, Rust, Scala, shell scripts, SQL, Svelte, Swift, TypeScript and Vue. A project
+with no file in any of them cannot be mapped.
+
 ## What Genesis does not do
 
 - It does not run your code or your tests, and it reads no coverage data.

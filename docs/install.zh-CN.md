@@ -43,11 +43,21 @@ Cursor 和 OpenCode 也读 `~/.claude/skills`。如果你同时用 Claude Code �
 
 ```sh
 "$(uv tool dir --bin)/genesis" agent status
-python3 -I ~/.claude/skills/genesis/scripts/run_genesis.py version
-python3 -I ~/.agents/skills/genesis/scripts/run_genesis.py version
 ```
 
-第一条会对每个装过的目录输出 `installed (current)`。后两条按 skill 的方式调用 CLI，一个目录一条：装在哪个目录就执行哪一条，它会输出 `genesis-ci` 和版本号。
+它会对每个装过的目录输出 `installed (current)`，对另一个目录输出 `not installed`。
+
+然后按 skill 的方式调用一次 CLI，它会输出 `genesis-ci` 和版本号。用 `--agent claude` 装的：
+
+```sh
+python3 -I ~/.claude/skills/genesis/scripts/run_genesis.py version
+```
+
+用 `--agent codex` 装的：
+
+```sh
+python3 -I ~/.agents/skills/genesis/scripts/run_genesis.py version
+```
 
 ## 开始使用
 

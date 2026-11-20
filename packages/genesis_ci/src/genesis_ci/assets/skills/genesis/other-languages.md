@@ -2,7 +2,9 @@
 
 Follow this file when `map prepare` reports `"engine": "agent"`. It replaces sections
 2, 3 and 5 of `SKILL.md`; locating the CLI, rendering and the later requests stay as
-described there. The pages the user gets are the same.
+described there. The pages the user gets are the same. `plan` and `submit` take
+their JSON the way `SKILL.md` says: on standard input with `--input -` and a quoted
+heredoc, or from a file in the temporary directory your environment names.
 
 What differs is who finds things. Genesis has no analyzer for this language, so there
 are no facts, no detected entries and no check that a flow leaves nothing out:
@@ -66,7 +68,7 @@ first, so write what the product does, not a list of endpoints.
 ```
 
 ```
-genesis map plan --repo /absolute/app --session SESSION_ID --input /absolute/plan.json
+genesis map plan --repo /absolute/app --session SESSION_ID --input -
 ```
 
 - A flow is one business process a person would name. `tier` is `primary` for a process
@@ -91,7 +93,7 @@ Take `next_task` from `status` and repeat until it is null or `task_change`.
 ```
 genesis map status  --repo /absolute/app --session SESSION_ID
 genesis map context --repo /absolute/app --session SESSION_ID --task TASK_ID
-genesis map submit  --repo /absolute/app --session SESSION_ID --task TASK_ID --input /absolute/flow.json
+genesis map submit  --repo /absolute/app --session SESSION_ID --task TASK_ID --input -
 ```
 
 `context` gives the entries with their source and, in a change session, the changes
@@ -149,9 +151,11 @@ each an `evidence_id` you can cite instead of a range.
   `severity` is `info`, `low` or `medium`; `category` is `reliability`, `correctness`,
   `data_integrity`, `security`, `performance` or `other`.
 - Do not send `anchors`, `omitted` or `unexpanded_reason`.
-- **Stages.** A reader takes in about seven blocks across. A flow that is wider gets
-  `stages`: each folds a run of steps into one block, and the reader opens the block to
-  see its steps. This is where you abstract, so name a stage for what its steps get done
+- **Stages.** A reader takes in about seven blocks across. The width of a flow is its
+  longest path from the trigger to an end: branches that run side by side do not add
+  to it. A flow that is wider gets `stages`: each folds a run of steps into one block
+  that counts as one, and the reader opens the block to see its steps. Count before
+  your first submission and put the stages in it. This is where you abstract, so name a stage for what its steps get done
   together ("Check the payment", not "Steps 3 to 6"):
 
   ```
@@ -196,7 +200,7 @@ When the flows are done, `next_task` is `task_change`:
 
 ```
 genesis map context --repo /absolute/app --session SESSION_ID --task task_change
-genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change --input /absolute/changes.json
+genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change --input -
 ```
 
 ```json
@@ -233,6 +237,13 @@ genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change
     about it. Cite them; the note says what is missing.
   - `not_reached`: no test gets there. Cite none.
   - `unknown`: it could not be told; the note says why.
+- `asserts` is true for a test that checks what the changed code produces, and
+  false for one that only runs it. The tests cited for `reached_only` usually have
+  it false.
+- One change can hold several values, such as two constants on neighbouring lines.
+  `covered` needs, for each value, a test that would fail if that value were
+  undone. When only some have one, use `reached_only` and name the others in the
+  note.
 - A change to a test file gets a `summary` and no verdict.
 - Verdicts come from reading tests. Never say a test ran or passed.
 

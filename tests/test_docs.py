@@ -57,3 +57,56 @@ def test_install_guide_names_the_directories_the_installer_writes(name, tmp_path
             f"| `--agent {agent.value}` | `~/{destination.relative_to(tmp_path.resolve())}` |"
             in text
         )
+
+
+# The language each source suffix the agent engine reads belongs to, as the guides name it.
+LANGUAGE_OF_SUFFIX = {
+    "c": "C",
+    "h": "C",
+    "cc": "C++",
+    "cpp": "C++",
+    "hpp": "C++",
+    "cs": "C#",
+    "clj": "Clojure",
+    "dart": "Dart",
+    "ex": "Elixir",
+    "exs": "Elixir",
+    "erl": "Erlang",
+    "go": "Go",
+    "java": "Java",
+    "js": "JavaScript",
+    "jsx": "JavaScript",
+    "mjs": "JavaScript",
+    "cjs": "JavaScript",
+    "jl": "Julia",
+    "kt": "Kotlin",
+    "kts": "Kotlin",
+    "lua": "Lua",
+    "m": "Objective-C",
+    "mm": "Objective-C",
+    "pl": "Perl",
+    "php": "PHP",
+    "py": "Python",
+    "r": "R",
+    "rb": "Ruby",
+    "rs": "Rust",
+    "scala": "Scala",
+    "sh": "shell",
+    "sql": "SQL",
+    "svelte": "Svelte",
+    "swift": "Swift",
+    "ts": "TypeScript",
+    "tsx": "TypeScript",
+    "vue": "Vue",
+}
+
+
+@pytest.mark.parametrize("name", ["docs/usage.md", "docs/usage.zh-CN.md"])
+def test_usage_guide_lists_the_languages_the_cli_reads(name):
+    from genesis_ci.agent_map.session import SOURCE_SUFFIXES
+
+    assert set(LANGUAGE_OF_SUFFIX) == SOURCE_SUFFIXES
+    [paragraph] = [part for part in read(name).split("\n\n") if "Objective-C" in part]
+    for language in set(LANGUAGE_OF_SUFFIX.values()):
+        whole_word = rf"(?<![\w+#-]){re.escape(language)}(?![\w+#-])"
+        assert re.search(whole_word, paragraph, flags=re.ASCII), language
