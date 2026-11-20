@@ -770,12 +770,20 @@ the context counts every change without an explanation.
   whole block. `before` and `after` give the text of each side with an
   `evidence_id`; a side with `"excerpt": true` shows less than the lines it cites.
   Reformatting, comments and code that only moved are not changes.
-- `placement` is the step of the current map a change belongs to. Without a `reason`,
-  a step rests on the changed code itself. A `reason` says how the place was chosen
-  otherwise. An `unassigned` change has no place on the map, and its `reason` says
-  whether a flow reaches it, whether calls that failed to resolve may reach it
-  (`unresolved_calls`), or that no entry reaches it through resolved calls. The last
-  is not proof that nothing does.
+- `placement` is where a change sits on the current map. Its `status` is one of three:
+  - `projected`: a step holds it (`flow_id`, `step_id`). Without a `reason`, the step
+    rests on the changed code itself. A `reason` says how the step was chosen
+    otherwise, for example the nearest step of the same function or a step that calls
+    it.
+  - `removed_step`: the change deletes a definition that no longer exists. `flow_id`
+    is the flow that called it, and `removed_step` names the step it would have been.
+    The page shows it on that flow as removed. No step can cite code that is gone, so
+    do not add one; explain the change like any other.
+  - `unassigned`: no place on the map. Its `reason` says whether a flow reaches it,
+    whether calls that failed to resolve may reach it (`unresolved_calls`), or that no
+    entry reaches it through resolved calls. The last is not proof that nothing does.
+
+  `changes_placed` counts `projected` and `removed_step` changes.
 - `tests` is what the test sources alone show. A test is linked when it calls the
   changed function, directly or through other calls, or requests a route that leads to
   it with an HTTP test client. `reached_only` at this point means only that; `unknown`
