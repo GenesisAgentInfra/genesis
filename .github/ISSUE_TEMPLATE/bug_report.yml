@@ -1,0 +1,50 @@
+name: Bug report
+description: Genesis did something wrong or failed.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach files from `.genesis/` of a private project: its `sessions/` and `out/` folders hold copies of your source, and `view.html` and `graph.html` contain source excerpts. To report a vulnerability, use the Security tab instead.
+  - type: textarea
+    id: ran
+    attributes:
+      label: What you ran
+      description: The command, or what you asked your coding agent, and what it printed.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Genesis version
+      description: What `genesis version` prints, or `"$(uv tool dir --bin)/genesis" version` if `genesis` is not on your PATH.
+      placeholder: genesis-ci 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Coding agent
+      placeholder: Claude Code, Codex, or another agent, with its version
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15, Ubuntu 24.04
+    validations:
+      required: true

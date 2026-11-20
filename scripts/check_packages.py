@@ -1,15 +1,56 @@
 """Check wheel isolation without importing the server or publishing packages."""
 
+import json
+import re
+import sys
 from email.parser import Parser
 from pathlib import Path
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+# Notice files each wheel must carry, byte-identical to the copy at the repository root.
+NOTICE_FILES = {
+    "genesis_ci": ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"),
+    "genesis_contracts": ("LICENSE", "NOTICE"),
+}
+
+
+def check_viewer_notices():
+    """Every viewer `dependencies` entry, and every devDependency viewer/src imports,
+    must be a row of the notices' table."""
+    notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    listed = {
+        name.strip()
+        for line in notices.splitlines()
+        if line.startswith("| ")
+        for name in line.split("|")[1].split(",")
+    }
+    package = json.loads((ROOT / "viewer" / "package.json").read_text(encoding="utf-8"))
+    imported = set()
+    for path in (ROOT / "viewer" / "src").rglob("*"):
+        if path.suffix in {".ts", ".tsx", ".js", ".jsx", ".css"}:
+            imported |= set(
+                re.findall(
+                    r"(?:\bfrom|@import|\bimport)\s+[\"']([^\"'./][^\"']*)[\"']",
+                    path.read_text(encoding="utf-8"),
+                )
+            )
+    required = set(package.get("dependencies", {})) | {
+        name
+        for name in package.get("devDependencies", {})
+        if any(spec == name or spec.startswith(name + "/") for spec in imported)
+    }
+    missing = sorted(name for name in required if name not in listed)
+    if missing:
+        raise SystemExit(f"THIRD_PARTY_NOTICES.md does not name: {', '.join(missing)}")
 
 
 def main():
+    # The wheels are read from dist/ unless another directory is given.
+    dist = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "dist"
+    check_viewer_notices()
     for package in ("genesis_ci", "genesis_contracts"):
-        wheels = sorted((ROOT / "dist").glob(f"{package}-*.whl"))
+        wheels = sorted(dist.glob(f"{package}-*.whl"))
         if len(wheels) != 1:
             raise SystemExit(f"Expected exactly one freshly built {package} wheel")
         with ZipFile(wheels[0]) as wheel:
@@ -35,9 +76,9 @@ def main():
             if parsed["License-Expression"] != "Apache-2.0":
                 raise SystemExit(f"Wrong license metadata in {wheels[0].name}")
             license_files = set(parsed.get_all("License-File", []))
-            if not {"LICENSE", "NOTICE"} <= license_files:
-                raise SystemExit("Distribution omits first-party license notices")
-            for filename in ("LICENSE", "NOTICE"):
+            if not set(NOTICE_FILES[package]) <= license_files:
+                raise SystemExit(f"{wheels[0].name} omits license or notice files")
+            for filename in NOTICE_FILES[package]:
                 expected = (ROOT / filename).read_bytes()
                 if (ROOT / "packages" / package / filename).read_bytes() != expected:
                     raise SystemExit(f"Stale {filename} in {package}")

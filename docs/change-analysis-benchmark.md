@@ -53,13 +53,17 @@ to use it. It did in all 60 runs that had it.
 The five repositories were chosen by a fixed rule, not by hand: a GitHub search for
 Python agent, LLM, MCP and RAG projects with a permissive licence and at least 200
 stars, taken from the most stars down, keeping the first five of medium size (8,000 to
-25,000 lines of source) that have a test suite, a lockfile and two commits that fit
-the rule below. Repositories used while developing Genesis were skipped, so Genesis
-had never been run on any of the five.
+25,000 non-blank lines of source) that have a test suite, a lockfile and two commits
+that fit the rule below. Repositories used while developing Genesis were skipped, so
+Genesis had never been run on any of the five. Here *source* means the Python files of
+the project's own package, outside the tests.
 
 From each repository two recent commits were taken, also by rule: each changes at
-least two source files and 40 to 250 lines of source, is not a merge commit, a version
-bump or a documentation-only change, and has at least three scorable units.
+least two source files and 40 to 250 lines in them, is not a merge commit, a version
+bump or a documentation-only change, and has at least three scorable units. Lines are
+counted as added plus removed, leaving out blank lines, comment-only lines and
+docstrings. Other files in the commit, such as tests, front-end code, scripts and
+documentation, are not counted.
 
 | Repository | Commit | Scorable units | Covered | Executed only | Left out |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -104,8 +108,9 @@ reading the code and the tests:
 | **Not covered** | No such test runs the code. |
 | **Cannot tell** | Reading alone does not decide it. |
 
-In its own reports Genesis calls these levels covered, reached only, not reached and
-unknown.
+In `summary.md` Genesis calls these levels covered, reached only, not reached and
+unknown. Its page shows them as Behavior checked, Behavior not checked, No coverage
+found and Coverage unclear (see [Test verdicts](usage.md#test-verdicts)).
 
 This is stricter than line coverage, which counts a line as covered once any test runs
 it. Here "covered" asks whether a test would notice if the change were taken back. For
@@ -189,8 +194,10 @@ reference entry points.
 - **Entry-point precision.** Of the entry points the answer names, the share that are
   in the reference.
 
-Both are averaged over the units of a commit. Only entry points named one by one
-count: a phrase such as "all admin routes" is not scored.
+Both are averaged over the units of a commit, removals left out. A unit whose
+reference lists no entry point is left out of recall, and a unit for which the answer
+names none is left out of precision. Only entry points named one by one count: a
+phrase such as "all admin routes" is not scored.
 
 Example: the reference has entry points A, B and C for a unit. The answer names A, B
 and two that are not in the reference. Recall is 2 of 3, precision 2 of 4.
@@ -203,7 +210,9 @@ and two that are not in the reference. Recall is 2 of 3, precision 2 of 4.
 - **Change recall.** The share of the reference units the answer mentions at all,
   whatever it says about them. It is reported in two parts: units the commit message
   describes, which an agent can repeat from the message, and units it does not, which
-  can only be found by reading the diff.
+  can only be found by reading the diff. Moves are left out. Of the other units, 117
+  are described by their commit message and 60 are not. In two commits the message
+  describes none, so the first part is a mean over 8 commits.
 - **Changes listed per run.** A count, shown for context.
 
 Genesis builds its list of changes from the diff, so change recall favours it by
@@ -220,7 +229,8 @@ rating ("low", "none"), or says nothing can go wrong, is not a raised risk.
 | **Not real** | The code rules it out, the claim misreads the code, or it is not tied to this change, such as general advice to add tests. |
 | **Unclear** | The code alone does not decide it: it depends on runtime data, an outside service or the authors' intent. |
 
-- **Risks raised per run**, and how many of them are real, not real and unclear.
+- **Risks raised per run**, and how many of them are real, not real and unclear. Each
+  figure is rounded on its own, so the three parts can differ from the total by 0.1.
 - **Share of raised risks that are real.** Real risks divided by raised risks, computed
   for each run and then averaged, so it is not exactly the "of them real" row divided
   by the "risks raised per run" row.
@@ -229,9 +239,16 @@ Risks are counted one by one; severity is not weighed.
 
 ## Results
 
-The README shows some of these rows under plainer names. Its row "changes that tests
-run but would not catch, flagged as such" is the row "executed-only units called
-executed only" below, as a share of 99.
+The README shows four of these rows under plainer names:
+
+| In the README | On this page |
+| --- | --- |
+| Changes given a correct test-coverage verdict | Coverage accuracy |
+| Changes that tests run but would not catch, flagged as such | Executed-only units called executed only, as a share of the 99 readings |
+| Affected entry points named | Entry-point recall |
+| Share of named entry points that are right | Entry-point precision |
+
+The risk rows show the same figures in both.
 
 ### Claude Code
 
@@ -329,14 +346,19 @@ two Codex values are 60.3% and 59.5%).
 - **Executed-only units.** Without Genesis the agents rarely identify one: 8
   and 4 of 99 readings. With Genesis it is 38 and
   23. False assurance falls from 47 to 34 for Claude
-  Code and from 43 to 30 for Codex.
+  Code and from 43 to 30 for Codex. Readings that call such a
+  unit not covered or cannot tell go up, from 9 to 21 for
+  Claude Code and from 6 to 9 for Codex.
 - **Covered units.** Little changes: the four setups get 330 to
   349 of 360 right.
-- **Verdict rate.** Claude Code gives a verdict for 99% of the units with
+- **Verdict rate.** Claude Code gives a verdict for 99% of the scorable units with
   Genesis, up from 90%. Codex stays at 87%.
 - **Entry points.** Recall rises for both agents. Precision stays about the same for
   Claude Code (67% and 68%) and falls for Codex, from 71% to
   54%.
+- **Changes found.** Change recall moves little. For units the commit message does not
+  mention, it goes from 69% to 75% for Claude Code and stays at
+  55% for Codex.
 - **Risks.** Both agents raise fewer risks with Genesis, and fewer of them fail the
   check: 2.1 to 0.7 per run for Claude Code, 1.4 to
   0.5 for Codex. The number of real risks per run stays about the same.
@@ -352,3 +374,9 @@ two Codex values are 60.3% and 59.5%).
   sessions, checked against each other, not against human reviewers.
 - **Entry points must be named.** An answer that says "every admin route" gets no
   credit for the routes it means.
+- **Same yardstick as Genesis.** The reference levels, and the question behind them
+  (would a test fail if the change were undone?), are the ones the Genesis skill gives
+  the agent for its own verdicts. The requests ask in a user's words whether the tests
+  cover the change, and name no levels. The runs do not show how an agent without
+  Genesis would do if the request asked for this distinction directly. They also do
+  not separate the skill's instructions from the facts the CLI supplies.
