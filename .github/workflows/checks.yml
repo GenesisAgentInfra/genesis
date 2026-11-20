@@ -31,3 +31,28 @@ jobs:
           "$(uv tool dir --bin)/genesis" agent install --agent claude
           "$(uv tool dir --bin)/genesis" agent status --agent claude
           python3 -I ~/.claude/skills/genesis/scripts/run_genesis.py version
+  viewer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: viewer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      # The paid Graphical editor is an optional dependency that is not in the
+      # repository; npm skips it, and the page builds without it.
+      - name: Install without the paid editor package
+        run: npm ci --no-audit --no-fund
+      - name: Test, lint and type-check
+        run: |
+          npm test
+          npm run lint
+          npm run typecheck
+      - name: Build, and check the committed page is the one the source produces
+        run: |
+          npm run build
+          git diff --exit-code -- ../packages/genesis_ci/src/genesis_ci/assets/viewer/index.html

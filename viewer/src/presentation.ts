@@ -2,6 +2,7 @@ import type {
   ChangeItem,
   CoverageAssessment,
   MapFinding,
+  MapStep,
   Payload,
   RiskCategory,
 } from "./types"
@@ -21,6 +22,25 @@ export function categoryOf(finding: MapFinding): DisplayCategory {
   return RISK_CATEGORIES.includes(finding.category as RiskCategory)
     ? finding.category!
     : "unclassified"
+}
+
+/**
+ * The input and output a step shows, when the agent gave both as structured data. Older
+ * reports may carry prose instead; a step without either has nothing to show.
+ */
+export function contractOf(step?: MapStep): StructuredContract | undefined {
+  const { input, output } = step?.contract ?? {}
+  if (!isRecord(input) || !isRecord(output)) return undefined
+  return { input, output }
+}
+
+export interface StructuredContract {
+  input: Record<string, unknown>
+  output: Record<string, unknown>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 export function shortSummary(change: ChangeItem): string | undefined {

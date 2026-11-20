@@ -245,6 +245,16 @@ export interface FindingChange {
   step_id?: string
 }
 
+/** A risk the agent saw in the changes of a review. It names the changes it comes from. */
+export interface ChangeRisk {
+  risk_id: string
+  statement: string
+  severity: Severity
+  category?: RiskCategory
+  change_ids: string[]
+  evidence_ids?: string[]
+}
+
 export interface ChangeReport {
   base_ref?: string
   base_revision?: string
@@ -270,6 +280,7 @@ export interface ChangeReport {
     reason: string
   }[]
   finding_changes?: FindingChange[]
+  risks?: ChangeRisk[]
   limitations?: Limitation[]
   evidence?: EvidenceRef[]
 }

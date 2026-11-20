@@ -41,7 +41,6 @@ const zh = {
   copyFailed: "复制失败，请选择 JSON 文本复制。",
   contractInput: "输入",
   contractOutput: "输出",
-  contractMissing: "尚未提供这个步骤的结构化输入 / 输出。",
   category: {
     reliability: "可靠性",
     correctness: "逻辑正确性",
@@ -217,8 +216,6 @@ const en: Strings = {
   copyFailed: "Could not copy. Select and copy the JSON text.",
   contractInput: "Input",
   contractOutput: "Output",
-  contractMissing:
-    "Structured input / output is not available for this step yet.",
   category: {
     reliability: "Reliability",
     correctness: "Correctness",
