@@ -30,10 +30,17 @@ class SnapshotInput(ContractModel):
 
 
 class SnapshotLimits(ContractModel):
-    max_files: int = Field(default=5000, gt=0)
+    """How much one snapshot reads. Files beyond a limit are left out and listed.
+
+    The file and total limits guard the machine against a run that never ends, not
+    the size of ordinary projects; a caller may raise `max_files`. A single source
+    file above `max_file_bytes` is nearly always generated or vendored code.
+    """
+
+    max_files: int = Field(default=50_000, gt=0)
     max_file_bytes: int = Field(default=1_048_576, gt=0)
-    max_total_bytes: int = Field(default=32 * 1_048_576, gt=0)
-    max_metadata_bytes: int = Field(default=16 * 1_048_576, gt=0)
+    max_total_bytes: int = Field(default=1024 * 1_048_576, gt=0)
+    max_metadata_bytes: int = Field(default=64 * 1_048_576, gt=0)
     git_timeout_seconds: int = Field(default=30, gt=0)
     worktree_attempts: int = Field(default=2, ge=1, le=3)
 

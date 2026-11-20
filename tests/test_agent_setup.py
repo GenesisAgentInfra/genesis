@@ -39,7 +39,7 @@ def test_user_install_registers_both_agents_and_is_idempotent(user_home):
         assert "$genesis " in ui["interface"]["default_prompt"]
     before = {str(p): p.stat().st_mtime_ns for d in expected for p in d.rglob("*")}
     again = CliRunner().invoke(app, ["agent", "install", "--agent", "both"])
-    assert again.exit_code == 0 and again.output.count("unchanged:") == 2
+    assert again.exit_code == 0 and again.output.count("Already current:") == 2
     assert before == {str(p): p.stat().st_mtime_ns for d in expected for p in d.rglob("*")}
     status = CliRunner().invoke(app, ["agent", "status"])
     assert status.exit_code == 0 and status.output.count("installed (current)") == 2
@@ -49,6 +49,8 @@ def test_user_install_registers_both_agents_and_is_idempotent(user_home):
 def test_dry_run_and_status_do_not_write(user_home):
     result = CliRunner().invoke(app, ["agent", "install", "--agent", "both", "--dry-run"])
     assert result.exit_code == 0 and "Would install" in result.output
+    assert "Dry run: nothing was written." in result.output
+    assert "restart it" not in result.output
     status = CliRunner().invoke(app, ["agent", "status"])
     assert status.exit_code == 0 and status.output.count("not installed") == 2
     assert list(user_home.iterdir()) == []
@@ -126,7 +128,9 @@ def test_install_replaces_an_untouched_skill_under_its_earlier_name(user_home):
     result = CliRunner().invoke(app, ["agent", "install", "--agent", "codex"])
     assert result.exit_code == 0, result.output
     assert destination.is_dir() and not legacy.exists()
-    assert "$genesis | Claude Code: /genesis" in result.output
+    assert "Codex: $genesis" in result.output and "Claude Code" not in result.output
+    assert f"Installed: {destination}" in result.output
+    assert f"Removed (renamed to genesis): {legacy}" in result.output
 
 
 def test_install_keeps_an_edited_skill_under_its_earlier_name(user_home):
@@ -134,6 +138,8 @@ def test_install_keeps_an_edited_skill_under_its_earlier_name(user_home):
     legacy = destination.with_name("genesis-review")
     destination.rename(legacy)
     (legacy / "SKILL.md").write_text("My own notes")
+    status = CliRunner().invoke(app, ["agent", "status", "--agent", "claude"])
+    assert "install keeps it" in status.output and "replaces it" not in status.output
     planned = install_skills(Agent.claude, Scope.user, None)
     assert planned == [(destination, "install"), (legacy, "kept (edited or not ours)")]
     assert (legacy / "SKILL.md").read_text() == "My own notes" and destination.is_dir()
@@ -179,6 +185,7 @@ def test_bundled_skill_examples_match_the_contracts_and_the_cli(user_home):
         "read",
         "submit",
         "diff",
+        "size",
     }
     assert all(command in help_text for command in commands)
     for flag in set(re.findall(r"(?<![-\w])(--[a-z][a-z-]+)", text)):
@@ -199,14 +206,26 @@ def test_update_refreshes_only_unmodified_managed_skill(user_home, monkeypatch):
         return desired
 
     monkeypatch.setattr(agent_setup, "_payload", new_payload)
-    with pytest.raises(ValueError, match="--update"):
+    with pytest.raises(ValueError, match="Another version .* Add --update"):
         install_skills(Agent.codex, Scope.user, None)
     assert install_skills(Agent.codex, Scope.user, None, update=True) == [(destination, "update")]
     assert b"New release guidance" in (destination / "SKILL.md").read_bytes()
     (destination / "SKILL.md").write_text("User edits")
-    with pytest.raises(ValueError, match="edited"):
+    with pytest.raises(ValueError, match="edited, or was not installed by Genesis.*Move it away"):
         install_skills(Agent.codex, Scope.user, None, update=True)
     assert (destination / "SKILL.md").read_text() == "User edits"
+    # Without --update the advice is the same: adding it would not help.
+    with pytest.raises(ValueError, match="Move it away"):
+        install_skills(Agent.codex, Scope.user, None)
+
+
+def test_a_skill_genesis_never_installed_is_not_called_edited_by_genesis(user_home):
+    own = user_home / ".agents" / "skills" / "genesis"
+    own.mkdir(parents=True)
+    (own / "SKILL.md").write_text("my own skill")
+    with pytest.raises(ValueError, match="edited, or was not installed by Genesis.*Move it away"):
+        install_skills(Agent.codex, Scope.user, None, dry_run=True)
+    assert (own / "SKILL.md").read_text() == "my own skill"
 
 
 def test_update_failure_restores_previous_install(user_home, monkeypatch):
@@ -281,6 +300,16 @@ def test_runner_uses_pinned_environment_not_customer_modules(user_home, source_r
         timeout=30,
     )
     assert invalid.returncode == 1
+    # Usage hints name the command the skill documents, not the interpreter's `-c`.
+    usage = subprocess.run(
+        [sys.executable, "-I", str(runner), "map", "query", "--no-such-option"],
+        cwd=source_repo,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert usage.returncode == 2
+    assert "genesis map query" in usage.stderr and "-c " not in usage.stderr
 
 
 def test_runner_missing_runtime_explains_reinstall(user_home, tmp_path):
@@ -295,3 +324,40 @@ def test_runner_missing_runtime_explains_reinstall(user_home, tmp_path):
     )
     assert result.returncode == 1
     assert "Reinstall" in result.stderr and "Traceback" not in result.stderr
+
+
+def _point_runtime_at(directory, python):
+    (directory / "runtime.json").write_text(
+        json.dumps({"format_version": 1, "python": str(python)}), encoding="utf-8"
+    )
+
+
+def _run_runner(directory, cwd):
+    return subprocess.run(
+        [sys.executable, "-I", str(directory / "scripts/run_genesis.py"), "version"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def test_runner_explains_a_recorded_python_without_genesis(user_home, tmp_path):
+    [(directory, _)] = install_skills(Agent.claude, Scope.user, None)
+    venv = tmp_path / "bare"
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)], check=True)
+    _point_runtime_at(directory, venv / "bin" / "python")
+    result = _run_runner(directory, tmp_path)
+    assert result.returncode == 1
+    assert "environment is unavailable" in result.stderr and "Traceback" not in result.stderr
+
+
+def test_runner_explains_a_recorded_python_that_cannot_run(user_home, tmp_path):
+    [(directory, _)] = install_skills(Agent.claude, Scope.user, None)
+    broken = tmp_path / "python"
+    broken.write_text("not a program\n")
+    broken.chmod(0o644)
+    _point_runtime_at(directory, broken)
+    result = _run_runner(directory, tmp_path)
+    assert result.returncode == 1
+    assert "environment is unavailable" in result.stderr and "Traceback" not in result.stderr

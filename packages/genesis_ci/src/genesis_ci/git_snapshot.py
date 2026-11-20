@@ -180,10 +180,14 @@ class _Git:
         except SnapshotError as error:
             if error.code != "git_read_failed":
                 raise
-            raise SnapshotError(
-                "revision_unavailable",
-                "Requested revision is unavailable; supply an existing local commit.",
-            ) from error
+            message = (
+                "This repository has no commit yet. Commit the files once, then run the "
+                "command again."
+                if ref == "HEAD"
+                else f"Revision {ref} is not a commit in the local clone. Fetch it, or pass "
+                "an existing local commit."
+            )
+            raise SnapshotError("revision_unavailable", message) from error
         revision = raw.decode("ascii").strip()
         if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", revision):
             raise SnapshotError("invalid_revision", "Git returned an invalid commit identity.")
@@ -576,7 +580,18 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
     """
     root = repo.expanduser().resolve(strict=True)
     git = _Git(root, spec.limits)
-    top = Path(os.fsdecode(git.run("rev-parse", "--show-toplevel")).rstrip("\n")).resolve()
+    try:
+        raw_top = git.run("rev-parse", "--show-toplevel")
+    except SnapshotError as error:
+        if error.code != "git_read_failed":
+            raise
+        raise SnapshotError(
+            "git_read_failed",
+            f"Git could not open {root} as a repository. Most often it is not inside one: "
+            "run `git init` there and commit the files, then try again. If it is a "
+            "repository, check that it is owned by the current user.",
+        ) from error
+    top = Path(os.fsdecode(raw_top).rstrip("\n")).resolve()
     if top != root:
         raise SnapshotError(
             "repository_root_required", "Pass the repository root, not a nested directory."

@@ -17,6 +17,7 @@ from genesis_ci.business_map.store import (
     write_json,
 )
 from genesis_ci.git_snapshot import _Git, capture_snapshot
+from genesis_ci.size import left_out as size_left_out
 from genesis_ci.snapshot_store import save_snapshot
 
 # What counts as source to read. Data, documents and lock files are left out: a flow
@@ -75,6 +76,7 @@ def prepare(
     head: str | None = None,
     include_untracked: bool = False,
     exclude: tuple[str, ...] = (),
+    max_files: int | None = None,
 ) -> dict:
     """Freeze the source of both sides and open a session. No model is called."""
     repo = repo.expanduser().resolve(strict=True)
@@ -84,6 +86,7 @@ def prepare(
         head=head,
         include_untracked=include_untracked,
         exclude_paths=exclude,
+        **({"limits": SnapshotLimits(max_files=max_files)} if max_files else {}),
         inputs=[
             {"path": path, "kind": EvidenceKind.test if is_test_path(path) else EvidenceKind.code}
             for path in paths
@@ -109,6 +112,9 @@ def prepare(
         "head_revision": manifest.head_revision,
         "integrity_status": manifest.integrity_status,
     }
+    missing = size_left_out(snapshot.capture)
+    if missing:
+        session["files_over_size_limit"] = missing
     if base is not None:
         others = other_changes(
             repo,

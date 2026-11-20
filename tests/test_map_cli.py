@@ -203,3 +203,133 @@ def test_a_larger_repository_is_prepared_in_worker_processes(source_repo, monkey
     # The setting wins over the size of the repository.
     monkeypatch.setenv("GENESIS_WORKERS", "1")
     assert session._workers(type("F", (), {"path": "a.py"})() for _ in range(500)) == 1
+
+
+def test_prepare_says_when_most_source_is_in_another_language(source_repo):
+    write(source_repo, "app.py", APP)
+    for index in range(3):
+        write(source_repo, f"web/src/page{index}.ts", f"export const page{index} = {index}\n")
+    write(source_repo, "web/src/App.tsx", "export function App() { return null }\n")
+    commit(source_repo)
+    summary = prepared(source_repo)
+    assert summary["engine"] == "python"
+    other = summary["other_languages"]
+    assert other["python_files"] == 1 and other["other_files"] == 4
+    assert other["by_type"] == {".ts": 3, ".tsx": 1}
+    assert "--engine agent" in other["note"]
+
+
+def test_prepare_leaves_the_note_out_while_python_is_the_main_language(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "tools/helper.py", "def helper():\n    return 1\n")
+    write(source_repo, "scripts/build.sh", "echo build\n")
+    commit(source_repo)
+    other = prepared(source_repo)["other_languages"]
+    assert other == {
+        "scope": "project",
+        "python_files": 2,
+        "other_files": 1,
+        "by_type": {".sh": 1},
+    }
+
+
+def test_prepare_on_a_python_only_project_reports_no_other_language(source_repo):
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    assert "other_languages" not in prepared(source_repo)
+
+
+def test_a_review_judges_by_the_files_it_changes(source_repo):
+    write(source_repo, "app.py", APP)
+    for index in range(4):
+        write(source_repo, f"web/src/page{index}.ts", f"export const page{index} = {index}\n")
+    commit(source_repo)
+    # A backend change in a project that is mostly frontend: Python is the right way.
+    write(source_repo, "app.py", APP + "\n\ndef extra():\n    return 2\n")
+    commit(source_repo)
+    assert "other_languages" not in prepared(source_repo, "--base", "HEAD~1", "--head", "HEAD")
+    # A frontend change: most of what the review is about is not Python.
+    write(source_repo, "web/src/page0.ts", "export const page0 = 10\n")
+    write(source_repo, "web/src/page1.ts", "export const page1 = 11\n")
+    commit(source_repo)
+    other = prepared(source_repo, "--base", "HEAD~1", "--head", "HEAD")["other_languages"]
+    assert other["scope"] == "changed"
+    assert (other["python_files"], other["other_files"]) == (0, 2)
+    assert "--engine agent" in other["note"]
+
+
+def test_size_counts_the_files_prepare_would_read_without_reading_them(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "lib/helper.py", "def helper():\n    return 1\n")
+    commit(source_repo)
+    write(source_repo, "lib/helper.py", "def helper():\n    return 2\n")
+    commit(source_repo)
+    result = run("size", "--repo", str(source_repo))
+    assert result.exit_code == 0, result.output
+    size = json.loads(result.stdout)
+    assert (size["engine"], size["mode"], size["source_files"]) == ("python", "map", 2)
+    assert size["over_limit"] is False and size["tell_user"] is False
+    review = json.loads(
+        run("size", "--repo", str(source_repo), "--base", "HEAD~1", "--head", "HEAD").stdout
+    )
+    assert (review["mode"], review["changed_source_files"]) == ("change", 1)
+    over = json.loads(run("size", "--repo", str(source_repo), "--max-files", "1").stdout)
+    assert over["over_limit"] is True and over["tell_user"] is True
+    assert "--max-files" in over["note"]
+    assert not (source_repo / ".genesis").exists()
+
+
+def test_files_a_limit_keeps_out_are_named_and_make_the_result_partial(source_repo):
+    write(source_repo, "app.py", APP)
+    for index in range(3):
+        write(source_repo, f"lib/mod{index}.py", f"def value_{index}():\n    return {index}\n")
+    commit(source_repo)
+    summary = prepared(source_repo, "--max-files", "2")
+    missing = summary["files_over_size_limit"]
+    assert missing["total"] == 2 and missing["by_reason"] == {"count_budget": 2}
+    assert missing["file_limit"] == 2 and len(missing["files"]) == 2
+    rendered = run("render", "--repo", str(source_repo), "--session", summary["session_id"])
+    assert rendered.exit_code == 2, rendered.output
+    assert json.loads(rendered.stdout)["analysis_status"] == "partial"
+    text = (source_repo / ".genesis/out/latest/summary.md").read_text(encoding="utf-8")
+    assert "2 source files were not read" in text and "--max-files" in text
+
+
+def test_a_run_given_a_higher_file_limit_reads_its_own_snapshot_back(source_repo):
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    summary = prepared(source_repo, "--max-files", "60000")
+    assert "files_over_size_limit" not in summary
+    rendered = run("render", "--repo", str(source_repo), "--session", summary["session_id"])
+    assert rendered.exit_code in (0, 2), rendered.output
+    assert (
+        run("status", "--repo", str(source_repo), "--session", summary["session_id"]).exit_code == 0
+    )
+
+
+def test_size_refuses_a_folder_outside_git_and_a_repository_with_no_commit(tmp_path):
+    folder = tmp_path / "plain"
+    folder.mkdir()
+    write(folder, "app.py", APP)
+    outside = run("size", "--repo", str(folder))
+    assert outside.exit_code == 1
+    assert json.loads(outside.stdout)["error"]["code"] == "git_read_failed"
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    git(empty, "init", "-q")
+    write(empty, "app.py", APP)
+    fresh = run("size", "--repo", str(empty))
+    assert fresh.exit_code == 1
+    error = json.loads(fresh.stdout)["error"]
+    assert error["code"] == "revision_unavailable" and "no commit yet" in error["message"]
+
+
+def test_the_viewer_sample_script_imports_what_it_uses():
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "viewer/scripts/sample_from_session.py"
+    spec = importlib.util.spec_from_file_location("sample_from_session", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert callable(module.main)

@@ -106,7 +106,7 @@ RULES = (
     "`before` and `after` are the frozen text of each side: read both before explaining a "
     "change. A side marked `excerpt` is shorter than its lines (a definition's header, a "
     "block cut at 800 characters, a statement put on one line): read it in full with "
-    "`genesis map read --evidence <id>`. For the code around a change, read the files at the "
+    "`genesis map read --session <id> --evidence <id>`. For the code around a change, read the files at the "
     "two revisions of the session or a diff between them; when the head side is the working "
     "tree, check what you quote against the frozen text.",
     "`summary` says in business terms what is different; `effect` says what that means for "
