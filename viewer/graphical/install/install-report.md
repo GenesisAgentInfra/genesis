@@ -1,5 +1,10 @@
 # Graphical install
 
+The report `graphical-install` wrote for the one-time conversion of the viewer, against
+the first theme (`themes/graphical.json`). It is a record of that run: file names and
+counts are as they were then, and nothing reads this file. The active theme is the one
+`../project.json` selects.
+
 Rewrote 19 source files and wrote the project files in `graphical`.
 
 ## Use sites
@@ -48,8 +53,7 @@ None.
 
 These stay beside their text style, so the inspector shows each as an override of it.
 
-- `src/canvas/step-node.tsx:71` `leading-none` on Body S: leading that sets a box’s height
-- `src/canvas/step-node.tsx:410` `leading-none` on Body S: leading that sets a box’s height
+- `src/canvas/step-node.tsx` `leading-none` on Body S, twice: leading that sets a box’s height
 
 ## Cleanup
 
@@ -67,10 +71,12 @@ Spacing past the largest step is written as a multiple of it. Name the large one
 
 None.
 
-## Left to the agent
+## Follow-up after the install (done)
 
-- Load `graphical/generated/theme.css` before the app’s styles. Install rewrote the token definitions written in CSS as aliases. Semantic names such as `bg-background` stay as aliases.
-- Import `graphical/generated/tailwind-theme.css` right after `@import "tailwindcss"`.
-- Pass `graphical/generated/tailwind-merge.cjs` to the app’s `extendTailwindMerge`, and have every `cn()` use that merger.
-- Resolve the skipped sites, install the theme’s fonts and mount the editor.
-- Check the running app. This report and `graphical-install --check` read source, so they show the conversion is complete, not that the app runs. Load the home page and one other page with the dev server: each renders with the editor mounted, and the browser console and the framework’s error overlay show no errors. A page can answer HTTP 200 while a client error stops the editor from loading.
+- `src/index.css` imports `graphical/generated/tailwind-theme.css` and `theme.css`; the
+  app's token definitions are aliases of Graphical's.
+- `cn()` in `src/lib/utils.ts` uses `graphical/generated/tailwind-merge.cjs` through
+  `extendTailwindMerge`.
+- There were no skipped sites. The font is in `src/fonts/`. The editor is mounted by
+  `graphical/editor-root.tsx`, under `npm run dev` only and only where the paid package is
+  installed.

@@ -289,8 +289,17 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
         {t.removed}
       </Badge>
     )
-  if (alerts.length || shown?.risky || risk !== undefined)
-    badges.push(<ReviewBadge key="risk" risky t={t} count={alerts.length} />)
+  // The badge speaks for the change the card shows and for the step itself: a risk of
+  // another change on the card waits with that change. A stage block counts all of them.
+  const ownIds = new Set([
+    ...(step.finding_ids ?? []),
+    ...(change?.finding_ids ?? []),
+  ])
+  const ownAlerts = stage
+    ? alerts
+    : alerts.filter((finding) => ownIds.has(finding.finding_id))
+  if (ownAlerts.length || shown?.risky || risk !== undefined)
+    badges.push(<ReviewBadge key="risk" risky t={t} count={ownAlerts.length} />)
   else if (change && status && status !== "tested")
     badges.push(
       <ReviewBadge key="validation" risky={false} status={status} t={t} />

@@ -28,9 +28,21 @@ import { Evidence } from "@/components/evidence"
 import { ReviewBadge } from "@/components/review-badge"
 import { KindTile, NumberDisc, StatusMark } from "@/canvas/step-node"
 import { localizeNote, type Strings } from "@/i18n"
-import { statusOf, type Coupon, type FlowView, type Model } from "@/model"
-import type { MapFinding, MapStep, StepContract } from "@/types"
-import { coverageKind, sortAlerts, sourceLinkOf } from "@/presentation"
+import {
+  risksOf,
+  statusOf,
+  type Coupon,
+  type FlowView,
+  type Model,
+} from "@/model"
+import type { MapFinding, MapStep } from "@/types"
+import {
+  contractOf,
+  coverageKind,
+  sortAlerts,
+  sourceLinkOf,
+  type StructuredContract,
+} from "@/presentation"
 
 export type PanelSubject =
   | {
@@ -97,6 +109,8 @@ export function DetailPanel({
   ]
   const source = sourceLinkOf(model.payload, evidenceIds)
   const sourceLabel = source?.exact ? t.githubCode : t.githubCommitted
+  // Input and output show only when the agent described them: an empty tab tells nothing.
+  const contract = removed ? undefined : contractOf(step)
   return (
     <Card className="h-full max-h-[inherit] min-h-0 gap-0 py-0">
       <CardHeader className="shrink-0 gap-m px-xxl pt-xxl pb-l">
@@ -164,12 +178,12 @@ export function DetailPanel({
       </CardHeader>
       <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-m px-xxl">
-          <TabsList>
-            <TabsTrigger value="overview">{t.changeOverview}</TabsTrigger>
-            {step && !removed && (
+          {contract && (
+            <TabsList>
+              <TabsTrigger value="overview">{t.changeOverview}</TabsTrigger>
               <TabsTrigger value="contract">{t.ioContract}</TabsTrigger>
-            )}
-          </TabsList>
+            </TabsList>
+          )}
           {!source && onWalk && (
             <Button variant="outline" size="sm" onClick={onWalk}>
               <Play data-icon="inline-start" />
@@ -228,9 +242,9 @@ export function DetailPanel({
                 </>
               )}
             </TabsContent>
-            {step && !removed && (
+            {contract && (
               <TabsContent value="contract" className="min-w-0">
-                <ContractDetail contract={step.contract} t={t} />
+                <ContractDetail contract={contract} t={t} />
               </TabsContent>
             )}
           </div>
@@ -263,15 +277,9 @@ function ContractDetail({
   contract,
   t,
 }: {
-  contract?: StepContract
+  contract: StructuredContract
   t: Strings
 }) {
-  if (
-    !contract ||
-    typeof contract.input === "string" ||
-    typeof contract.output === "string"
-  )
-    return <p className="text-body-m text-ink-3">{t.contractMissing}</p>
   return (
     <div className="space-y-xxl">
       <JsonBlock value={contract.input} label={t.contractInput} t={t} />
@@ -355,12 +363,7 @@ function ChangeDetail({
   const { change } = coupon
   const tests = change.tests
   const status = statusOf(tests)
-  const risks = (change.finding_ids ?? []).flatMap((id) => {
-    const item = model.payload.report?.finding_changes?.find(
-      (item) => item.finding.finding_id === id
-    )
-    return item && item.status !== "resolved" ? [item.finding] : []
-  })
+  const risks = risksOf(model, change)
   // A stop may stand for several changes told in the same words: their code shows together.
   const members = coupon.group.length ? coupon.group : [change]
   const where = [

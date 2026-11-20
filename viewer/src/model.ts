@@ -118,6 +118,8 @@ export interface Model {
   stops: Stop[]
   evidence: Map<string, EvidenceRef>
   excerpts: Record<string, string>
+  /** Every finding the page can show, by id: those of the map and the risks of the report. */
+  findings: Map<string, MapFinding>
   findingStatus: Map<string, FindingChange["status"]>
   hasReport: boolean
   counts: Counts
@@ -224,7 +226,27 @@ function samples(payload: Payload): string[] {
   for (const finding of payload.map.findings ?? []) {
     if (finding.source === "agent_observation") texts.push(finding.statement)
   }
+  for (const risk of payload.report?.risks ?? []) texts.push(risk.statement)
   return texts
+}
+
+/**
+ * The risks the panel of a change lists: its findings that are not resolved, each remark
+ * once, in the order the change carries them.
+ */
+export function risksOf(
+  model: Pick<Model, "findings" | "findingStatus">,
+  change: ChangeItem
+): MapFinding[] {
+  const told = new Set<string>()
+  return (change.finding_ids ?? []).flatMap((id) => {
+    const status = model.findingStatus.get(id)
+    const finding = model.findings.get(id)
+    if (!finding || !status || status === "resolved") return []
+    if (told.has(finding.statement)) return []
+    told.add(finding.statement)
+    return [finding]
+  })
 }
 
 export function buildModel(payload: Payload): Model {
@@ -241,6 +263,71 @@ export function buildModel(payload: Payload): Model {
     findingStatus.set(item.finding.finding_id, item.status)
     if (!findings.has(item.finding.finding_id))
       findings.set(item.finding.finding_id, item.finding)
+  }
+  // A risk the agent saw in the changes comes with the report, not with a step. It is a
+  // risk these changes bring, so it reads as a finding introduced on each change it names.
+  // A change to test code has no stop, so a risk that names only such changes is left out,
+  // like one that names no change of the report.
+  const wasIntroduced = (id: string) => findingStatus.get(id) === "introduced"
+  const stepFindings = new Map<string, string[]>()
+  for (const flow of map.flows ?? [])
+    for (const step of flow.steps ?? [])
+      stepFindings.set(
+        `${flow.flow_id}/${step.step_id}`,
+        step.finding_ids ?? []
+      )
+  // What each change already says: the findings it introduces, and those introduced on the
+  // steps it sits on, which the page shows beside it. A risk in the same words is that
+  // finding, shown once: the change carries the finding instead of a second copy. A finding
+  // that was there before the change does not stand in for the risk.
+  const said = new Map<string, Map<string, string>>()
+  for (const change of report?.changes ?? []) {
+    if (isTestChange(change)) continue
+    const ids = [
+      ...(change.finding_ids ?? []),
+      ...[change.projection, ...(change.other_projections ?? [])].flatMap(
+        (place) => stepFindings.get(`${place.flow_id}/${place.step_id}`) ?? []
+      ),
+    ].filter(wasIntroduced)
+    const words = new Map<string, string>()
+    for (const id of ids) {
+      const statement = findings.get(id)?.statement
+      if (statement !== undefined && !words.has(statement))
+        words.set(statement, id)
+    }
+    said.set(change.change_id, words)
+  }
+  const riskIds = new Map<string, string[]>()
+  const carry = (changeId: string, id: string) => {
+    const ids = riskIds.get(changeId) ?? []
+    if (!ids.includes(id)) riskIds.set(changeId, [...ids, id])
+  }
+  /** The findings made from risks of the report, as opposed to those of the map. */
+  const fromReport = new Set<string>()
+  for (const risk of report?.risks ?? []) {
+    for (const id of risk.change_ids) {
+      const words = said.get(id)
+      if (!words) continue
+      const same = words.get(risk.statement)
+      if (same !== undefined) {
+        carry(id, same)
+        continue
+      }
+      if (!fromReport.has(risk.risk_id)) {
+        fromReport.add(risk.risk_id)
+        findings.set(risk.risk_id, {
+          finding_id: risk.risk_id,
+          source: "agent_observation",
+          severity: risk.severity,
+          category: risk.category,
+          statement: risk.statement,
+          evidence_ids: risk.evidence_ids ?? [],
+        })
+        findingStatus.set(risk.risk_id, "introduced")
+      }
+      carry(id, risk.risk_id)
+      words.set(risk.statement, risk.risk_id)
+    }
   }
   const introduced = new Set(
     [...findingStatus]
@@ -293,7 +380,19 @@ export function buildModel(payload: Payload): Model {
   const flowById = new Map(flows.map((item) => [item.flow.flow_id, item]))
 
   // A change to test code is counted, never walked through.
-  const all = report?.changes ?? []
+  const all = (report?.changes ?? []).map((change) =>
+    riskIds.has(change.change_id)
+      ? {
+          ...change,
+          finding_ids: [
+            ...new Set([
+              ...(change.finding_ids ?? []),
+              ...riskIds.get(change.change_id)!,
+            ]),
+          ],
+        }
+      : change
+  )
   const product = all.filter((change) => !isTestChange(change))
 
   // Deleting an entry yields a removed flow and a change off the map for the same function:
@@ -346,8 +445,16 @@ export function buildModel(payload: Payload): Model {
     const ordered = [...members].sort(
       (a, b) => tierOf(a, introduced) - tierOf(b, introduced)
     )
-    groupOf.set(ordered[0].change_id, ordered)
-    return ordered[0]
+    // The stop stands for every member, so its lead carries the findings of all of them.
+    const ids = [
+      ...new Set(ordered.flatMap((member) => member.finding_ids ?? [])),
+    ]
+    const lead =
+      ids.length > (ordered[0].finding_ids ?? []).length
+        ? { ...ordered[0], finding_ids: ids }
+        : ordered[0]
+    groupOf.set(lead.change_id, [lead, ...ordered.slice(1)])
+    return lead
   })
 
   const keyed = leads
@@ -415,6 +522,11 @@ export function buildModel(payload: Payload): Model {
       const target = flowById.get(place.flow_id ?? "")
       if (!target) return
       target.coupons.push(coupon)
+      // The flow shows the risks of the changes that sit on it beside its own.
+      for (const id of change.finding_ids ?? []) {
+        const risk = fromReport.has(id) ? findings.get(id) : undefined
+        if (risk && !target.findings.includes(risk)) target.findings.push(risk)
+      }
       if (place.status === "removed_step") target.removedSteps.push(coupon)
       else if (place.step_id)
         target.byStep.set(place.step_id, [
@@ -573,6 +685,7 @@ export function buildModel(payload: Payload): Model {
     stops,
     evidence,
     excerpts: payload.excerpts ?? {},
+    findings,
     findingStatus,
     hasReport: Boolean(report),
     counts: {
