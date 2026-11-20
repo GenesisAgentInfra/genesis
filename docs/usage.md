@@ -27,7 +27,9 @@ the agent compares with the point where your branch started.
 
 Uncommitted work is a review of its own, compared with your last commit: ask for it,
 as in the third example above. New files Git does not track yet are included when the
-agent judges they belong to the change, and the report names any it left out.
+agent judges they belong to the change. In a Python project the report names any it
+left out. In other languages it does not: the agent checks for new files itself before
+it starts.
 
 When there is nothing to compare (no change since that revision, or a revision your
 local repository does not have), the agent says so. It suggests another revision, a
@@ -239,8 +241,9 @@ Describing the flows comes after that and takes your agent's own time.
 Genesis reads up to 50,000 source files. On a project above that, the agent asks you
 first: raise the limit and wait longer, or leave folders out, for example to look at
 the backend only. A source file larger than 1 MB is not read: it is nearly always
-generated or vendored code. Whenever files were left out, the result says how many
-and is marked partial.
+generated or vendored code. When a limit leaves files out, the result says how many
+and is marked partial. Folders you chose to leave out are not counted that way: the
+result covers the rest of the project and does not list them.
 
 ## What Genesis does not do
 

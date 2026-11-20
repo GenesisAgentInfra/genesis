@@ -1,5 +1,7 @@
 """Risks an agent sees in a change, and where a new jump in the code lands."""
 
+import re
+
 from genesis_ci.business_map.changes import CHANGE_TASK
 from genesis_ci.business_map.render import render_summary
 from test_change_analysis import by_kind, two_commits
@@ -90,7 +92,10 @@ def test_risks_are_submitted_with_the_changes_and_shown_apart(source_repo):
     }
     summary = render_summary(workspace.stored_map(), report)
     assert "## Risks seen in the changes (agent reading)" in summary
-    assert f"- medium: {risk['statement']} (changes: {stop})" in summary
+    # Pasted into a pull request, the risk names the code it cites, not a change id.
+    assert f"- medium: {risk['statement']} (at app/fetch.py:7)" in summary
+    assert stop not in summary
+    assert not re.search(r"\b1 (changes|flows)\b", summary)
     assert workspace.change_summary()["risks"][0]["statement"] == risk["statement"]
 
     def refused(**fields):

@@ -1676,8 +1676,8 @@ class Workspace:
         ]
         skipped = len(skipped_entries)
         coverage = {
-            "scope": f"{len(flows)} planned flows covering {planned_entries} of "
-            f"{len(entries)} entries.",
+            "scope": f"{len(flows)} planned {'flow' if len(flows) == 1 else 'flows'} covering "
+            f"{planned_entries} of {len(entries)} {'entry' if len(entries) == 1 else 'entries'}.",
             "entries_total": len(entries),
             "entries_planned": planned_entries,
             "entries_skipped": skipped,

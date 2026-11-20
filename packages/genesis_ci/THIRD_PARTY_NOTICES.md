@@ -60,10 +60,16 @@ Other material in the page:
   the CSS its installer wrote. `lib/dialkit-color.ts` in that folder is adapted from
   [DialKit](https://github.com/joshpuckett/dialkit) 2.0 (MIT). This code is compiled
   into the page.
+- The build tools add a few lines of their own runtime code: a module-preload check
+  from Vite (`vite`) and a module runtime from Rolldown (`rolldown`), both MIT.
 - The GitHub mark, a trademark of GitHub, is the icon of links to GitHub.
 
-The head of `viewer/index.html`, and so of every page built from it, carries the
-shadcn/ui and Geist Mono notices.
+Every page built from `viewer/` carries this whole file in a comment at the top of its
+head, after which come the shadcn/ui and Geist Mono notices from `viewer/index.html`. So
+a `view.html` or `view.share.html` passed on alone still carries its notices. The build
+copies this file in and fails when a package whose code ends up in the page is not
+named here; after changing this file, run `npm run build` in `viewer/` and commit the
+rebuilt page.
 
 ## License texts
 
@@ -129,6 +135,12 @@ Copyright (c) Tailwind Labs, Inc.
 
 tw-animate-css:
 Copyright (c) 2025 Wombosvideo
+
+vite:
+Copyright (c) 2019-present, VoidZero Inc. and Vite contributors
+
+rolldown:
+Copyright (c) 2024-present VoidZero Inc. & Contributors
 
 DialKit (adapted in viewer/src/components/graphical/lib/dialkit-color.ts):
 Copyright (c) 2026 Josh Puckett

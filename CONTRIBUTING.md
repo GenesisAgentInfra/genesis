@@ -192,7 +192,10 @@ package directory carries a copy of both, checked by `scripts/check_packages.py`
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists the packages the viewer page
 uses directly: every entry under `dependencies` in `viewer/package.json`, and any other
 package `viewer/src` imports (such as `tw-animate-css`, imported by `src/index.css`).
-When you add or remove one, change the table in the same commit.
+When you add or remove one, change the table in the same commit. The viewer build
+copies the whole file into the head of the page, so a page passed on alone keeps its
+notices, and fails when a package whose code ends up in the page is not named in it.
+After changing the file, rebuild the page and commit both.
 
 ## Documentation language
 
