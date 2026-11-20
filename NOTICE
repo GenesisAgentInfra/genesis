@@ -1,6 +1,8 @@
-Genesis CLI
-Copyright 2026 Genesis CLI contributors
+Genesis
+Copyright 2026 The Genesis contributors
 
-Original Genesis CLI code is licensed under the Apache License, Version 2.0.
-Bundled third-party components retain their respective copyrights and licenses.
-See THIRD_PARTY_NOTICES.md in the source repository for what is bundled.
+Original Genesis code is licensed under the Apache License, Version 2.0.
+The viewer page in the genesis-ci package bundles third-party components,
+which keep their own copyrights and licenses. THIRD_PARTY_NOTICES.md lists
+them with their license texts. It ships in the genesis-ci wheel and is in the
+source repository at https://github.com/GenesisAgentInfra/genesis.
