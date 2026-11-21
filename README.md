@@ -15,7 +15,7 @@
 
 <p align="center"><strong>English</strong> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a></p>
 
-https://github.com/user-attachments/assets/ceeb6ae9-0ee7-4d26-aae6-93599befc805
+https://github.com/user-attachments/assets/673a3f9d-603c-4bcb-b20b-f152d53aa128
 
 Genesis turns your codebase into a business flow map and shows which of your agent's
 changes are untested or risky. It runs as a skill inside Claude Code and Codex, and
