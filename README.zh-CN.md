@@ -15,7 +15,7 @@
 
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <strong>简体中文</strong></p>
 
-https://github.com/user-attachments/assets/ceeb6ae9-0ee7-4d26-aae6-93599befc805
+https://github.com/user-attachments/assets/673a3f9d-603c-4bcb-b20b-f152d53aa128
 
 Genesis 把你的代码库画成一张业务流程图，告诉你 agent 的哪些改动没测到、哪些有风险。它作为一个 skill 跑在 Claude Code 和 Codex 里，Python、TypeScript、JavaScript、Go、Java、Rust 等大多数常见语言的项目都能用，其中 Python 的结果最准。
 
