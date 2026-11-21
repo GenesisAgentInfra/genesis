@@ -239,16 +239,17 @@ Risks are counted one by one; severity is not weighed.
 
 ## Results
 
-The README shows four of these rows under plainer names:
+The README shows some of these rows under plainer names:
 
 | In the README | On this page |
 | --- | --- |
-| Changes given a correct test-coverage verdict | Coverage accuracy |
-| Changes that tests run but would not catch, flagged as such | Executed-only units called executed only, as a share of the 99 readings |
+| Correct test-coverage verdicts | Coverage accuracy |
+| Changes tests run but would not catch, flagged | Executed-only units called executed only, as a share of the 99 readings |
+| The same changes, wrongly called covered | False assurance, as a share of the 99 readings |
 | Affected entry points named | Entry-point recall |
-| Share of named entry points that are right | Entry-point precision |
-
-The risk rows show the same figures in both.
+| Named entry points that are right | Entry-point precision |
+| Risks raised per review: real, false alarms, unclear | Risks raised per run: of them real, not real, unclear |
+| Raised risks that are real | Share of raised risks that are real |
 
 ### Claude Code
 
