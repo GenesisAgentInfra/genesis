@@ -22,6 +22,23 @@ changes are untested or risky. It runs as a skill inside Claude Code and Codex, 
 works on projects in Python, TypeScript, JavaScript, Go, Java, Rust and most other
 common languages. Python gets the most accurate results.
 
+## Benchmark
+
+**A PR changes `>` to `>=`. Would your tests notice?** A test can run that line every
+time and still miss the case where the two values are equal.
+
+Across 10 commits from 5 open-source Python projects, we found 33 changes where tests
+reached the code but would still pass if the change were undone. With Genesis, Claude
+Code and Codex flagged these gaps **about 5× as often** in code review.
+
+| Gaps correctly flagged | Agent alone | With Genesis |
+| --- | ---: | ---: |
+| Claude Code | 8 / 99 | **38 / 99** |
+| Codex | 4 / 99 | **23 / 99** |
+
+Each agent reviewed every commit three times per setup (33 gaps × 3 = 99). Models
+judged coverage by reading the code and tests. [Full results and methodology](docs/change-analysis-benchmark.md)
+
 ## Quick start
 
 The quickest way is to let your coding agent do it. Open your own project in the agent
@@ -103,54 +120,6 @@ calls the changed function directly. In other languages, whether a cited test as
 anything is the agent's word.
 
 The CLI calls no model, sends nothing anywhere, and never runs your code.
-
-## Benchmark
-
-Claude Code and Codex were asked to review 10 commits from 5 open-source Python
-repositories, with and without Genesis installed, in the words a user would type:
-what does this commit change, could it break anything, do the tests cover it? Each
-answer was scored by automated readers against a reference answer built from the code
-and its tests.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/benchmark-dark.svg">
-    <img src="assets/readme/benchmark-light.svg" width="860" alt="Four measures for Claude Code and Codex, without and with Genesis. Correct test-coverage verdicts: 79% to 88% and 76% to 80%. Changes tests run but would not catch, flagged by the answer: 8% to 38% and 4% to 23%. Affected entry points named: 32% to 47% and 15% to 24%. Raised risks that are real: 44% to 64% and 54% to 72%.">
-  </picture>
-</p>
-
-|  | Claude Code | Claude Code + Genesis | Codex | Codex + Genesis |
-| --- | ---: | ---: | ---: | ---: |
-| Changes given a correct test-coverage verdict | 79% | 88% | 76% | 80% |
-| Changes that tests run but would not catch, flagged as such | 8% | 38% | 4% | 23% |
-| Affected entry points named | 32% | 47% | 15% | 24% |
-| Share of named entry points that are right | 67% | 68% | 71% | 54% |
-| Risks raised per run | 6.1 | 4.2 | 4.5 | 3.3 |
-| &nbsp;&nbsp;real | 2.9 | 2.8 | 2.4 | 2.4 |
-| &nbsp;&nbsp;not real | 2.1 | 0.7 | 1.4 | 0.5 |
-| &nbsp;&nbsp;unclear from the code alone | 1.2 | 0.7 | 0.7 | 0.4 |
-| Share of raised risks that are real | 44% | 64% | 54% | 72% |
-
-With Genesis, both agents flag more of the changes that tests run but would not catch,
-name more of the entry points a change affects, and raise fewer risks that fail a check
-against the code. They find about as many real risks as before. For Codex, a smaller
-share of the entry points it names are right. The sample is small: 10 commits, three
-runs each.
-
-Read the first row together with the second. Most changes in these commits are covered
-by a test, so an answer that called every change covered would already score
-82% on the first row. For Codex the first row is higher with Genesis
-on 4 of the 10 commits, equal on 1 and lower on 5. The
-answers differ on the changes that tests run but would not catch: with Genesis about a
-third of those readings still call the change covered (34 of 99 for
-Claude Code and 30 for Codex, down from 47 and 43).
-
-Each figure is rounded on its own, so the three kinds of risk can differ from the total
-by 0.1. The last row is worked out for each run and then averaged, so it is not the
-"real" row divided by the "risks raised per run" row.
-
-What each measure means, and the full results:
-[change-analysis benchmark](docs/change-analysis-benchmark.md).
 
 ## Limits
 

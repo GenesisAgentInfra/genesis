@@ -155,16 +155,14 @@ Genesis 的改动列表是直接从 diff 生成的，所以改动召回率天生
 
 ## 结果
 
-README 里用更通俗的名称列出了其中四行：
+README 重点展示了 agent 正确指出“仅执行到”这类测试盲点的次数。下表列出两个 agent 各自的次数和其他指标的完整结果。
 
-| README 里的名称 | 本页的名称 |
-| --- | --- |
-| 覆盖判断正确的改动 | 覆盖准确率 |
-| 测试跑到但兜不住的改动，被答案指出 | “仅执行到”单元被判为仅执行到，换算成占 99 次判读的比例 |
-| 受影响的入口被点名 | 入口召回率 |
-| 点名的入口里正确的比例 | 入口精确率 |
-
-风险的几行在两处是同样的数字。
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/readme/benchmark-zh-dark.svg">
+    <img src="../assets/readme/benchmark-zh-light.svg" width="860" alt="Claude Code 和 Codex 在不用与使用 Genesis 时的四项指标。覆盖判断正确：79% 到 88%，76% 到 80%。测试跑到但兜不住的改动被答案指出：8% 到 38%，4% 到 23%。受影响的入口被点名：32% 到 47%，15% 到 24%。提出的风险中真实的比例：44% 到 64%，54% 到 72%。">
+  </picture>
+</p>
 
 ### Claude Code
 

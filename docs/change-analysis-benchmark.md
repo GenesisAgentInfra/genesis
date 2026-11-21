@@ -239,16 +239,15 @@ Risks are counted one by one; severity is not weighed.
 
 ## Results
 
-The README shows four of these rows under plainer names:
+The README highlights how often an agent identified a change as executed only.
+The tables below give the counts for each agent and the results for the other measures.
 
-| In the README | On this page |
-| --- | --- |
-| Changes given a correct test-coverage verdict | Coverage accuracy |
-| Changes that tests run but would not catch, flagged as such | Executed-only units called executed only, as a share of the 99 readings |
-| Affected entry points named | Entry-point recall |
-| Share of named entry points that are right | Entry-point precision |
-
-The risk rows show the same figures in both.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/readme/benchmark-dark.svg">
+    <img src="../assets/readme/benchmark-light.svg" width="860" alt="Four measures for Claude Code and Codex, without and with Genesis. Correct test-coverage verdicts: 79% to 88% and 76% to 80%. Changes tests run but would not catch, flagged by the answer: 8% to 38% and 4% to 23%. Affected entry points named: 32% to 47% and 15% to 24%. Raised risks that are real: 44% to 64% and 54% to 72%.">
+  </picture>
+</p>
 
 ### Claude Code
 

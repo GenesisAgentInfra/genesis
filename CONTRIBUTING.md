@@ -212,7 +212,7 @@ and `AGENTS.md` for an agent that opens this repository. When an install command
 flag, an output path or an error message changes, change these with it;
 `tests/test_docs.py` checks the parts that can be checked.
 
-The figures in `docs/change-analysis-benchmark.md`, the benchmark table and chart in
-`README.md`, their Chinese versions and the charts in `assets/readme/benchmark-*.svg`
+The figures in the README benchmark table, `docs/change-analysis-benchmark.md`,
+their Chinese versions and the charts in `assets/readme/benchmark-*.svg`
 come from benchmark runs whose data and scripts are not in this repository. They cannot
 be regenerated here. Do not change a figure by hand; open an issue if one looks wrong.
