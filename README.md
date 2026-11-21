@@ -176,9 +176,3 @@ Report a security problem privately, as [SECURITY.md](SECURITY.md) describes.
 [Apache-2.0](LICENSE). Bundled components keep their own licenses, listed in
 [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Want to help?
 See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Star history
-
-<p align="center">
-  <a href="https://star-history.com/#GenesisAgentInfra/genesis&Date"><img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&type=Date" alt="Star history of GenesisAgentInfra/genesis" width="640"></a>
-</p>

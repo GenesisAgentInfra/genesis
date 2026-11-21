@@ -127,9 +127,3 @@ Claude Code 和 Codex 分别在装和不装 Genesis 的情况下，分析了 5 �
 ## 许可证
 
 [Apache-2.0](LICENSE)。随附组件保留各自的许可证，见 [NOTICE](NOTICE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。想参与开发，看 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## Star 增长
-
-<p align="center">
-  <a href="https://star-history.com/#GenesisAgentInfra/genesis&Date"><img src="https://api.star-history.com/svg?repos=GenesisAgentInfra/genesis&type=Date" alt="Star 增长曲线： GenesisAgentInfra/genesis" width="640"></a>
-</p>
