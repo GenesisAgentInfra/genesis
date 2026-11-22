@@ -1064,5 +1064,8 @@ Do not run tests yourself unless the user asks for it.
   appear as well.
 
 `.genesis/sessions/` and `.genesis/out/` contain source text and are ignored by Git; do
-not commit or publish them. `.genesis/.gitignore` itself may be committed. Do not edit
-files under `.genesis/` by hand.
+not commit or publish them. `.genesis/.gitignore` itself may be committed. One copy is
+made on purpose: Genesis EDD copies the `business-map.json` a spec was written against
+into the spec's folder, to be committed with the spec. Leave that copy alone. It has no
+source excerpts, but where a flow is not described yet its steps are named by lines of
+code. Do not edit files under `.genesis/` by hand.
