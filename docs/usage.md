@@ -197,6 +197,11 @@ Each new review, and each run after the code changed, adds a folder to both
 `sessions/` and `out/`, and Genesis never removes them. Delete `.genesis/` when you no
 longer need the results; the next run creates it again.
 
+[Genesis EDD](https://github.com/GenesisAgentInfra/genesis-edd) makes one copy on
+purpose: it copies the `business-map.json` a spec was written against into the spec's
+folder, to be committed with the spec. That file has no source excerpts, but where a
+flow is not described yet its steps are named by lines of code.
+
 ## Languages
 
 Python gets the most accurate result: Genesis parses it, finds the entry points itself

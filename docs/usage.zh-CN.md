@@ -116,6 +116,8 @@ Genesis 只读你的测试，从不运行它们。所以任何结论都不代表
 
 每看一次新的改动，或者代码变了之后再运行一次，`sessions/` 和 `out/` 里都会多出一个文件夹，Genesis 不会自动清理。结果不要了，可以把 `.genesis/` 整个删掉，下次运行时会重新创建。
 
+[Genesis EDD](https://github.com/GenesisAgentInfra/genesis-edd) 会特意复制一份：它把 Spec 依据的 `business-map.json` 复制进 Spec 所在的目录，和 Spec 一起提交。这个文件不带源码片段，但还没描述的流程，步骤仍然用代码行命名。
+
 ## 语言
 
 Python 的结果最准：Genesis 会自己解析代码、自己找入口，流程里漏了分支，地图就会标成 `partial`（部分完成）。
