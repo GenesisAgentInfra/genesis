@@ -35,11 +35,17 @@ def view_payload(
     *,
     source_links: dict[str, dict] | None = None,
 ) -> dict:
-    """What the viewer reads: the map, the change report and any source excerpts."""
+    """What the viewer reads: the map, the change report and any source excerpts.
+
+    The digest of every file the map was read from stays in `business-map.json`: the
+    page has no use for it, and it would grow with the size of the project.
+    """
     return {
         "format_version": 1,
         "share": bundle is None or bundle.share_mode,
-        "map": business_map.model_dump(mode="json", exclude_none=True),
+        "map": business_map.model_dump(
+            mode="json", exclude_none=True, exclude={"source": {"files"}}
+        ),
         "report": None if report is None else report.model_dump(mode="json", exclude_none=True),
         "excerpts": {item.evidence_id: item.text for item in (bundle.excerpts if bundle else ())},
         "source_links": source_links or {},

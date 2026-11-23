@@ -342,6 +342,38 @@ test("a risk that names only a change to test code is left off the page", () => 
   assert.equal(model.stops.length, before.stops.length)
 })
 
+test("a risk that names only files Genesis did not analyze is left off the page", () => {
+  const [first] = expense.report.changes
+  const model = buildModel({
+    ...expense,
+    report: {
+      ...expense.report,
+      risks: [
+        {
+          risk_id: "risk_file",
+          statement: "新的 Dockerfile 没有复制 config 目录。",
+          severity: "low",
+          change_ids: [],
+          paths: ["Dockerfile"],
+        },
+        // Named beside a change, the risk still shows on that change.
+        {
+          risk_id: "risk_both",
+          statement: "文档说的上限和代码不一致。",
+          severity: "low",
+          change_ids: [first.change_id],
+          paths: ["docs/limits.md"],
+        },
+      ],
+    },
+  })
+  const before = buildModel(expense)
+  assert.equal(model.findings.has("risk_file"), false)
+  assert.equal(model.findings.has("risk_both"), true)
+  assert.equal(model.counts.newRisks, before.counts.newRisks + 1)
+  assert.equal(model.stops.length, before.stops.length)
+})
+
 test("a step shows input and output only when both are structured", async () => {
   const { contractOf } = await server.ssrLoadModule("/src/presentation.ts")
   const step = { step_id: "s", name: "Check the amount", kind: "decision" }

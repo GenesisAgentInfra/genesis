@@ -1,7 +1,11 @@
-"""What the risk pass is given to read: the code outside the changes that they reach."""
+"""What the risk pass is given to read, how a risk names where it comes from, and withdrawal."""
+
+import hashlib
 
 from genesis_ci.business_map.changes import CHANGE_TASK
+from genesis_ci.business_map.render import render_html, render_summary
 from test_change_analysis import by_kind, two_commits
+from test_map_loop import codes
 
 EXTRACT = """import os
 
@@ -82,3 +86,81 @@ def test_the_unchanged_callers_of_a_changed_function_are_listed_loops_first(sour
     # A submission of risks alone carries no reading list.
     risk = {"statement": "x", "change_ids": [check]}
     assert "read_for_risks" not in workspace.submit(CHANGE_TASK, {"risks": [risk]})
+
+
+# A risk read in docs/feed.md, a changed file Genesis does not analyze.
+DOCS_RISK = {
+    "statement": "docs/feed.md 现在说没有 SCRAPE_KEY 就什么也抓不到，读者会以为缺密钥时程序报错。",
+    "paths": ["docs/feed.md"],
+}
+
+
+def test_a_risk_from_a_changed_file_genesis_did_not_analyze_names_that_file(source_repo):
+    # A change in Genesis's own folder is counted by folder, not listed.
+    head = {**HEAD, ".genesis/evals/feed.md": "Nothing is fetched without a key.\n"}
+    workspace, _ = two_commits(source_repo, BASE, head)
+    check = by_kind(workspace.stored_report(), "condition_added", "#extract").change_id
+    docs = DOCS_RISK
+    both = {**docs, "statement": "缺密钥时只打印一行，文档却说什么也不抓。", "change_ids": [check]}
+    result = workspace.submit(CHANGE_TASK, {"risks": [docs, both]})
+    assert result["status"] == "accepted" and result["risks"] == 2, result
+    report = workspace.stored_report()
+    assert "changed_files_left_out" in {item.code for item in report.limitations}
+    by_statement = {item.statement: item for item in report.risks}
+    alone = by_statement[docs["statement"]]
+    assert alone.paths == ("docs/feed.md",) and alone.change_ids == ()
+    summary = render_summary(workspace.stored_map(), report)
+    # Shown at the file it comes from, not at some unrelated code.
+    assert f"- low: {docs['statement']} (at docs/feed.md)" in summary
+    assert f"- low: {both['statement']} (at app/extract.py#extract, docs/feed.md)" in summary
+    assert "docs/feed.md</span>" in render_html(workspace.stored_map(), None, report)
+
+    def refused(risk):
+        result = workspace.submit(CHANGE_TASK, {"risks": [risk]})
+        assert result["status"] == "rejected"
+        return codes(result)
+
+    # Only a file `unanalyzed_changes` lists: analyzed code is named by its change, and a
+    # file left out on purpose is not listed.
+    for path in ("app/extract.py", "docs/other.md", ".genesis/evals/feed.md"):
+        assert refused({**docs, "paths": [path]}) == [
+            ("risks[0].paths[0]", "not_in_unanalyzed_changes")
+        ]
+    assert refused({"statement": "x"})[0][0] == "risks[0]"
+    assert refused({**docs, "paths": ["../feed.md"]})[0][0] == "risks[0]"
+    # A risk on changes alone keeps the id it had before files could be named.
+    workspace.submit(CHANGE_TASK, {"risks": [{"statement": "x", "change_ids": [check]}]})
+    key = "risk_" + hashlib.sha256(f"x\n{check}".encode()).hexdigest()[:16]
+    assert key in {item.risk_id for item in workspace.stored_report().risks}
+
+
+def test_an_accepted_risk_is_withdrawn_by_its_id_and_the_result_names_it(source_repo):
+    workspace, _ = two_commits(source_repo, BASE, HEAD)
+    check = by_kind(workspace.stored_report(), "condition_added", "#extract").change_id
+    code = {"statement": "缺密钥时 extract 返回 None，调用方照样收下。", "change_ids": [check]}
+    other = {"statement": "x", "change_ids": [check]}
+    result = workspace.submit(CHANGE_TASK, {"risks": [DOCS_RISK, code, other]})
+    assert result["risks"] == 3 and "withdrawn" not in result, result
+    ids = {item.statement: item.risk_id for item in workspace.stored_report().risks}
+    kept = ids[code["statement"]]
+    # Reworded in the submission that takes the old wording back.
+    reworded = {**DOCS_RISK, "statement": "docs/feed.md 让人以为缺密钥时会报错，其实只打印一行。"}
+    taken = [ids[DOCS_RISK["statement"]], ids["x"]]
+    result = workspace.submit(CHANGE_TASK, {"withdrawn_risks": taken, "risks": [reworded]})
+    assert result["status"] == "accepted" and result["risks"] == 2, result
+    # The report keeps no trace of a risk taken back, so the result names each one.
+    assert result["withdrawn"] == 2 and result["withdrawn_risks"] == taken
+    statements = {item.statement for item in workspace.stored_report().risks}
+    assert statements == {code["statement"], reworded["statement"]}
+    # Taken back and sent again in the same words, a risk stays: nothing is withdrawn.
+    result = workspace.submit(CHANGE_TASK, {"withdrawn_risks": [kept], "risks": [code]})
+    assert result["risks"] == 2 and "withdrawn" not in result, result
+    # An id that is not accepted is refused, and nothing changes.
+    result = workspace.submit(CHANGE_TASK, {"withdrawn_risks": [taken[0]]})
+    assert codes(result) == [("withdrawn_risks[0]", "unknown_risk")]
+    assert len(workspace.stored_report().risks) == 2
+    # A submission may do nothing but take risks back.
+    result = workspace.submit(CHANGE_TASK, {"withdrawn_risks": [kept]})
+    assert result["status"] == "accepted" and result["risks"] == 1, result
+    assert result["withdrawn"] == 1 and result["withdrawn_risks"] == [kept]
+    assert [item.statement for item in workspace.stored_report().risks] == [reworded["statement"]]

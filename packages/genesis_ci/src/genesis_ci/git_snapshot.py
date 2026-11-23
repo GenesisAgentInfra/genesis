@@ -89,6 +89,9 @@ class _Entry:
 class CapturedSnapshot:
     capture: SnapshotCapture
     source: FrozenSourceSnapshot
+    # Whether the head side read differs from the commit it was read on. Known when the
+    # capture is taken; a snapshot loaded from disk does not carry it.
+    worktree_dirty: bool | None = None
 
 
 class _Git:
@@ -223,6 +226,40 @@ _DOCUMENT_SUFFIXES = frozenset(
 )
 
 
+def left_out_by(path: str, spec: SnapshotSpec) -> str | None:
+    """The folder, or path, by which `path` is left out on purpose: one `spec` excludes,
+    or Genesis's own `.genesis/` (all but its `flows.yaml`). None when neither applies.
+    """
+    for prefix in spec.exclude_paths:
+        if path == prefix or path.startswith(prefix + "/"):
+            return prefix
+    parts = path.split("/")
+    if ".genesis" not in parts or path == ".genesis/flows.yaml":
+        return None
+    return "/".join(parts[: parts.index(".genesis") + 1])
+
+
+def excluded_by(path: str, spec: SnapshotSpec) -> str | None:
+    """The folder, or path, by which every capture leaves `path` out, whatever it is asked
+    to read: one `left_out_by` names, or a dependency, build or cache folder. None when
+    no such rule applies.
+    """
+    folder = left_out_by(path, spec)
+    if folder is not None:
+        return folder
+    parts = path.split("/")
+    for index, part in enumerate(parts):
+        if part in _EXCLUDED:
+            return "/".join(parts[: index + 1])
+    return None
+
+
+def may_capture(path: str, spec: SnapshotSpec) -> bool:
+    """Whether a capture can read `path` at all: it is no secret, and no rule of
+    `excluded_by` leaves it out. Whether one does depends on what it is asked to read."""
+    return _kind(path, spec)[1] not in {"excluded", "secret_path"}
+
+
 def _kind(path: str, spec: SnapshotSpec) -> tuple[EvidenceKind | None, str | None]:
     parts = path.split("/")
     name = parts[-1]
@@ -236,11 +273,7 @@ def _kind(path: str, spec: SnapshotSpec) -> tuple[EvidenceKind | None, str | Non
         or any(part in {".ssh", ".aws", ".gnupg"} for part in parts)
     ):
         return None, "secret_path"
-    if (
-        any(part in _EXCLUDED for part in parts)
-        or (".genesis" in parts and path != ".genesis/flows.yaml")
-        or any(path == prefix or path.startswith(prefix + "/") for prefix in spec.exclude_paths)
-    ):
+    if excluded_by(path, spec) is not None:
         return None, "excluded"
     explicit = {item.path: item.kind for item in spec.inputs}
     if path in explicit:
@@ -572,6 +605,26 @@ def _diff(base: _Selection, head: _Selection, omissions: list[SnapshotOmission])
     )
 
 
+def _differs(head: _Selection, tree: dict[str, _Entry], spec: SnapshotSpec) -> bool:
+    """Whether the files read from the working tree differ from the commit they were read on.
+
+    A file edited, added or deleted counts, a changed file mode does not. Neither does a
+    file of the commit that the capture left out for a reason of its own, such as size.
+    """
+    for path, raw in head.files.items():
+        entry = tree.get(path)
+        if entry is None or _raw_blob_id(raw, len(entry.oid)) != entry.oid:
+            return True
+    left_out = {item.path for item in head.omissions}
+    return any(
+        path not in head.files
+        and path not in left_out
+        and entry.mode in _REGULAR
+        and _kind(path, spec)[0] is not None
+        for path, entry in tree.items()
+    )
+
+
 def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
     """Capture a repository root.
 
@@ -618,6 +671,7 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
         head_entries = git.tree(head_revision)
         head = _collect(git, head_entries, spec, HEAD, **starting)
         consistency = "not_applicable"
+        dirty = False
     else:
         for _ in range(spec.limits.worktree_attempts):
             try:
@@ -659,6 +713,7 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
         )
         head_revision = "worktree:" + hashlib.sha256(identity.encode()).hexdigest()
         consistency = "two_matching_reads"
+        dirty = _differs(head, anchor_tree, spec)
     omissions = [*base.omissions, *head.omissions]
     for item in spec.inputs:
         if (
@@ -718,7 +773,7 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
             for path, raw in selection.files.items()
         },
     )
-    return CapturedSnapshot(capture, source)
+    return CapturedSnapshot(capture, source, dirty)
 
 
 # ----- names only ----------------------------------------------------------------------
@@ -751,15 +806,19 @@ def tracked_paths(repo: Path, limits: SnapshotLimits | None = None) -> list[str]
     return _names(git.run("ls-files", "-z"))
 
 
+def untracked_names(repo: Path, limits: SnapshotLimits | None = None) -> list[str]:
+    """Working files Git neither tracks nor ignores, every one of them."""
+    git = _Git(repo.expanduser().resolve(strict=True), limits or SnapshotLimits())
+    return _names(git.run("ls-files", "--others", "--exclude-standard", "-z"))
+
+
 def untracked_paths(repo: Path, spec: SnapshotSpec) -> list[str]:
     """Working files Git neither tracks nor ignores, less those no capture would read.
 
     Secrets, caches, `.genesis/` and the paths `spec` excludes are left out: including
     untracked files would not bring them in either.
     """
-    git = _Git(repo.expanduser().resolve(strict=True), spec.limits)
-    listing = _names(git.run("ls-files", "--others", "--exclude-standard", "-z"))
-    return [path for path in listing if _kind(path, spec)[1] not in {"excluded", "secret_path"}]
+    return [path for path in untracked_names(repo, spec.limits) if may_capture(path, spec)]
 
 
 def _without_filters(git: _Git) -> list[str]:
@@ -786,6 +845,11 @@ def _blob_id(root: Path, path: str, length: int, limit: int) -> str | None:
         return None
     if raw is None:
         return None
+    return _raw_blob_id(raw, length)
+
+
+def _raw_blob_id(raw: bytes, length: int) -> str:
+    """The Git id of these bytes as a blob, in the hash whose ids have `length` digits."""
     digest = hashlib.sha256() if length == 64 else hashlib.sha1(usedforsecurity=False)
     digest.update(b"blob %d\0" % len(raw))
     digest.update(raw)

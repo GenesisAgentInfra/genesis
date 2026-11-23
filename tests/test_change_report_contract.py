@@ -194,6 +194,22 @@ def test_report_references_stay_inside_the_report():
     )
 
 
+def test_a_risk_names_changes_or_files_the_report_lists_as_not_analyzed():
+    risk = {"risk_id": "risk_docs", "statement": "x", "severity": "low"}
+    data = copy.deepcopy(load("change-report"))
+    data["risks"] = [{**risk, "paths": ["docs/policy.md"]}]
+    assert ChangeReport.model_validate(data).risks[0].change_ids == ()
+    rejects(lambda data: data.update(risks=[risk]), "names the changes or the unanalyzed files")
+    rejects(
+        lambda data: data.update(risks=[{**risk, "paths": ["src/expense/api.py"]}]),
+        "does not list as not analyzed",
+    )
+    rejects(
+        lambda data: data.update(risks=[{**risk, "change_ids": ["chg_missing"]}]),
+        "a risk refers to an unknown change",
+    )
+
+
 def test_coverage_verdict_needs_matching_evidence():
     both = {"tags": ["related", "assertion_found"]}
     case = {"test_id": "head::tests/test_a.py#test_a", "evidence_ids": ["ev_case"]}
@@ -384,3 +400,21 @@ def test_change_submissions_explain_every_verdict():
     with pytest.raises(ValidationError):
         ChangeSubmission.model_validate({"changes": []})
     assert "change-submission.schema.json" in map_schemas()
+
+
+def test_a_submitted_risk_names_changes_or_files_and_accepted_risks_can_be_withdrawn():
+    from genesis_contracts.map_tasks import ChangeSubmission
+
+    risk = {"statement": "新的 Dockerfile 没有复制 config 目录。"}
+    [named] = ChangeSubmission.model_validate({"risks": [{**risk, "paths": ["Dockerfile"]}]}).risks
+    assert named.change_ids == () and named.paths == ("Dockerfile",)
+    taken = ChangeSubmission.model_validate({"withdrawn_risks": ["risk_a"]})
+    assert taken.withdrawn_risks == ("risk_a",)
+    for bad, message in (
+        (risk, "name the changes in `change_ids` or the files in `paths`"),
+        ({**risk, "paths": ["../Dockerfile"]}, "invalid segment"),
+    ):
+        with pytest.raises(ValidationError, match=message):
+            ChangeSubmission.model_validate({"risks": [bad]})
+    with pytest.raises(ValidationError, match="names risks or withdraws them"):
+        ChangeSubmission.model_validate({})

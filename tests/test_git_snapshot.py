@@ -363,6 +363,43 @@ def test_git_metadata_budget_is_bounded(repo):
     assert caught.value.code == "metadata_budget"
 
 
+def test_a_worktree_capture_says_whether_it_differs_from_its_commit(repo):
+    def dirty(**spec):
+        return capture_snapshot(repo, SnapshotSpec(**spec)).worktree_dirty
+
+    assert dirty() is False
+    # A changed mode, a file outside the scope and untracked source left out do not count.
+    (repo / "src/helper.py").chmod(0o755)
+    write(repo, "notes.md", "draft\n")
+    write(repo, "src/scratch.py", "scratch = 1\n")
+    assert dirty() is False
+    # Untracked source that is read is not in the commit.
+    assert dirty(include_untracked=True) is True
+    (repo / "src/scratch.py").unlink()
+    write(repo, "src/helper.py", "def run():\n    return 2\n")
+    assert dirty() is True
+    # A commit is never dirty, whatever the working tree holds.
+    assert dirty(head="HEAD") is False
+    git(repo, "checkout", "--", "src/helper.py")
+    (repo / "tests/test_app.py").unlink()
+    assert dirty() is True
+    # A folder left out on purpose is not compared.
+    assert dirty(exclude_paths=("tests",)) is False
+
+
+def test_a_sha256_repository_is_compared_in_its_own_hash(tmp_path):
+    repo = tmp_path / "sha256"
+    repo.mkdir()
+    git(repo, "init", "-q", "--object-format=sha256")
+    git(repo, "config", "user.name", "Snapshot Test")
+    git(repo, "config", "user.email", "snapshot@example.invalid")
+    write(repo, "app.py", "value = 1\n")
+    commit(repo)
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    write(repo, "app.py", "value = 2\n")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+
+
 def test_executable_mode_changes_are_captured_and_affect_worktree_id(repo):
     first = capture_snapshot(repo, SnapshotSpec(base="HEAD"))
     (repo / "src/helper.py").chmod(0o755)
@@ -634,3 +671,28 @@ def test_a_link_that_may_be_a_directory_still_makes_the_snapshot_partial(repo, t
     commit(repo)
     result = capture_snapshot(repo, SnapshotSpec(base="HEAD", head="HEAD"))
     assert result.capture.manifest.integrity_status == "partial"
+
+
+@pytest.mark.parametrize(
+    ("path", "exclude", "excluded", "on_purpose"),
+    [
+        (".genesis/edd/refund/evals/s1/tests/test.sh", (), ".genesis", ".genesis"),
+        ("services/api/.genesis/edd/x.sh", (), "services/api/.genesis", "services/api/.genesis"),
+        (".genesis/flows.yaml", (), None, None),
+        (".genesis/flows.yaml", (".genesis",), ".genesis", ".genesis"),
+        ("web/node_modules/pkg/index.js", (), "web/node_modules", None),
+        ("build/release.sh", (), "build", None),
+        ("deploy/env/production.yaml", (), "deploy/env", None),
+        ("build/release.sh", ("build",), "build", "build"),
+        ("vendor/lib/util.py", ("vendor",), "vendor", "vendor"),
+        ("vendored.py", ("vendor",), None, None),
+        ("app/core.py", (), None, None),
+    ],
+)
+def test_excluded_by_names_what_every_capture_leaves_out(path, exclude, excluded, on_purpose):
+    from genesis_ci.git_snapshot import excluded_by, left_out_by
+
+    spec = SnapshotSpec(exclude_paths=exclude)
+    # Only Genesis's own folder and what `--exclude` names are left out by choice: no
+    # capture reads a build or dependency folder either, but that is no one's choice.
+    assert (excluded_by(path, spec), left_out_by(path, spec)) == (excluded, on_purpose)

@@ -297,8 +297,19 @@ class ChangeRisk(ContractModel):
     severity: Literal[Severity.info, Severity.low, Severity.medium]
     category: RiskCategory | None = None
     support: Literal["agent_synthesis"] = "agent_synthesis"
-    change_ids: tuple[Identifier, ...] = Field(min_length=1)
+    change_ids: tuple[Identifier, ...] = ()
+    # Changed files the analyzers did not read that the risk comes from, each listed under
+    # the report's `unanalyzed_changes`.
+    paths: tuple[str, ...] = ()
     evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def names_where_it_comes_from(self) -> ChangeRisk:
+        if not self.change_ids and not self.paths:
+            raise ValueError("a risk names the changes or the unanalyzed files it comes from")
+        for path in self.paths:
+            validate_repo_path(path)
+        return self
 
 
 class PropagatedImpact(ContractModel):
@@ -371,6 +382,9 @@ class ChangeReport(ContractModel):
         _unique((item.risk_id for item in self.risks), "risk_id values")
         if any(set(item.change_ids) - changes for item in self.risks):
             raise ValueError("a risk refers to an unknown change")
+        unanalyzed = {item.path for item in self.unanalyzed_changes}
+        if any(set(item.paths) - unanalyzed for item in self.risks):
+            raise ValueError("a risk refers to a file the report does not list as not analyzed")
         self._check_evidence()
         if self.analysis_status == "complete":
             self._check_complete()

@@ -149,3 +149,107 @@ def test_an_object_made_without_its_initializer_is_still_an_instance(source_repo
     # So a test written this way is linked to the method it calls.
     tests = {item.symbol_id: item for item in python_facts(result).tests if item.side == HEAD}
     assert "service.py#Notifier.send" in tests["tests/test_bare.py#test_send"].called_symbol_ids
+
+
+CASES = """import unittest
+from unittest import IsolatedAsyncioTestCase
+
+from service import Notifier, Service
+
+FLAG = True
+
+
+class ServiceCase(unittest.TestCase):
+    def setUp(self):
+        self.service = Service(10)
+
+    def test_run(self):
+        self.service.run(1)
+
+
+class InheritedCase(ServiceCase):
+    def test_inherited(self):
+        self.service.run(2)
+
+
+class ReplacedCase(ServiceCase):
+    def setUp(self):
+        self.service = Notifier()
+
+    def test_replaced(self):
+        self.service.send(3)
+
+
+class AsyncCase(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.service = Service(10)
+
+    async def test_async(self):
+        self.service.run(4)
+
+
+class ReassignedCase(unittest.TestCase):
+    def setUp(self):
+        self.service = Service(10)
+
+    def test_reassigns(self):
+        self.service = None
+
+    def test_reassigned(self):
+        self.service.run(5)
+
+
+class ConditionalCase(unittest.TestCase):
+    def setUp(self):
+        if FLAG:
+            self.service = Service(10)
+
+    def test_conditional(self):
+        self.service.run(6)
+
+
+class NotACase:
+    def setUp(self):
+        self.service = Service(10)
+
+    def test_not_a_case(self):
+        self.service.run(7)
+
+
+class ServiceMixin:
+    def setUp(self):
+        self.service = Service(10)
+
+
+class MixedCase(ServiceMixin, unittest.TestCase):
+    def test_mixed(self):
+        self.service.run(8)
+"""
+
+
+def test_what_set_up_assigns_is_an_instance_attribute_of_a_test_case(source_repo):
+    files = {"service.py": SERVICE, "repo.py": REPO, "tests/test_cases.py": CASES}
+    result = analyze(source_repo, files)
+    for text, expected in (
+        ("self.service.run(1)", "service.py#Service.run"),
+        # setUp inherited from a TestCase base written in the repository.
+        ("self.service.run(2)", "service.py#Service.run"),
+        # A subclass's own setUp comes first.
+        ("self.service.send(3)", "service.py#Notifier.send"),
+        ("self.service.run(4)", "service.py#Service.run"),
+    ):
+        found = target(result, text, "tests/test_cases.py")
+        assert (found.status, found.targets) == ("candidate", (expected,)), text
+    # Assigned twice, under a condition, by a setUp unittest never runs, or by a mixin's
+    # setUp that unittest runs only if the mixin comes before TestCase: still unknown.
+    for text in (
+        "self.service.run(5)",
+        "self.service.run(6)",
+        "self.service.run(7)",
+        "self.service.run(8)",
+    ):
+        assert target(result, text, "tests/test_cases.py").status == "unknown", text
+    # So the test is linked to the method it calls.
+    tests = {item.symbol_id: item for item in python_facts(result).tests if item.side == HEAD}
+    called = tests["tests/test_cases.py#ServiceCase.test_run"].called_symbol_ids
+    assert "service.py#Service.run" in called

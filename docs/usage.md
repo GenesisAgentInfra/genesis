@@ -47,6 +47,10 @@ with the most changes. When more are affected, it names the others, which stay d
 from the code alone, and offers to describe them. If you ask for a quick answer, it
 skips the flows. In other languages it describes the flows the changed code belongs to
 before it explains the changes, because that is how a change gets its place on the map.
+In a Python project mapped before, the review starts from the entry points that map
+used, those the agent found included, so a change lands on the flow the map showed.
+Ask it to start from a committed copy of a map instead, such as the one Genesis EDD
+keeps with a spec, and every clone of the project gets the same flows.
 
 ## Map the project
 
@@ -69,8 +73,15 @@ Genesis writes into `.genesis/out/latest/` inside your project:
 | `view.html` | The page to open. Each flow as a diagram, with the changes on it. |
 | `summary.md` | The same result as text, ready to paste into a pull request. |
 | `graph.html` | A plain outline of the same map that needs no scripts. |
-| `business-map.json` | The map as data. |
+| `business-map.json` | The map as data. Its `mode` is `change` for a review, whose map has only the flows the changes reach. |
 | `change-report.json` | The changes and their verdicts as data. Written for a review only. |
+
+`business-map.json` also records, under `source`, the code it was read from: the
+commit (`revision`), whether uncommitted changes were read with it (`worktree_dirty`),
+whether files Genesis would read were left out (`integrity_status`), and every file
+read (`files`), each with the SHA-256 digest of its bytes but not its text. Compare
+the digests with your code to tell whether the map still matches it: a file whose
+digest differs, or that is gone, has changed since. A file added later is not listed.
 
 `latest` holds the most recent run only: a review replaces an earlier map there, and a
 map replaces an earlier review. Every run also keeps its result, with the same files,
@@ -200,7 +211,8 @@ longer need the results; the next run creates it again.
 [Genesis EDD](https://github.com/GenesisAgentInfra/genesis-edd) makes one copy on
 purpose: it copies the `business-map.json` a spec was written against into the spec's
 folder, to be committed with the spec. That file has no source excerpts, but where a
-flow is not described yet its steps are named by lines of code.
+flow is not described yet its steps are named by lines of code, and it lists the paths
+of the files the map was read from, each with a digest of its content.
 
 ## Languages
 
@@ -218,7 +230,9 @@ map, in the changed files for a review. When those are the majority, the agent r
 Genesis again the other way, which covers every language, Python
 included, without the Python analysis. Otherwise the result covers the Python files,
 and changed files in other languages are listed as not analyzed. You can always ask
-for one way or the other.
+for one way or the other. Neither way reads Genesis's own `.genesis/` folder or a
+folder you asked to leave out: their files are not counted, and a review gives the
+number of changed files in them, folder by folder.
 
 Genesis reads source files in these languages: C, C++, C#, Clojure, Dart, Elixir,
 Erlang, Go, Java, JavaScript, Julia, Kotlin, Lua, Objective-C, Perl, PHP, Python, R,
@@ -248,7 +262,8 @@ first: raise the limit and wait longer, or leave folders out, for example to loo
 the backend only. A source file larger than 1 MB is not read: it is nearly always
 generated or vendored code. When a limit leaves files out, the result says how many
 and is marked partial. Folders you chose to leave out are not counted that way: the
-result covers the rest of the project and does not list them.
+result covers the rest of the project, and a review gives the number of changed files
+in them, folder by folder.
 
 ## What Genesis does not do
 

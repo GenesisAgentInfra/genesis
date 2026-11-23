@@ -2,6 +2,7 @@
   "schema_version": "0.1.0",
   "snapshot_id": "sha256:db776e2caf97ba213bfbb95977c18788d6a84db475020c1bc19f30f2a5b83e65",
   "side": "head",
+  "mode": "change",
   "analysis_status": "complete",
   "domains": [
     {

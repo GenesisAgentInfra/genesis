@@ -50,6 +50,15 @@ MAX_CALL_SITES = 24
 # How deep one parameter's value may lead through the parameters of its callers.
 MAX_PASSING_DEPTH = 8
 _NEVER = 1 << 30
+# unittest runs these on a test case before each of its tests, so what they assign to
+# `self` is in place in every test, as if the initializer had assigned it.
+_TEST_SETUPS = {"setUp", "asyncSetUp"}
+_TEST_CASES = {
+    "external:unittest.TestCase",
+    "external:unittest.case.TestCase",
+    "external:unittest.IsolatedAsyncioTestCase",
+    "external:unittest.async_case.IsolatedAsyncioTestCase",
+}
 
 
 def _is_test_path(path):
@@ -795,8 +804,9 @@ class Resolver:
         """`attribute` looked up on an instance of exactly the class `cls`.
 
         What the class itself says comes first: a unique unconditional assignment in its
-        initializer, a declared type, then a method. A name the class does not mention is
-        looked up in its base classes, in the order they are listed.
+        initializer (or, in a unittest TestCase, in `setUp`), a declared type, then a
+        method. A name the class does not mention is looked up in its base classes, in the
+        order they are listed.
         """
         key = (side, path, "member", cls, attribute)
         if key in seen or len(seen) > 64:
@@ -811,19 +821,40 @@ class Resolver:
                 return Resolution(status="candidate", targets=inherited.targets, reason=INHERITED)
         return None
 
+    def _is_test_case(self, cls, side, path, seen):
+        """Whether `cls` derives from unittest's TestCase, itself or through local bases."""
+        key = (side, path, "test case", cls)
+        if key in seen or len(seen) > 64:
+            return False
+        seen = seen | {key}
+        file = self.files.get((side, path))
+        for base in file.bases.get(cls, ()) if file is not None else ():
+            for target in self.resolve(base, side, path, seen).targets:
+                base_path, _, name = target.partition("#")
+                if target in _TEST_CASES or (
+                    self.kinds.get((side, target)) == {"class"}
+                    and self._is_test_case(name, side, base_path, seen)
+                ):
+                    return True
+        return False
+
     def _own_member(self, cls, attribute, side, path, seen):
         found = self.attributes.get((side, path, cls, attribute), [])
-        if (
-            len(found) == 1
-            and found[0].symbol_id == path + "#" + cls + ".__init__"
-            and not found[0].conditional
+        # The method of `cls` holding the only, unconditional assignment, if there is one.
+        method = (
+            found[0].symbol_id.removeprefix(path + "#" + cls + ".")
+            if len(found) == 1 and not found[0].conditional
+            else None
+        )
+        if method == "__init__" or (
+            method in _TEST_SETUPS and self._is_test_case(cls, side, path, seen)
         ):
             result = self._bound(found[0], side, path, seen)
             if result.targets:
                 return Resolution(
                     status="candidate",
                     targets=result.targets,
-                    reason="Instance attribute inferred from __init__; runtime mutation is possible",
+                    reason=f"Instance attribute inferred from {method}; runtime mutation is possible",
                 )
         declared = self._declared(cls + "." + attribute, side, path, seen)
         if declared is not None and declared.targets:

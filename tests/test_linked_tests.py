@@ -107,3 +107,44 @@ def test_naming_tests_keeps_the_static_links_after_them(source_repo):
         (RUNS, ("related",)),
     ]
     assert tests.basis == ("static_fact", "agent_assessment")
+
+
+AGENT = """class Agent:
+    def handle(self, message):
+        return self._reply(message)
+
+    def _reply(self, message):
+{reply}"""
+UNITTEST = """import unittest
+
+from shop.agent import Agent
+
+
+class AgentTest(unittest.TestCase):
+    def setUp(self):
+        self.agent = Agent()
+
+    def test_handle(self):
+        self.assertEqual(self.agent.handle("hi"), "hi")
+"""
+
+
+def test_a_test_case_reaches_the_code_its_set_up_object_runs(source_repo):
+    base = {
+        "shop/__init__.py": "",
+        "shop/agent.py": AGENT.format(reply="        return message\n"),
+        "tests/test_agent.py": UNITTEST,
+    }
+    branch = '        if not message:\n            return "empty"\n        return message\n'
+    head = {**base, "shop/agent.py": AGENT.format(reply=branch)}
+    workspace, _ = two_commits(source_repo, base, head)
+    change = by_kind(workspace.stored_report(), "condition_added")
+    # unittest runs setUp before each test, so the test calls `handle` on what it made.
+    assert change.tests.verdict == "reached_only"
+    assert linked(change) == ["head::tests/test_agent.py#AgentTest.test_handle"]
+    view = next(
+        item
+        for item in workspace.context(CHANGE_TASK)["changes"]
+        if item["change_id"] == change.change_id
+    )
+    assert [item["calls_away"] for item in view["tests"]["tests"]] == [2]

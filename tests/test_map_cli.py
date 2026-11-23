@@ -1,5 +1,6 @@
 """`genesis map prepare` and `genesis map render`: static skeleton end to end, no model."""
 
+import hashlib
 import json
 
 import pytest
@@ -101,6 +102,143 @@ def test_render_publishes_escaped_html_at_a_stable_path(source_repo):
     )
 
 
+@pytest.mark.parametrize("engine", ["python", "agent"])
+def test_a_review_map_says_it_comes_from_a_review(source_repo, engine):
+    out = source_repo / ".genesis" / "out"
+
+    def render(session):
+        # No flow is described yet: each result is partial, and usable.
+        result = run("render", "--repo", str(source_repo), "--session", session)
+        assert result.exit_code == 2, result.output
+
+    def published(folder):
+        return json.loads((out / folder / "business-map.json").read_text())
+
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    mapped = prepared(source_repo, "--engine", engine, "--head", "HEAD")["session_id"]
+    render(mapped)
+    assert published("latest")["mode"] == "map"
+    write(source_repo, "app.py", APP.replace("return name", "return name.title()"))
+    commit(source_repo)
+    flags = ("--engine", engine, "--base", "HEAD~1", "--head", "HEAD")
+    review = prepared(source_repo, *flags)["session_id"]
+    render(review)
+    # `latest` is the newest result, a review included; its map says it is one.
+    assert published("latest")["mode"] == "change"
+    assert (out / "latest" / "change-report.json").is_file()
+    assert published(mapped)["mode"] == "map"
+    stored = source_repo / ".genesis" / "sessions" / review / "business-map.json"
+    assert json.loads(stored.read_text())["mode"] == "change"
+    # A session prepared before maps carried `mode` is published by what it is.
+    stored.write_text(
+        json.dumps({k: v for k, v in json.loads(stored.read_text()).items() if k != "mode"})
+    )
+    render(review)
+    assert published("latest")["mode"] == "change"
+
+
+def rendered_source(repo, session):
+    run("render", "--repo", str(repo), "--session", session)
+    text = (repo / ".genesis" / "out" / session / "business-map.json").read_text()
+    assert str(repo) not in text
+    return json.loads(text)["source"]
+
+
+def digest(raw):
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def test_render_records_the_code_a_map_was_read_from(source_repo):
+    write(source_repo, "app.py", APP)
+    sha = commit(source_repo)
+    session = prepared(source_repo)["session_id"]
+    clean = rendered_source(source_repo, session)
+    assert clean == {
+        "revision": sha,
+        "worktree_dirty": False,
+        "integrity_status": "complete",
+        "files": {"app.py": digest(APP.encode())},
+    }
+    # The same session renders the same bytes.
+    published = source_repo / ".genesis" / "out" / session / "business-map.json"
+    first = published.read_bytes()
+    assert rendered_source(source_repo, session) == clean and published.read_bytes() == first
+    # The page names the commit but leaves the digests out: they grow with the project.
+    view = (source_repo / ".genesis" / "out" / session / "view.html").read_text()
+    assert sha in view and clean["files"]["app.py"] not in view
+    # Uncommitted work that is read is said to be, with the commit it was read on.
+    edited = APP.replace("return name", "return name.title()")
+    write(source_repo, "app.py", edited)
+    summary = prepared(source_repo)
+    assert summary["worktree_dirty"] is True
+    dirty = rendered_source(source_repo, summary["session_id"])
+    assert (dirty["revision"], dirty["worktree_dirty"]) == (sha, True)
+    assert dirty["files"] == {"app.py": digest(edited.encode())}
+    # A map of a commit reads the commit, whatever the working tree holds.
+    committed = rendered_source(source_repo, prepared(source_repo, "--head", "HEAD")["session_id"])
+    assert committed == clean
+
+
+@pytest.mark.parametrize("engine", ["python", "agent"])
+def test_a_review_records_the_code_its_map_was_read_from(source_repo, engine):
+    write(source_repo, "app.py", APP)
+    # Not text at the base, so left out there: the snapshot is partial.
+    write(source_repo, "data.py", b"blob = 1\0\n")
+    base = commit(source_repo)
+    edited = APP.replace("return name", "return name.title()")
+    write(source_repo, "app.py", edited)
+    write(source_repo, "data.py", "blob = 2\n")
+    head = commit(source_repo)
+    summary = prepared(source_repo, "--engine", engine, "--base", base, "--head", head)
+    assert summary["integrity_status"] == "partial"
+    # The map of a review is the head side's: its commit and the files read there.
+    assert rendered_source(source_repo, summary["session_id"]) == {
+        "revision": head,
+        "worktree_dirty": False,
+        "integrity_status": "complete",
+        "files": {"app.py": digest(edited.encode()), "data.py": digest(b"blob = 2\n")},
+    }
+
+
+def test_a_reader_can_tell_that_a_map_no_longer_matches_the_code(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "README.md", "# App\n")
+    first = commit(source_repo)
+    source = rendered_source(source_repo, prepared(source_repo)["session_id"])
+    write(source_repo, "README.md", "# App, documented\n")
+    docs = commit(source_repo)
+    write(source_repo, "app.py", APP.replace("return name", "return name.title()"))
+    code = commit(source_repo)
+
+    def changed(revision):
+        return [
+            path
+            for path, expected in source["files"].items()
+            if digest(git(source_repo, "show", f"{revision}:{path}")) != expected
+        ]
+
+    assert source["revision"] == first
+    assert changed(first) == [] and changed(docs) == []
+    assert changed(code) == ["app.py"]
+
+
+def test_a_session_from_an_earlier_version_renders_without_a_source(source_repo):
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    summary = prepared(source_repo)
+    stored = source_repo / ".genesis" / "sessions" / summary["session_id"] / "session.json"
+    old = json.loads(stored.read_text())
+    del old["worktree_dirty"]
+    stored.write_text(json.dumps(old))
+    run("render", "--repo", str(source_repo), "--session", summary["session_id"])
+    latest = source_repo / ".genesis" / "out" / "latest" / "business-map.json"
+    assert "source" not in json.loads(latest.read_text())
+    # Preparing again on the same content tells, and the next render records it.
+    assert prepared(source_repo)["session_id"] == summary["session_id"]
+    assert rendered_source(source_repo, summary["session_id"])["worktree_dirty"] is False
+
+
 def test_share_mode_leaves_source_excerpts_out(source_repo):
     write(source_repo, "app.py", APP)
     commit(source_repo)
@@ -150,6 +288,50 @@ def test_renderer_shows_changes_coverage_and_links():
     assert "How flows connect" in page and "state handoff" in page
     assert "Risk findings" in page and "<pre>" in page
     assert "tests: reached only" in render_summary(head, report)
+
+
+PLACES = {
+    "step": {"status": "projected", "flow_id": "flow_submit_report", "step_id": "step_choose_path"},
+    "removed step": {
+        "status": "removed_step",
+        "flow_id": "flow_submit_report",
+        "removed_step": {"step_id": "step_gone", "name": "旧的分流"},
+    },
+    "off the map": {"status": "unassigned", "reason": "No entry on the map reaches this code."},
+}
+
+
+def told_alike(place, **tests):
+    """The change sample with both changes at one place, told in the threshold's words."""
+    change = SAMPLES / "change"
+    head = BusinessMap.model_validate_json((change / "business-map.json").read_text())
+    data = json.loads((change / "change-report.json").read_text())
+    first, other = data["changes"]
+    first["projection"] = other["projection"] = place
+    other.update({"explanation": first["explanation"], "tests": first["tests"], **tests})
+    return head, ChangeReport.model_validate(data), first["explanation"]["summary"]
+
+
+@pytest.mark.parametrize("place", PLACES.values(), ids=PLACES.keys())
+def test_an_explanation_shared_by_changes_at_one_place_is_printed_once(place):
+    head, report, words = told_alike(place)
+    summary = render_summary(head, report)
+    assert summary.count(words) == 1 and summary.count("tests: head::") == 1
+    assert "covers 2 changes: src/expense/api.py:14, src/expense/review.py:7-10" in summary
+    # Each change keeps its own code and anchor; the words and tests are shown once.
+    page = render_html(head, None, report)
+    assert page.count('class="delta"') == 2 and page.count(words) == 1
+    assert 'id="chg_review_loop"' in page and "while True" in page
+    assert page.count("Explained together with the change above.") == 1
+
+
+def test_changes_told_alike_but_judged_differently_stay_apart():
+    unknown = {"verdict": "unknown", "basis": [], "execution_data": "not_collected", "note": "x"}
+    head, report, words = told_alike(PLACES["step"], tests=unknown)
+    summary = render_summary(head, report)
+    assert summary.count(words) == 2 and "covers" not in summary
+    page = render_html(head, None, report)
+    assert page.count(words) == 2 and "Explained together" not in page
 
 
 def test_a_source_file_of_several_thousand_lines_is_analyzed(source_repo):
@@ -258,6 +440,144 @@ def test_a_review_judges_by_the_files_it_changes(source_repo):
     assert "--engine agent" in other["note"]
 
 
+EVAL = "#!/bin/sh\nexit 0\n"
+
+
+def test_other_languages_counts_only_what_a_snapshot_can_read(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "lib/helper.py", "def helper():\n    return 1\n")
+    # Genesis EDD keeps its evals in Genesis's own folder, which no snapshot reads.
+    for name in ("test.sh", "genesis.sh", "fixtures/refund.sh"):
+        write(source_repo, f".genesis/edd/refund/evals/s1/tests/{name}", EVAL)
+    write(source_repo, ".genesis/edd/refund/evals/s1/tests/shared/observe.py", "OK = 1\n")
+    for index in range(3):
+        write(source_repo, f"vendor/tools/run{index}.sh", EVAL)
+    commit(source_repo)
+    other = prepared(source_repo)["other_languages"]
+    assert (other["python_files"], other["other_files"]) == (2, 3)
+    assert "--engine agent" in other["note"]
+    # A folder left out on purpose is not counted either.
+    assert "other_languages" not in prepared(source_repo, "--exclude", "vendor")
+    # Nor in a review whose change adds evals beside a change to the Python code.
+    write(source_repo, "app.py", APP + "\n\ndef extra():\n    return 2\n")
+    for index in range(3):
+        write(source_repo, f".genesis/edd/refund/evals/s2/tests/check{index}.sh", EVAL)
+    write(source_repo, "vendor/tools/run0.sh", "#!/bin/sh\nexit 1\n")
+    commit(source_repo)
+    review = prepared(source_repo, "--base", "HEAD~1", "--head", "HEAD", "--exclude", "vendor")
+    assert "other_languages" not in review
+
+
+def change_report(repo, summary):
+    root = repo / ".genesis" / "sessions" / summary["session_id"]
+    return ChangeReport.model_validate_json((root / "change-report.json").read_text())
+
+
+def left_out_note(report):
+    [note] = [item for item in report.limitations if item.code == "changed_files_left_out"]
+    return note.message
+
+
+def test_the_agent_engine_freezes_nothing_a_snapshot_leaves_out(source_repo):
+    write(source_repo, "web/app.ts", "export const app = 1\n")
+    write(source_repo, ".genesis/edd/refund/evals/s1/tests/test.sh", EVAL)
+    write(source_repo, "vendor/lib.ts", "export const lib = 1\n")
+    commit(source_repo)
+    summary = prepared(source_repo, "--engine", "agent", "--exclude", "vendor")
+    # Asking for a file the snapshot refuses would mark it partial for no missing input.
+    assert summary["integrity_status"] == "complete"
+    assert (summary["files"], summary["file_types"]) == (1, {".ts": 1})
+    # A review counts the changed files in those folders instead of listing them.
+    write(source_repo, "web/app.ts", "export const app = 2\n")
+    write(source_repo, "README.md", "Web app\n")
+    write(source_repo, ".genesis/edd/refund/evals/s2/tests/test.sh", EVAL)
+    write(source_repo, "vendor/lib.ts", "export const lib = 2\n")
+    commit(source_repo)
+    review = prepared(
+        source_repo,
+        "--engine",
+        "agent",
+        "--base",
+        "HEAD~1",
+        "--head",
+        "HEAD",
+        "--exclude",
+        "vendor",
+    )
+    assert review["integrity_status"] == "complete" and review["changed_files_not_analyzed"] == 1
+    report = change_report(source_repo, review)
+    assert [item.path for item in report.unanalyzed_changes] == ["README.md"]
+    # `.genesis/` also holds the `.gitignore` the first `prepare` wrote, committed since.
+    assert left_out_note(report) == (
+        "3 changed files in `.genesis/` or in folders passed to `--exclude`: not analyzed "
+        "(.genesis: 2, vendor: 1)."
+    )
+
+
+@pytest.mark.parametrize("engine", ["python", "agent"])
+def test_a_review_lists_the_changed_files_no_one_chose_to_leave_out(source_repo, engine):
+    # No run reads a build, dependency or cache folder, yet no one chose to leave it
+    # out, and a change there can matter: a release script, a deployment setting.
+    listed = {"build/release.sh": "make dist\n", "deploy/env/production.yaml": "replicas: 2\n"}
+    # Genesis's own folder and a folder passed to `--exclude` are counted instead.
+    counted = {".genesis/edd/refund/evals/s1/tests/test.sh": EVAL, "vendor/tools/run.sh": EVAL}
+    write(source_repo, "app.py", APP)
+    for path, text in {**listed, **counted}.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    write(source_repo, "app.py", APP.replace("return name", "return name.title()"))
+    for path, text in {**listed, **counted}.items():
+        write(source_repo, path, text + "# changed\n")
+    commit(source_repo)
+    flags = ("--engine", engine, "--base", "HEAD~1", "--head", "HEAD", "--exclude", "vendor")
+    review = prepared(source_repo, *flags)
+    assert review["changed_files_not_analyzed"] == 2
+    report = change_report(source_repo, review)
+    assert [item.path for item in report.unanalyzed_changes] == list(listed)
+    assert left_out_note(report) == (
+        "2 changed files in `.genesis/` or in folders passed to `--exclude`: not analyzed "
+        "(.genesis: 1, vendor: 1)."
+    )
+
+
+@pytest.mark.parametrize("engine", ["python", "agent"])
+def test_a_review_of_uncommitted_work_counts_new_files_left_out_on_purpose(source_repo, engine):
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    write(source_repo, "app.py", APP.replace("return name", "return name.title()"))
+    # New evals in Genesis's own folder and a new file in a folder left out on purpose.
+    for name in ("test.sh", "fixtures/refund.sh"):
+        write(source_repo, f".genesis/edd/refund/evals/s1/tests/{name}", EVAL)
+    write(source_repo, "scratch/try.py", "def attempt():\n    return 1\n")
+    flags = ("--engine", engine, "--base", "HEAD", "--exclude", "scratch")
+    expected = (
+        "3 changed files in `.genesis/` or in folders passed to `--exclude`: not analyzed "
+        "(.genesis: 2, scratch: 1)."
+    )
+    first = prepared(source_repo, *flags)
+    # The `.gitignore` the first run writes there is Genesis's own, not part of the change.
+    assert left_out_note(change_report(source_repo, first)) == expected
+    # Nor is what Genesis keeps there later, which Git ignores: sessions, rendered pages.
+    write(source_repo, ".genesis/out/latest/summary.md", "# Summary\n")
+    assert (source_repo / ".genesis" / "sessions" / first["session_id"]).is_dir()
+    for extra in ((), ("--include-untracked",)):
+        report = change_report(source_repo, prepared(source_repo, *flags, *extra))
+        assert left_out_note(report) == expected and not report.unanalyzed_changes
+
+
+def test_size_counts_no_file_in_genesis_own_folder(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, ".genesis/edd/refund/evals/s1/tests/shared/observe.py", "OK = 1\n")
+    commit(source_repo)
+    write(source_repo, "app.py", APP + "\n")
+    write(source_repo, ".genesis/edd/refund/evals/s1/tests/shared/observe.py", "OK = 2\n")
+    commit(source_repo)
+    result = run("size", "--repo", str(source_repo), "--base", "HEAD~1", "--head", "HEAD")
+    size = json.loads(result.stdout)
+    assert (size["source_files"], size["changed_source_files"]) == (1, 1)
+    assert size["largest_folders"] == {".": 1}
+
+
 def test_size_counts_the_files_prepare_would_read_without_reading_them(source_repo):
     write(source_repo, "app.py", APP)
     write(source_repo, "lib/helper.py", "def helper():\n    return 1\n")
@@ -277,6 +597,99 @@ def test_size_counts_the_files_prepare_would_read_without_reading_them(source_re
     assert over["over_limit"] is True and over["tell_user"] is True
     assert "--max-files" in over["note"]
     assert not (source_repo / ".genesis").exists()
+
+
+def test_size_leaves_out_the_files_prepare_leaves_out(source_repo):
+    write(source_repo, "app.py", APP)
+    for index in range(3):
+        write(source_repo, f"vendor/lib{index}.py", f"def lib_{index}():\n    return {index}\n")
+    # No snapshot reads these: Genesis's own folder, build output and a secret folder.
+    write(source_repo, ".genesis/edd/evals/case-1/observe.py", "def observe():\n    return 1\n")
+    write(source_repo, "build/lib/app.py", APP)
+    write(source_repo, ".ssh/helper.py", "def helper():\n    return 1\n")
+    commit(source_repo)
+
+    def size(*extra):
+        result = run("size", "--repo", str(source_repo), *extra)
+        assert result.exit_code == 0, result.output
+        return json.loads(result.stdout)
+
+    whole = size()
+    assert whole["largest_folders"] == {"vendor": 3, ".": 1}
+    assert whole["source_files"] == prepared(source_repo, "--head", "HEAD")["files_analyzed"] == 4
+    narrowed = size("--exclude", "vendor/lib0.py", "--exclude", "vendor")
+    excluded = prepared(source_repo, "--head", "HEAD", "--exclude", "vendor")
+    assert narrowed["source_files"] == excluded["files_analyzed"] == 1
+    assert narrowed["largest_folders"] == {".": 1}
+    # Leaving a folder out is one of the two ways under the limit that the note offers.
+    over = size("--max-files", "2")
+    assert over["over_limit"] is True and "--exclude" in over["note"]
+    assert size("--max-files", "2", "--exclude", "vendor")["over_limit"] is False
+    write(source_repo, "app.py", APP + "\n\ndef extra():\n    return 2\n")
+    write(source_repo, "vendor/lib0.py", "def lib_0():\n    return 10\n")
+    write(source_repo, ".genesis/edd/evals/case-1/observe.py", "def observe():\n    return 2\n")
+    commit(source_repo)
+    review = size("--base", "HEAD~1", "--head", "HEAD")
+    assert (review["source_files"], review["changed_source_files"]) == (4, 2)
+    review = size("--base", "HEAD~1", "--head", "HEAD", "--exclude", "vendor")
+    assert (review["source_files"], review["changed_source_files"]) == (1, 1)
+    # A path `prepare` refuses is refused the same way.
+    for command in ("size", "prepare"):
+        refused = run(command, "--repo", str(source_repo), "--exclude", "vendor/")
+        assert refused.exit_code == 1, refused.output
+        assert json.loads(refused.stdout)["error"]["code"] == "invalid_input"
+
+
+def test_size_chooses_the_engine_prepare_chooses(source_repo):
+    for index in range(2):
+        write(source_repo, f"web/page{index}.ts", f"export const page{index} = {index}\n")
+    # Python that only Genesis's own folder holds does not make a Python project.
+    write(source_repo, ".genesis/edd/evals/case-1/observe.py", "def observe():\n    return 1\n")
+    commit(source_repo)
+    size = json.loads(run("size", "--repo", str(source_repo)).stdout)
+    summary = prepared(source_repo, "--head", "HEAD")
+    assert (size["engine"], size["source_files"]) == (summary["engine"], summary["files"])
+    assert (size["engine"], size["source_files"]) == ("agent", 2)
+
+
+def test_size_counts_the_new_files_a_review_of_uncommitted_work_reads(source_repo):
+    from genesis_ci.snapshot_store import load_snapshot
+
+    write(source_repo, "app.py", APP)
+    commit(source_repo)
+    write(source_repo, "app.py", APP + "\n\ndef extra():\n    return 2\n")
+    for index in range(2):
+        write(source_repo, f"lib/new{index}.py", f"def new_{index}():\n    return {index}\n")
+    # New files no run reads: one in Genesis's own folder, one in a folder left out.
+    write(source_repo, ".genesis/edd/evals/case-1/observe.py", "def observe():\n    return 1\n")
+    write(source_repo, "scratch/try.py", "def attempt():\n    return 1\n")
+    flags = ("--base", "HEAD", "--exclude", "scratch")
+    for extra, counts in (((), (1, 1)), (("--include-untracked",), (3, 3))):
+        result = run("size", "--repo", str(source_repo), *flags, *extra)
+        assert result.exit_code == 0, result.output
+        size = json.loads(result.stdout)
+        assert (size["source_files"], size["changed_source_files"]) == counts
+        review = prepared(source_repo, *flags, *extra)
+        root = source_repo / ".genesis" / "sessions" / review["session_id"]
+        changed = load_snapshot(root / "snapshot").capture.file_diff.changes
+        # Counted as `prepare` reads them: the new files only when it is told to.
+        assert (review["files_analyzed"], len(changed)) == counts
+
+
+def test_size_takes_every_option_prepare_takes_to_choose_files():
+    from typer.main import get_command
+
+    commands = get_command(app).commands["map"].commands
+
+    def options(name):
+        # Read from the command itself: its help is cut to the width of the terminal.
+        return {option for param in commands[name].params for option in param.opts}
+
+    # The skill runs `size`, then `prepare`, with the same flags. Only the engine, which
+    # reads the files `prepare` freezes, and the map whose entries a session starts
+    # from are not about which files those are.
+    chosen = options("prepare") - {"--engine", "--entries-from"}
+    assert "--exclude" in chosen and chosen <= options("size")
 
 
 def test_files_a_limit_keeps_out_are_named_and_make_the_result_partial(source_repo):

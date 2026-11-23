@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path, PurePosixPath
 
-from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, StepKind
+from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, MapMode, StepKind
 from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet, Language
 from genesis_contracts.fingerprint import fact_fingerprint
@@ -37,6 +37,7 @@ from pydantic import ValidationError
 from genesis_ci.snapshot import slice_source
 from genesis_ci.snapshot_store import load_snapshot
 
+from .carried import CARRIED
 from .changes import CHANGE_TASK, ChangeAnalysis, unchecked_entries
 from .loop import (
     SOURCE_CHARS,
@@ -97,6 +98,9 @@ RULES = (
     "Cite evidence for every step: an evidence_id, or path + start_line + end_line + quote.",
     "A resolved step needs anchors. List fact fingerprints, or cite a range of at most "
     f"{ANCHOR_RANGE_LINES} lines and the facts inside it become the anchors.",
+    "A step on an entry's `anchor` takes no anchors from the lines it cites: they show how "
+    "the flow is entered, or they are the entry function itself. List any other fact it "
+    "stands for in `anchors`.",
     "Account for the chain, not for every line. `accountable` lists units: a `fact` is a "
     "condition, loop or result of an entry function; a `function` is a function called on the "
     "chain; a `system` is an outside system the chain talks to; an `await` is an awaited call "
@@ -286,6 +290,8 @@ class Workspace:
 
     def _publish(self, business_map: BusinessMap) -> ChangeReport | None:
         """Store the map, the change report that follows from it, and their excerpts."""
+        # A change session plans only the flows the changes reach; its map says so.
+        business_map = business_map.model_copy(update={"mode": MapMode(self.session["mode"])})
         write_json(
             self.root / "business-map.json",
             business_map.model_dump(mode="json", exclude_none=True),
@@ -307,17 +313,20 @@ class Workspace:
     def _submit_change(self, raw) -> dict:
         """Check explanations and coverage verdicts for changes; all or nothing."""
         folder = self.root / "changes"
-        risks, moved = {}, []
+        risks, moved, withdrawn = {}, [], ()
         try:
             accepted, found = self.changes.check(raw)
             problems = [_problem(*item) for item in found]
-            for index, risk in enumerate(ChangeSubmission.model_validate(raw).risks):
+            submission = ChangeSubmission.model_validate(raw)
+            withdrawn = submission.withdrawn_risks
+            for index, risk in enumerate(submission.risks):
                 evidence = self._cite(risk.evidence, f"risks[{index}].evidence", problems, moved)
-                changes = sorted(risk.change_ids)
+                # A risk on changes only keeps the id it had before files could be named.
+                named = [*sorted(risk.change_ids), *(f"file:{path}" for path in sorted(risk.paths))]
                 key = (
                     "risk_"
                     + hashlib.sha256(
-                        "\n".join([risk.statement, *changes]).encode("utf-8")
+                        "\n".join([risk.statement, *named]).encode("utf-8")
                     ).hexdigest()[:16]
                 )
                 risks[key] = {
@@ -325,6 +334,7 @@ class Workspace:
                     "severity": risk.severity.value,
                     **({"category": risk.category.value} if risk.category else {}),
                     "change_ids": list(risk.change_ids),
+                    **({"paths": list(risk.paths)} if risk.paths else {}),
                     "evidence_ids": evidence,
                 }
         except ValidationError as error:
@@ -343,9 +353,13 @@ class Workspace:
                 "accepted_version_kept": True,
                 "errors": problems,
             }
-        # Submissions add up: an assessment replaces the one of the same change, and a
-        # risk with the same statement about the same changes replaces the earlier one.
-        stored = {**self.changes.risks(), **risks}
+        # Submissions add up: an assessment replaces the one of the same change, and a risk
+        # with the same statement about the same changes and files replaces the earlier
+        # one. A withdrawn risk is dropped first, so one submission can reword it.
+        kept = {key: item for key, item in self.changes.risks().items() if key not in withdrawn}
+        stored = {**kept, **risks}
+        # The report keeps no trace of a risk taken back: the result names each one.
+        gone = [key for key in dict.fromkeys(withdrawn) if key not in stored]
         write_json(
             folder / "accepted.json",
             {"assessments": {**self.changes.assessments(), **accepted}, "risks": stored},
@@ -357,6 +371,7 @@ class Workspace:
             "status": "accepted",
             "assessed": len(accepted),
             "risks": len(stored),
+            **({"withdrawn": len(gone), "withdrawn_risks": gone} if gone else {}),
             **progress,
             **({"evidence_moved": moved} if moved else {}),
             "errors": [],
@@ -386,9 +401,20 @@ class Workspace:
     def plan(self) -> dict | None:
         return self._read("plan.json") if (self.root / "plan.json").is_file() else None
 
+    @cached_property
+    def carried(self) -> dict[str, CodeEntry]:
+        """Entries an earlier map proposed, which this session starts from."""
+        stored = self._read(CARRIED) if (self.root / CARRIED).is_file() else {}
+        return {raw["entry_id"]: CodeEntry.model_validate(raw) for raw in stored.get("entries", [])}
+
+    def recognised(self) -> dict[str, CodeEntry]:
+        """The entries known before a plan: those the analyzers found, and carried ones."""
+        found = {item.entry_id: item for item in self.facts.entries if item.side == HEAD}
+        return {**found, **self.carried}
+
     def entries(self) -> dict[str, CodeEntry]:
         """Head-side entries by id, including the ones an accepted plan proposed."""
-        found = {item.entry_id: item for item in self.facts.entries if item.side == HEAD}
+        found = self.recognised()
         for raw in (self.plan or {}).get("proposed", []):
             found[raw["entry_id"]] = CodeEntry.model_validate(raw)
         return found
@@ -399,7 +425,7 @@ class Workspace:
     def default_plan(self) -> MapPlan:
         folders: dict[str, list[CodeEntry]] = {}
         for entry in self.entries().values():
-            if entry.detection == "adapter":
+            if entry.detection == "adapter" or entry.entry_id in self.carried:
                 folder = str(PurePosixPath(entry.symbol_id.partition("#")[0]).parent)
                 folders.setdefault("(repository root)" if folder == "." else folder, []).append(
                     entry
@@ -514,7 +540,7 @@ class Workspace:
     def save_plan(self, plan: MapPlan | None) -> dict:
         origin = "agent" if plan is not None else "default"
         plan = plan or self.default_plan()
-        known = {item.entry_id: item for item in self.facts.entries if item.side == HEAD}
+        known = self.recognised()
         problems, proposed = [], []
         for index, item in enumerate(plan.proposed_entries):
             where = f"proposed_entries[{index}]"
@@ -1166,13 +1192,19 @@ class Workspace:
                     )
                 )
                 broken.add(step.key)
+            # A step on an entry's anchor stands for entering the flow, and what it cites
+            # shows how the flow is entered: a decorator, a registration, the dispatcher
+            # that calls the entry, or the entry function as a whole. Taken as anchors,
+            # those lines made the caller part of the flow, or let this one step account
+            # for everything the function does.
+            entering = not entry_anchors.isdisjoint(step.anchors)
             anchors = list(
                 dict.fromkeys(
                     [
                         *(fp for fp in step.anchors if fp in anchor_symbols and fp not in jumps),
                         *(
                             fp
-                            for fp in self._facts_in(evidence)
+                            for fp in ([] if entering else self._facts_in(evidence))
                             if self._unit_key(self.by_fingerprint[fp]) not in left_out_units
                         ),
                     ]

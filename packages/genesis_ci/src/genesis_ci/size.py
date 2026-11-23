@@ -13,9 +13,9 @@ import os
 from collections import Counter
 from pathlib import Path
 
-from genesis_contracts.snapshot import SnapshotCapture, SnapshotLimits
+from genesis_contracts.snapshot import SnapshotCapture, SnapshotLimits, SnapshotSpec
 
-from .git_snapshot import SnapshotError, _Git, changed_paths
+from .git_snapshot import SnapshotError, _Git, changed_paths, may_capture, untracked_paths
 
 # Seconds of `prepare` per source file read, measured on an 8-core machine. A review
 # reads both sides of every file and resolves calls across them: about three times a map.
@@ -37,12 +37,22 @@ def estimate(
     base: str | None = None,
     head: str | None = None,
     include_untracked: bool = False,
+    exclude: tuple[str, ...] = (),
     max_files: int | None = None,
 ) -> dict:
     """The source files a run would read, and roughly how long `prepare` takes on them."""
     from .agent_map.session import _is_source, source_paths
 
     repo = repo.expanduser().resolve(strict=True)
+    # The selection `prepare` makes from the same flags, checked the same way. A file
+    # it never reads, such as one under `.genesis/` or an excluded folder, is not counted.
+    spec = SnapshotSpec(
+        base=base,
+        head=head,
+        include_untracked=include_untracked,
+        exclude_paths=exclude,
+        **({"limits": SnapshotLimits(max_files=max_files)} if max_files else {}),
+    )
     # Refuse the way `prepare` would: a folder outside Git, or a repository with no
     # commit, has nothing a run can freeze, and a count of 0 would read as an answer.
     git = _Git(repo, SnapshotLimits())
@@ -60,19 +70,24 @@ def estimate(
     for ref in (base, head or "HEAD"):
         if ref is not None:
             git.revision(ref)
-    head_paths = source_paths(repo, None, head, include_untracked and base is None)
+    head_paths = source_paths(repo, None, head, include_untracked, exclude)
     python = [path for path in head_paths if _python(path)]
     engine = "python" if python else "agent"
     read = python if python else head_paths
     mode = "map" if base is None else "change"
     changed = 0
     if base is not None:
+        listed = {path for _, path in changed_paths(repo, base, head)}
+        if include_untracked:
+            # New files of the change: `prepare` reads them as added.
+            listed.update(untracked_paths(repo, spec))
         changed = sum(
             1
-            for _, path in changed_paths(repo, base, head)
+            for path in listed
             if (_python(path) if engine == "python" else _is_source(path))
+            and may_capture(path, spec)
         )
-    limit = max_files or SnapshotLimits().max_files
+    limit = spec.limits.max_files
     # A review stores what both sides share once: the head plus what differs.
     counted = len(read) + changed
     workers = max(1, min(os.cpu_count() or 1, MEASURED_WORKERS))

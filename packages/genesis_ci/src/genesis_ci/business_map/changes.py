@@ -36,6 +36,7 @@ from .fact_diff import BASE, HEAD, FactDiff, RawChange, _innermost, diff_facts
 from .loop import CHANGE_TASK
 from .python_facts import canonical_python
 from .skeleton import _evaluation_order, _short, shown_facts, skeleton_flow
+from .store import left_out_limitation
 
 CONTEXT_LIMIT = 30
 # How many possible entries `status` and `diff` list at a time.
@@ -1646,6 +1647,8 @@ class ChangeAnalysis:
                     "affects_completeness": False,
                 }
             )
+        if outside.get("left_out"):
+            limits.append(left_out_limitation(outside["left_out"]))
         untracked = outside.get("untracked")
         if untracked and untracked["total"]:
             count, readable = untracked["total"], untracked["analyzable"]
@@ -1864,13 +1867,14 @@ class ChangeAnalysis:
         removed_flows, removed_refs = self._removed_flows(business_map)
         cited |= removed_refs
         known = {change.change_id for change in diff.changes}
+        unanalyzed, limitations = self._unanalyzed()
+        listed = {item["path"] for item in unanalyzed}
         risks = [
             {"risk_id": key, **risk}
             for key, risk in sorted(self.risks().items())
-            if set(risk["change_ids"]) <= known
+            if set(risk["change_ids"]) <= known and set(risk.get("paths", ())) <= listed
         ]
         cited.update(ref for risk in risks for ref in risk.get("evidence_ids", ()))
-        unanalyzed, limitations = self._unanalyzed()
         waiting = [flows[key].name for key in sorted(touched) if flows[key].stage == "skeleton"]
         if waiting:
             named = ", ".join(waiting[:5]) + (", ..." if len(waiting) > 5 else "")
@@ -2312,6 +2316,10 @@ class ChangeAnalysis:
                     said.add((field, code, message))
                     problems.append((f"{where}.{field}", code, message))
                 accepted[change_id] = {**stored, "change_id": change_id}
+        # A risk names analyzed code by its changes, and a changed file Genesis did not
+        # analyze by its path as `unanalyzed_changes` lists it. Files left out on purpose,
+        # in `.genesis/` or a folder passed to `--exclude`, are not listed there.
+        listed = {item["path"] for item in self._unanalyzed()[0]} if submission.risks else set()
         for index, risk in enumerate(submission.risks):
             missing = [key for key in risk.change_ids if key not in known]
             if missing:
@@ -2321,5 +2329,22 @@ class ChangeAnalysis:
                         "unknown_change",
                         f"No change {', '.join(missing)}.",
                     )
+                )
+            for position, path in enumerate(risk.paths):
+                if path not in listed:
+                    problems.append(
+                        (
+                            f"risks[{index}].paths[{position}]",
+                            "not_in_unanalyzed_changes",
+                            f"{path} is not listed under `unanalyzed_changes`: `paths` names "
+                            "only files listed there, and analyzed code is named by its change "
+                            "in `change_ids`.",
+                        )
+                    )
+        stored = self.risks()
+        for index, key in enumerate(submission.withdrawn_risks):
+            if key not in stored:
+                problems.append(
+                    (f"withdrawn_risks[{index}]", "unknown_risk", f"No accepted risk {key}.")
                 )
         return accepted, problems

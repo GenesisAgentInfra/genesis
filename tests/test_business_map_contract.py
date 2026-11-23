@@ -66,6 +66,64 @@ def test_samples_cover_the_three_states():
     assert step(partial, "step_notify_unknown")["resolution"] == "unknown"
 
 
+def with_source(data, **changes):
+    files = {ref["path"]: "sha256:" + "0" * 64 for ref in data["evidence"]}
+    source = {
+        "revision": "a" * 40,
+        "worktree_dirty": False,
+        "integrity_status": "complete",
+        "files": files,
+    }
+    return {**data, "source": {**source, **changes}}
+
+
+def test_a_map_may_say_what_code_it_was_read_from():
+    data = with_source(load("complete"))
+    parsed = BusinessMap.model_validate(data)
+    assert parsed.model_dump(mode="json", exclude_none=True) == data
+    Draft202012Validator(map_schemas()["business-map.schema.json"]).validate(data)
+    # The sample lists every file read, the one no step cites included.
+    assert load("complete")["source"]["files"].keys() == {
+        ref["path"] for ref in load("complete")["evidence"]
+    } | {"src/expense/store.py"}
+    # A map from an earlier version has no source and stays valid.
+    assert BusinessMap.model_validate(load("partial")).source is None
+
+
+@pytest.mark.parametrize(
+    "changes, message",
+    [
+        ({"revision": "HEAD"}, r"source\.revision\n  String should match pattern"),
+        ({"revision": "worktree:" + "0" * 64}, r"source\.revision\n  String should match"),
+        ({"files": {}}, "at least 1"),
+        ({"files": {"/home/me/app.py": "sha256:" + "0" * 64}}, "repository-relative"),
+        ({"files": {"src/../app.py": "sha256:" + "0" * 64}}, "invalid segment"),
+        ({"files": {"src/expense/api.py": "md5:0"}}, r"source\.files\.\S+\n  String should match"),
+    ],
+)
+def test_a_source_names_a_commit_and_relative_files_by_digest(changes, message):
+    with pytest.raises(ValidationError, match=message):
+        BusinessMap.model_validate(with_source(load("complete"), **changes))
+
+
+def test_a_map_cites_only_files_its_source_lists():
+    data = with_source(load("complete"))
+    data["source"]["files"].pop("src/expense/api.py")
+    data["source"]["files"]["src/expense/other.py"] = "sha256:" + "0" * 64
+    with pytest.raises(ValidationError, match="cites only files its source lists"):
+        BusinessMap.model_validate(data)
+
+
+def test_a_map_says_whether_it_comes_from_a_review():
+    review = json.loads((SAMPLES / "change" / "business-map.json").read_text(encoding="utf-8"))
+    assert {load(name)["mode"] for name in ("complete", "skeleton", "partial")} == {"map"}
+    assert BusinessMap.model_validate(review).mode == "change"
+    # A map written before the field existed reads as a map of the project.
+    legacy = {key: value for key, value in load("complete").items() if key != "mode"}
+    assert BusinessMap.model_validate(legacy).mode == "map"
+    rejects("complete", lambda data: data.update(mode="review"), "mode")
+
+
 def test_map_schema_is_valid_and_versioned():
     for schema in map_schemas().values():
         Draft202012Validator.check_schema(schema)

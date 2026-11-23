@@ -61,6 +61,15 @@ def test_view_carries_the_map_the_report_and_the_excerpts():
     assert payload["excerpts"] == {item.evidence_id: item.text for item in bundle.excerpts}
 
 
+def test_view_leaves_out_the_digest_of_every_file_the_map_was_read_from():
+    data = json.loads((SAMPLES / "expense-complete.json").read_text())
+    page = render_view(BusinessMap.model_validate(data))
+    files = data["source"].pop("files")
+    # The rest of the map is carried as it is, the commit it was read from included.
+    assert embedded(page)["map"] == data
+    assert not any(digest in page for digest in files.values())
+
+
 def test_share_view_carries_no_source_excerpts():
     head, _, report = change_sample()
     payload = embedded(render_view(head, None, report))

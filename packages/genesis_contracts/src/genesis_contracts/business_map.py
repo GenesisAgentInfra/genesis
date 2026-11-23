@@ -24,6 +24,7 @@ from .models import (
     Limitation,
     Severity,
     validate_evidence_refs,
+    validate_repo_path,
 )
 
 Identifier = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")]
@@ -116,6 +117,14 @@ class FlowTier(StrEnum):
 
     primary = "primary"
     supporting = "supporting"
+
+
+class MapMode(StrEnum):
+    """`map` is a map of the project. `change` is the map of a review: its plan only has
+    to hold the flows the changes reach, so the rest of the project may be absent."""
+
+    map = "map"
+    change = "change"
 
 
 class FindingSource(StrEnum):
@@ -471,11 +480,39 @@ class MapCoverage(ContractModel):
         return self
 
 
+class MapSource(ContractModel):
+    """The code a map was built from, so that a reader can tell whether it still matches.
+
+    `revision` is the commit the files were read from: the commit itself, or the one
+    checked out when the working tree was read. `worktree_dirty` says that what was read
+    differs from that commit: a file edited, deleted or added and not committed.
+    `files` holds every file read for the map's side with the SHA-256 of its bytes, and
+    no source text; a file it does not list was not read. `integrity_status` is the
+    snapshot's for that side: `partial` when files Genesis would read were left out,
+    such as untracked source.
+    """
+
+    revision: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+    worktree_dirty: bool
+    integrity_status: Literal["complete", "partial"]
+    files: dict[str, Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def relative_paths(self) -> MapSource:
+        for path in self.files:
+            validate_repo_path(path)
+        return self
+
+
 class BusinessMap(ContractModel):
     schema_version: Literal["0.1.0"] = "0.1.0"
     snapshot_id: str = Field(min_length=1)
     side: EvidenceSide
+    mode: MapMode = MapMode.map
     analysis_status: Literal["complete", "partial"]
+    # Written by `map render`. A map without it, from an earlier version, says nothing
+    # about the code it came from.
+    source: MapSource | None = None
     domains: tuple[MapDomain, ...] = ()
     flows: tuple[MapFlow, ...] = ()
     links: tuple[MapLink, ...] = ()
@@ -551,6 +588,11 @@ class BusinessMap(ContractModel):
         )
         if any(ref.side != self.side for ref in self.evidence):
             raise ValueError("a map only cites evidence from its own side")
+        if (
+            self.source is not None
+            and {ref.path for ref in self.evidence} - self.source.files.keys()
+        ):
+            raise ValueError("a map cites only files its source lists")
 
     def _check_complete(self) -> None:
         if self.coverage.tasks_pending or self.coverage.tasks_failed:

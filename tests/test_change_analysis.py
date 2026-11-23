@@ -733,6 +733,41 @@ def test_cli_runs_a_change_session_end_to_end(source_repo, tmp_path, monkeypatch
     assert code == 0 and "<pre>" not in shared and "amount &gt;= THRESHOLD" in shared
 
 
+def test_one_explanation_for_two_changes_on_a_step_is_printed_once(change):
+    from genesis_ci.business_map.render import render_html, render_summary
+
+    tasks = planned(change)
+    change.submit(tasks["提交报销"], submit_flow(change, tasks["提交报销"]))
+    change.submit(tasks["经理审批"], approve_flow(change, tasks["经理审批"]))
+    report = change.stored_report()
+    # The threshold value lands on the step whose code reads it, beside the comparison.
+    value, check = by_kind(report, "source_modified"), by_kind(report, "condition_modified")
+    assert value.projection.step_id == check.projection.step_id
+    words = "分流阈值从 50 提高到 100，正好等于阈值的报销单也要先经模型审核。"
+    rest = [
+        item
+        for item in assessed(report, SUBMIT_TEST)["changes"]
+        if item["change_id"] not in {value.change_id, check.change_id}
+    ]
+    together = {
+        "change_ids": [value.change_id, check.change_id],
+        "summary": words,
+        "verdict": "reached_only",
+        "note": "测试只用了 50 和 500，没有覆盖边界值 100。",
+        "test_ids": [SUBMIT_TEST],
+    }
+    assert change.submit(CHANGE_TASK, {"changes": [together, *rest]})["status"] == "accepted"
+    stored, report = change.stored_map(), change.stored_report()
+    summary = render_summary(stored, report)
+    step = summary.split("- 根据金额选择处理路径\n")[1].split("\n- ")[0]
+    assert step.count(words) == 1
+    assert "    - covers 2 changes: expense/api.py:7, expense/api.py:13\n" in step
+    assert "    - placement: This step's code refers to `THRESHOLD`" in step
+    page = render_html(stored, None, report)
+    card = page.split(f'id="{check.projection.step_id}"')[1].split("</li>")[0]
+    assert card.count('class="delta"') == 2 and card.count(words) == 1
+
+
 def test_a_map_session_has_no_change_task(source_repo):
     for path, text in HEAD.items():
         write(source_repo, path, text)

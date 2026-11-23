@@ -18,7 +18,7 @@ from pathlib import PurePosixPath
 from genesis_contracts.business_map import BusinessMap, EntryDetection
 from genesis_contracts.facts import CallBoundary, CodeEntry, CodeFact, FactKind, FactSet
 from genesis_contracts.fingerprint import fact_fingerprint
-from genesis_contracts.models import EvidenceSide
+from genesis_contracts.models import EvidenceRef, EvidenceSide
 
 MAX_STEPS = 60
 MAX_FALLBACK_ROOTS = 20
@@ -307,15 +307,29 @@ def skeleton_flow(entries, by_symbol, *, max_steps: int = MAX_STEPS) -> tuple[di
 
 
 def build_skeleton(
-    facts: FactSet, *, side: EvidenceSide = EvidenceSide.head, max_steps: int = MAX_STEPS
+    facts: FactSet,
+    *,
+    side: EvidenceSide = EvidenceSide.head,
+    max_steps: int = MAX_STEPS,
+    carried: tuple[CodeEntry, ...] = (),
+    minted: tuple[EvidenceRef, ...] = (),
 ) -> BusinessMap:
-    """Build the skeleton map of one snapshot side from its facts."""
-    entries = [entry for entry in facts.entries if entry.side == side]
-    shown = [entry for entry in entries if entry.detection == EntryDetection.adapter]
+    """Build the skeleton map of one snapshot side from its facts.
+
+    `carried` are entries an earlier map proposed, shown like the recognised ones;
+    `minted` holds the references they cite that the facts do not.
+    """
+    found = {entry.entry_id: entry for entry in facts.entries if entry.side == side}
+    kept = {entry.entry_id for entry in carried}
+    others = [entry for entry in found.values() if entry.entry_id not in kept]
+    entries = [*others, *carried]
+    shown = [entry for entry in others if entry.detection == EntryDetection.adapter]
     by_symbol = shown_facts(facts, side)
     limitations = []
-    if not shown:
-        roots = sorted(entries, key=lambda e: (-len(by_symbol.get(e.symbol_id, ())), e.symbol_id))
+    # Entries carried from an earlier map are shown beside the recognised ones, or beside
+    # the uncalled functions that stand in for them.
+    if not shown and (others or not carried):
+        roots = sorted(others, key=lambda e: (-len(by_symbol.get(e.symbol_id, ())), e.symbol_id))
         shown = roots[:MAX_FALLBACK_ROOTS]
         limitations.append(
             {
@@ -325,6 +339,7 @@ def build_skeleton(
                 "affects_completeness": True,
             }
         )
+    shown += carried
     flows, domains, evidence = [], {}, set()
     for entry in sorted(shown, key=lambda item: item.symbol_id):
         flow, cited = skeleton_flow([entry], by_symbol, max_steps=max_steps)
@@ -334,7 +349,7 @@ def build_skeleton(
         domains.setdefault("(repository root)" if folder == "." else folder, []).append(
             flow["flow_id"]
         )
-    catalog = {ref.evidence_id: ref for ref in facts.evidence}
+    catalog = {ref.evidence_id: ref for ref in (*facts.evidence, *minted)}
     hidden = len(entries) - len(shown)
     return BusinessMap.model_validate(
         {
