@@ -20,10 +20,12 @@ from genesis_contracts.snapshot import SnapshotSpec
 
 from genesis_ci.git_snapshot import (
     SnapshotError,
+    cache_folder,
     changed_paths,
     excluded_by,
     is_secret,
     left_out_by,
+    tracked_paths,
     untracked_names,
 )
 from genesis_ci.snapshot import slice_source
@@ -88,12 +90,22 @@ def unread_reason(path: str, spec: SnapshotSpec, omitted: dict[str, str]) -> str
 
 def unread_untracked(repo: Path, spec: SnapshotSpec) -> list[str]:
     """Untracked files a review of the working tree names: every one Git does not ignore,
-    except those named like a secret and those `other_changes` counts by folder."""
-    return [
+    except those named like a secret, those `other_changes` counts by folder, and those
+    in a dependency, build or cache folder that holds no tracked file, such as a virtual
+    environment or compiled files Git is not told to ignore. Running the code made
+    those; one by one they would crowd the files of the change out of every list."""
+    found = [
         path
         for path in untracked_names(repo, spec.limits)
         if not is_secret(path) and left_out_by(path, spec) is None
     ]
+    if not any(cache_folder(path) for path in found):
+        return found
+    holding = set()
+    for path in tracked_paths(repo, spec.limits):
+        parts = path.split("/")
+        holding.update("/".join(parts[:index]) for index in range(1, len(parts)))
+    return [path for path in found if (folder := cache_folder(path)) is None or folder in holding]
 
 
 def other_changes(

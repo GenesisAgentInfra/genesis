@@ -285,8 +285,9 @@ genesis map plan --repo /absolute/app --session SESSION_ID --input -
   all its entries still exist and stay together: the skeleton and the default plan
   keep the entries the map gave one flow in one flow, and so must your plan. When the
   code no longer bears one out, skip it as `not_an_entry` with a `note`.
-- Without `--input` the CLI makes one flow per framework entry. Use that only when the
-  user wants the quickest possible result.
+- Without `--input` the CLI makes one flow per framework entry and per carried entry,
+  with the entries the map gave one flow kept in one. Use that only when the user
+  wants the quickest possible result.
 
 The result says `"status": "accepted"` and lists one task per flow with your `flow_key`.
 The plan can be submitted again when flows should merge or split; a flow whose entries
@@ -673,6 +674,8 @@ genesis map render  --repo /absolute/app --session SESSION_ID
      new files (`??`) that belong to the change, add `--include-untracked`: untracked
      files are otherwise left out; `prepare` counts them under `untracked_left_out`,
      the report names them, and untracked source left out makes the report partial.
+     New files in a dependency, build or cache folder that holds no tracked file, such
+     as a virtual environment, are neither counted nor listed.
      `--exclude PATH` leaves a file out on purpose.
 
    When there is nothing to review, say so and stop there. That is the case when
@@ -689,8 +692,9 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    is not Python: continue in `other-languages.md`.
 
    In a Python project the review starts from the latest map of the project that
-   proposed entries of its own, a later map without any passed over: from its
-   entries, and from its flows of several entries, kept together. So a change lands
+   proposed entries of its own or gave several entries one flow, a later map that did
+   neither passed over: from its entries, and from its flows of several entries,
+   kept together. So a change lands
    on the flow that map gave it, while that flow's entries all exist.
    `--entries-from PATH` names the `business-map.json` to start from instead, by its
    path from the repository root, for example the copy committed with a spec: every
@@ -808,11 +812,13 @@ and `status`, `changes_placed` counts the changes with a place on the map and go
 as flows are described. `changes_waiting` counts those the report needs explained (step
 3) and goes down only as `task_change` accepts explanations. `changes_unexplained` in
 the context counts every change without an explanation. `carried_entries` names the
-map whose proposed entries the review starts from (section 2): `from_session` for the
-latest map session that proposed entries, or `from_map` with the `path` and
-`snapshot_id` of the file `--entries-from` named. `entries` counts those carried, and
-`not_found` lists those whose function no longer exists at head; `removed_flows` has
-the flow each started. Propose one again only if it moved and is still a way in.
+map whose entries and flows the review starts from (section 2): `from_session` for the
+latest map session that proposed entries or gave several one flow, or `from_map` with
+the `path` and `snapshot_id` of the file `--entries-from` named. `entries` counts the
+entries carried, and `not_found` lists those whose function no longer exists at head.
+When the function existed at base, `removed_flows` shows the flow the map gave it, by
+that flow's id and with all its entries. Propose one again only if it moved and is
+still a way in.
 
 - `changes` has one entry per changed condition, call, loop, result or definition, and
   `source_*` entries for everything else that changed, such as a constant or a default
@@ -858,7 +864,7 @@ the flow each started. Propose one again only if it moved and is still a way in.
 - `limitations` says what the analysis could not do. `unresolved_local_calls` means
   calls into the code base's own modules failed to resolve: changes that look
   unreachable may be reached, and their tests may not be linked. `risks_not_shown`
-  means accepted risks name files `unanalyzed_changes` no longer lists, as after
+  means accepted risks name changes or files the report no longer lists, as after
   `prepare` with other `--exclude` folders; `diff` lists them under
   `risks_not_shown`. Withdraw them, or run `prepare` with the earlier flags.
 - `closest_flow` says where to describe changed code no flow has expanded (see below).

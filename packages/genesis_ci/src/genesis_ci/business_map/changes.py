@@ -1685,43 +1685,50 @@ class ChangeAnalysis:
             )
         return listed[:MAX_UNANALYZED], limits
 
-    def _carried_removed(self) -> list[CodeEntry]:
-        """Entries carried from a map whose function this change removed, as base-side
-        entries that cite the function itself: the flow the map gave each is gone too."""
-        facts = self.workspace.facts
-        base = {item.symbol_id: item for item in facts.symbols if item.side == BASE}
-        head = {item.symbol_id for item in facts.symbols if item.side == HEAD}
-        found = []
-        for raw in read_carried(self.workspace.root).get("not_found_entries", ()):
+    def _base_carried(self) -> dict[str, CodeEntry]:
+        """The entries carried from a map, found at head or not, as base-side entries that
+        cite the function itself, by entry id. One whose function the base lacks, as one
+        from a map of other code, is left out."""
+        base = {item.symbol_id: item for item in self.workspace.facts.symbols if item.side == BASE}
+        carried = read_carried(self.workspace.root)
+        found = {}
+        for raw in (*carried.get("entries", ()), *carried.get("not_found_entries", ())):
             symbol = base.get(raw["symbol_id"])
             if symbol is None or symbol.kind != "function" or not symbol.evidence_ids:
                 continue
-            if self.diff.moved.get(symbol.symbol_id, symbol.symbol_id) in head:
-                continue
-            found.append(
-                CodeEntry.model_validate(
-                    {
-                        **{
-                            key: raw[key]
-                            for key in ("kind", "framework", "attributes")
-                            if key in raw
-                        },
-                        "entry_id": entry_id(symbol.symbol_id),
-                        "symbol_id": symbol.symbol_id,
-                        "detection": "agent_proposed",
-                        "evidence_ids": list(symbol.evidence_ids),
-                        "side": BASE.value,
-                    }
-                )
+            found[entry_id(symbol.symbol_id)] = CodeEntry.model_validate(
+                {
+                    **{key: raw[key] for key in ("kind", "framework", "attributes") if key in raw},
+                    "entry_id": entry_id(symbol.symbol_id),
+                    "symbol_id": symbol.symbol_id,
+                    "detection": "agent_proposed",
+                    "evidence_ids": list(symbol.evidence_ids),
+                    "side": BASE.value,
+                }
             )
+        return found
+
+    def _carried_removed(self, carried: dict[str, CodeEntry]) -> list[CodeEntry]:
+        """Entries carried from a map whose function this change removed, of the `carried`
+        ones (see `_base_carried`): the flow the map gave each is gone too. One whose
+        function the base lacks has no flow to show removed."""
+        head = {item.symbol_id for item in self.workspace.facts.symbols if item.side == HEAD}
+        found = []
+        for raw in read_carried(self.workspace.root).get("not_found_entries", ()):
+            entry = carried.get(entry_id(raw["symbol_id"]))
+            if entry is None or self.diff.moved.get(entry.symbol_id, entry.symbol_id) in head:
+                continue
+            found.append(entry)
         return found
 
     def _removed_flows(self, business_map: BusinessMap) -> tuple[list[dict], set[str]]:
         """Skeletons of entries that exist only on the base side, those carried from a map
-        included."""
+        included. One that the map this session started from gave a flow together with
+        other entries is shown as that flow, with all of them as the base has them, so
+        that the flow keeps the id the map gave it; that flow is shown once."""
         facts = self.workspace.facts
         kept = {entry.symbol_id for entry in facts.entries if entry.side == HEAD}
-        present = {flow.flow_id for flow in business_map.flows}
+        taken = {flow.flow_id for flow in business_map.flows}
         shown = shown_facts(facts, BASE)
         flows, cited = [], set()
         removed = {
@@ -1731,12 +1738,19 @@ class ChangeAnalysis:
             and entry.detection == "adapter"
             and self.diff.moved.get(entry.symbol_id, entry.symbol_id) not in kept
         }
-        for entry in self._carried_removed():
+        carried = self._base_carried()
+        for entry in self._carried_removed(carried):
             removed.setdefault(entry.symbol_id, entry)
+        known = {**carried, **{item.entry_id: item for item in facts.entries if item.side == BASE}}
+        groups = {key: group for group in self.workspace.carried_groups for key in group}
         for _, entry in sorted(removed.items()):
-            flow, evidence = skeleton_flow([entry], shown)
-            if flow["flow_id"] in present or len(flows) >= MAX_REMOVED_FLOWS:
+            members = [known.get(key) for key in dict.fromkeys(groups.get(entry.entry_id, ()))]
+            if len(members) < 2 or any(item is None for item in members):
+                members = [entry]
+            flow, evidence = skeleton_flow(members, shown)
+            if flow["flow_id"] in taken or len(flows) >= MAX_REMOVED_FLOWS:
                 continue
+            taken.add(flow["flow_id"])
             flows.append(flow)
             cited |= evidence
         return flows, cited
@@ -1932,12 +1946,14 @@ class ChangeAnalysis:
             # Running `prepare` again with other folders left out keeps the session and
             # its accepted risks, but a file a risk names may no longer be listed.
             named = ", ".join(hidden[:5]) + (", ..." if len(hidden) > 5 else "")
+            one = len(hidden) == 1
             limitations.append(
                 {
                     "code": "risks_not_shown",
-                    "message": f"{len(hidden)} accepted risk{'s' * (len(hidden) != 1)} "
-                    "name changed files `unanalyzed_changes` no longer lists, such as after "
-                    f"`prepare` with other `--exclude` folders, and are not shown: {named}.",
+                    "message": f"{len(hidden)} accepted risk{'' if one else 's'} "
+                    f"name{'s' if one else ''} changes or changed files the report no longer "
+                    f"lists, and {'is' if one else 'are'} not shown, such as after `prepare` "
+                    f"with other `--exclude` folders: {named}.",
                     "affects_completeness": False,
                 }
             )

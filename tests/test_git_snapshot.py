@@ -462,9 +462,18 @@ def stale(repo, *paths):
         os.utime(repo / path, (later, later))
 
 
-def test_a_checkout_the_user_configuration_converts_is_not_dirty(repo):
-    # Git for Windows turns CRLF conversion on in its own configuration, which no
-    # command of a capture reads, and checks files out with CRLF line endings.
+def user_configuration(tmp_path, monkeypatch, autocrlf):
+    """The user's own Git configuration, which a capture reads `core.autocrlf` from."""
+    if autocrlf is not None:
+        path = tmp_path / "user.gitconfig"
+        path.write_text(f"[core]\n\tautocrlf = {autocrlf}\n")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
+
+
+def test_a_checkout_the_user_configuration_converts_is_not_dirty(repo, tmp_path, monkeypatch):
+    # Git for Windows turns CRLF conversion on in its own configuration, outside the
+    # repository, and checks files out with CRLF line endings.
+    user_configuration(tmp_path, monkeypatch, "true")
     for path in ("src/app.py", "src/helper.py"):
         (repo / path).unlink()
         git(repo, "-c", "core.autocrlf=true", "checkout", "--", path)
@@ -581,6 +590,86 @@ def test_a_converted_file_is_recorded_with_the_digest_of_its_commit(repo, tmp_pa
     stale(repo, "src/app.py", "src/helper.py")
     assert capture_snapshot(repo, SnapshotSpec()).commit_digests == snapshot.commit_digests
     assert capture_snapshot(repo, SnapshotSpec(head="HEAD")).commit_digests == {}
+
+
+@pytest.mark.parametrize(
+    ("attributes", "autocrlf", "dirty"),
+    [
+        ("", None, True),
+        ("", "input", False),
+        ("*.py text\n*.sh text\n", None, False),
+        ("*.py -text\n*.sh -text\n", "true", True),
+        ("*.py binary\n*.sh binary\n", "true", True),
+    ],
+)
+def test_line_endings_alone_differ_only_where_git_converts_them(
+    repo, tmp_path, monkeypatch, attributes, autocrlf, dirty
+):
+    from genesis_ci.source_snapshot import content_digest
+
+    user_configuration(tmp_path, monkeypatch, autocrlf)
+    write(repo, ".gitattributes", attributes)
+    write(repo, "run.sh", "make dist\n")
+    commit(repo)
+    # Rewritten with CRLF line endings, as an editor set to them does.
+    write(repo, "src/helper.py", "def run():\r\n    return 1\r\n")
+    write(repo, "run.sh", "make dist\r\n")
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert snapshot.worktree_dirty is dirty
+    committed = content_digest(b"def run():\n    return 1\n")
+    assert snapshot.commit_digests == ({} if dirty else {"src/helper.py": committed})
+    listed = changed_paths(repo, "HEAD", None)
+    assert listed == ([("M", "run.sh"), ("M", "src/helper.py")] if dirty else [])
+    # As Git itself compares the content (`git status` may go by the size alone), and
+    # the same once the change is staged.
+    options = ["-c", f"core.autocrlf={autocrlf}"] if autocrlf else []
+    assert bool(git(repo, *options, "diff", "--name-only")) is dirty
+    git(repo, *options, "add", "src/helper.py", "run.sh")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is dirty
+
+
+def test_a_file_git_is_told_not_to_check_is_compared_by_its_bytes(repo):
+    git(repo, "update-index", "--assume-unchanged", "src/helper.py", "tests/test_app.py")
+    write(repo, "src/helper.py", "def run():\n    return 2\n")
+    # Git itself no longer looks at it.
+    assert git(repo, "status", "--porcelain") == b""
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (True, {})
+    write(repo, "src/helper.py", "def run():\n    return 1\n")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    (repo / "tests/test_app.py").unlink()
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+
+
+def test_a_file_added_while_git_ignores_timestamps_is_compared_by_its_bytes(repo):
+    git(repo, "config", "core.ignoreStat", "true")
+    write(repo, "src/rates.py", "rate = 1\n")
+    commit(repo)
+    assert b"h src/rates.py" in git(repo, "ls-files", "-v")
+    write(repo, "src/rates.py", "rate = 2\n")
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (True, {})
+
+
+def test_a_file_restored_while_it_is_read_is_read_again(repo, monkeypatch):
+    from genesis_ci.git_snapshot import _StoredBlobs
+
+    write(repo, "src/helper.py", "def run():\n    return 2\n")
+    listed = _StoredBlobs.listed
+    restored = []
+
+    def restoring(self, base):
+        if not restored:
+            # Restored after the file was read, before Git lists what differs.
+            git(repo, "checkout", "--", "src/helper.py")
+            restored.append(base)
+        return listed(self, base)
+
+    monkeypatch.setattr(_StoredBlobs, "listed", restoring)
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    # What was read and what is said of it agree.
+    assert snapshot.source.read_bytes(HEAD, "src/helper.py") == b"def run():\n    return 1\n"
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (False, {})
 
 
 def test_executable_mode_changes_are_captured_and_affect_worktree_id(repo):

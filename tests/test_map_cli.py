@@ -620,6 +620,47 @@ def test_a_new_file_in_a_folder_no_run_reads_is_named_like_a_changed_one(source_
     assert listed == {"build/added.sh": "added", "build/tool.py": "modified"}
 
 
+def test_untracked_caches_git_does_not_ignore_do_not_crowd_out_the_changes(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "build/tool.py", "def run():\n    return 1\n")
+    write(source_repo, "docs/feed.md", "feed\n")
+    commit(source_repo)
+    write(source_repo, "build/tool.py", "def run():\n    return 2\n")
+    write(source_repo, "docs/feed.md", "feed, edited\n")
+    write(source_repo, "build/added.sh", "make dist\n")
+    # Made by running the code, in folders no file of the project is in.
+    for index in range(130):
+        write(source_repo, f".venv/lib/site-packages/pkg/m{index:03}.py", "x = 1\n")
+    write(source_repo, "app/__pycache__/app.cpython-312.pyc", b"\x00compiled")
+    write(source_repo, "build/__pycache__/tool.cpython-312.pyc", b"\x00compiled")
+    summary = prepared(source_repo, "--base", "HEAD")
+    assert summary["untracked_left_out"] == 1
+    [note] = [
+        item
+        for item in change_report(source_repo, summary).limitations
+        if item.code == "untracked_files_left_out"
+    ]
+    assert note.message.startswith("1 untracked file left out") and "build/added.sh" in note.message
+    summary = prepared(source_repo, "--base", "HEAD", "--include-untracked")
+    listed = [item.path for item in change_report(source_repo, summary).unanalyzed_changes]
+    assert listed == ["build/tool.py", "docs/feed.md", "build/added.sh"]
+
+
+def test_the_changes_are_listed_before_new_files_when_the_list_is_cut(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "docs/feed.md", "feed\n")
+    commit(source_repo)
+    write(source_repo, "docs/feed.md", "feed, edited\n")
+    for index in range(120):
+        write(source_repo, f"assets/icon{index:03}.svg", "<svg/>\n")
+    summary = prepared(source_repo, "--base", "HEAD", "--include-untracked")
+    report = change_report(source_repo, summary)
+    listed = [item.path for item in report.unanalyzed_changes]
+    assert len(listed) == 100 and listed[0] == "docs/feed.md"
+    codes = {item.code: item.message for item in report.limitations}
+    assert codes["changed_files_outside_languages"].startswith("121 changed files")
+
+
 @pytest.mark.parametrize("engine", ["python", "agent"])
 def test_a_review_of_uncommitted_work_counts_new_files_left_out_on_purpose(source_repo, engine):
     write(source_repo, "app.py", APP)

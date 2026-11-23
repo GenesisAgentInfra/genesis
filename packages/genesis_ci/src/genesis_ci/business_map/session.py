@@ -146,7 +146,7 @@ def prepare(
 
     `entries_from` names a `business-map.json` whose agent-proposed entries and flows the
     session starts from. Without it, a review starts from those of the latest map session
-    that proposed entries.
+    that proposed entries or gave several entries one flow.
     """
     repo = repo.expanduser().resolve(strict=True)
     # Read before the long part, so that a wrong file is refused at once.
@@ -184,9 +184,9 @@ def prepare(
     session_id = "ses_" + manifest.snapshot_id.removeprefix("sha256:")[:16]
     root = session_root(repo, session_id)
     planned = (root / "plan.json").is_file()
-    # A review starts from the entries and flows of the latest map that proposed entries,
-    # or from those of the map named. Once a plan exists, the entries it was made with
-    # stay as they are.
+    # A review starts from the entries and flows of the latest map that proposed entries
+    # or grouped them, or from those of the map named. Once a plan exists, the entries it
+    # was made with stay as they are.
     carried = {}
     if planned:
         if named is not None:
@@ -235,27 +235,25 @@ def prepare(
             counted["left_out"] = folders
         untracked = _untracked(repo, spec) if head is None else []
         if include_untracked:
-            # New files of the change that are not source: listed as added, by name.
+            # New files of the change that are not source: listed as added, by name,
+            # after the changed tracked files, so that a cut list keeps those.
             listed = {item["path"] for item in others}
-            others = sorted(
-                [
-                    *others,
-                    *(
-                        {
-                            "path": path,
-                            "change": "added",
-                            **(
-                                {"reason": reason}
-                                if (reason := unread_reason(path, spec, omitted))
-                                else {}
-                            ),
-                        }
-                        for path in untracked
-                        if path not in captured and path not in listed
-                    ),
-                ],
-                key=lambda item: item["path"],
-            )
+            others = [
+                *others,
+                *(
+                    {
+                        "path": path,
+                        "change": "added",
+                        **(
+                            {"reason": reason}
+                            if (reason := unread_reason(path, spec, omitted))
+                            else {}
+                        ),
+                    }
+                    for path in sorted(untracked)
+                    if path not in captured and path not in listed
+                ),
+            ]
         elif untracked:
             # Never left out without a word. Those Genesis would analyze come first.
             readable = {

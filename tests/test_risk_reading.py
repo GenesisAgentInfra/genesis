@@ -181,6 +181,10 @@ def test_a_risk_on_a_file_a_later_prepare_leaves_out_is_named_not_dropped(source
     assert report.risks == ()
     note = next(item for item in report.limitations if item.code == "risks_not_shown")
     assert risk.risk_id in note.message and not note.affects_completeness
+    assert note.message.startswith(
+        "1 accepted risk names changes or changed files the report no longer lists, and is "
+        "not shown"
+    )
     # `diff` lists it by the id that withdraws it.
     hidden = workspace.change_summary()["risks_not_shown"]
     assert hidden == [

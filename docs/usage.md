@@ -48,8 +48,8 @@ from the code alone, and offers to describe them. If you ask for a quick answer,
 skips the flows. In other languages it describes the flows the changed code belongs to
 before it explains the changes, because that is how a change gets its place on the map.
 In a Python project mapped before, the review starts from the latest map in which the
-agent found entry points of its own: from the entry points that map used and the way
-it grouped them into flows. So a change lands on the flow the map showed, as long as
+agent found entry points of its own or grouped several into one flow: from the entry
+points that map used and the way it grouped them into flows. So a change lands on the flow the map showed, as long as
 the code that starts that flow is all still there. Ask it to start from a committed
 copy of a map instead, such as the one Genesis EDD keeps with a spec, and every clone
 of the project gets the same flows.

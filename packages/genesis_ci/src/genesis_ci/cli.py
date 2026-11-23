@@ -149,7 +149,8 @@ def map_prepare(
         "--entries-from",
         help="Start from the entries the agent proposed in this business-map.json, and from "
         "its flows of several entries, by its path from the repository root or absolute, "
-        "instead of from the latest map that proposed entries. Python engine only",
+        "instead of from the latest map that proposed entries or grouped several in one "
+        "flow. Python engine only",
     ),
 ) -> None:
     """Freeze a snapshot and open a session. Calls no model.

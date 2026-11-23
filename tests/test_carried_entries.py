@@ -479,3 +479,181 @@ def test_a_change_that_removes_a_carried_entry_shows_its_flow_as_removed(source_
     # The flow the map gave it is gone, as for an entry the analyzers recognise.
     assert [flow.flow_id for flow in report.removed_flows] == [flows["Order status"]]
     assert "handler · Agent._status" in review.change_summary()["removed_flows"][0]
+
+
+MAIN = "desk/__main__.py#main"
+
+
+def grouped_map(repo, *flows):
+    """A map whose plan proposes both intent handlers and gives `flows`, each a list of
+    symbols, one flow each; the base tag marks the code it was made of."""
+    for path, text in BEFORE.items():
+        write(repo, path, text)
+    commit(repo)
+    git(repo, "tag", "base")
+    workspace = Workspace(repo, prepare(repo)["session_id"])
+    plan = {
+        "proposed_entries": [
+            proposal(REFUND, 4, "return self._refund(order)"),
+            proposal(STATUS, 5, "return self._status(order)"),
+        ],
+        "flows": [
+            {"key": f"f{index}", "name": f"Flow {index}", "entry_ids": list(map(entry_of, symbols))}
+            for index, symbols in enumerate(flows)
+        ],
+    }
+    status = workspace.save_plan(MapPlan.model_validate(plan))
+    assert {task["flow_id"] for task in status["tasks"]} == set(map(flow_id_for, flows))
+    return workspace
+
+
+def without_status(text=BEFORE[AGENT]):
+    text = text.replace("return self._status(order)", 'return order["status"]')
+    return text[: text.index("    def _status")].rstrip() + "\n"
+
+
+def test_a_change_that_removes_one_entry_of_a_flow_shows_that_flow_as_removed(source_repo):
+    grouped_map(source_repo, [MAIN], [REFUND, STATUS])
+    review, result = reviewed(source_repo, {**AFTER, AGENT: without_status(AFTER[AGENT])})
+    assert result["carried_entries"]["not_found"] == [STATUS]
+    report = review.stored_report()
+    # The flow the map had, by the id it had, with both its entries as they were.
+    (removed,) = report.removed_flows
+    assert removed.flow_id == flow_id_for([REFUND, STATUS])
+    assert [item.symbol_id for item in removed.entries] == [REFUND, STATUS]
+    # The handler left has a flow of its own now, which the change lands on.
+    assert flow_id_for([REFUND]) in affected(review)
+    assert removed.flow_id not in {flow.flow_id for flow in review.stored_map().flows}
+
+
+def test_a_flow_that_loses_two_entries_is_shown_removed_once(source_repo):
+    grouped_map(source_repo, [MAIN, REFUND, STATUS])
+    gone = {**BEFORE, "desk/__main__.py": BEFORE["desk/__main__.py"].replace("main(", "run(")}
+    gone[AGENT] = without_status().replace("_refund", "_repay")
+    review, result = reviewed(source_repo, gone)
+    assert sorted(result["carried_entries"]["not_found"]) == [REFUND, STATUS]
+    flows = review.stored_report().removed_flows
+    # The framework entry renamed with them is no flow of its own either.
+    assert [flow.flow_id for flow in flows] == [flow_id_for([MAIN, REFUND, STATUS])]
+
+
+def test_a_framework_entry_the_map_grouped_with_a_proposed_one_keeps_their_flow(source_repo):
+    grouped_map(source_repo, [MAIN, REFUND], [STATUS])
+    review, _ = reviewed(source_repo)
+    together = flow_id_for([MAIN, REFUND])
+    assert {flow.flow_id for flow in review.stored_map().flows} == {
+        together,
+        flow_id_for([STATUS]),
+    }
+    assert together in {task["flow_id"] for task in review.save_plan(None)["tasks"]}
+    # Removed, the framework entry takes the flow with it.
+    review, _ = reviewed(source_repo, {key: AFTER[key] for key in AFTER if "main" not in key})
+    assert [flow.flow_id for flow in review.stored_report().removed_flows] == [together]
+
+
+def test_an_entry_whose_function_the_base_lacks_has_no_flow_to_show_removed(source_repo):
+    cancel = f"{AGENT}#Agent._cancel"
+    for path, text in BEFORE.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    git(source_repo, "tag", "base")
+    # Mapped on a later commit that has a third handler, since taken out again.
+    added = BEFORE[AGENT] + "\n    def _cancel(self, order):\n        return 'cancelled'\n"
+    write(source_repo, AGENT, added)
+    commit(source_repo)
+    workspace = Workspace(source_repo, prepare(source_repo)["session_id"])
+    plan = {
+        "proposed_entries": [proposal(cancel, 15, "def _cancel(self, order):")],
+        "flows": [{"key": "cancel", "name": "Cancel", "entry_ids": [entry_of(cancel)]}],
+    }
+    workspace.save_plan(MapPlan.model_validate(plan))
+    review, result = reviewed(source_repo)
+    assert result["carried_entries"]["not_found"] == [cancel]
+    assert review.stored_report().removed_flows == ()
+
+
+RULES_API = """from fastapi import FastAPI
+
+app = FastAPI()
+RULES = {}
+
+
+@app.get("/rules")
+def list_rules():
+    return sorted(RULES)
+
+
+@app.post("/rules/{name}")
+def create_rule(name: str):
+    RULES[name] = True
+    return name
+
+
+@app.delete("/rules/{name}")
+def delete_rule(name: str):
+    RULES.pop(name, None)
+    return name
+
+
+def purge_rules():
+    RULES.clear()
+"""
+
+
+def test_the_latest_map_that_grouped_entries_is_carried_without_proposals(source_repo):
+    api = "rules/api.py"
+    rule = {name: f"{api}#{name}" for name in ("list_rules", "create_rule", "delete_rule")}
+    purge = f"{api}#purge_rules"
+    write(source_repo, api, RULES_API)
+    commit(source_repo)
+    git(source_repo, "tag", "base")
+    older = Workspace(source_repo, prepare(source_repo)["session_id"])
+    line = RULES_API.splitlines().index("def purge_rules():") + 1
+    scheduled = {
+        "symbol_id": purge,
+        "kind": "scheduled",
+        "reason": "cron runs it",
+        "evidence": [{"path": api, "start_line": line, "end_line": line, "quote": "def"}],
+    }
+    flows = [
+        [rule["list_rules"], rule["delete_rule"], purge],
+        [rule["create_rule"]],
+    ]
+    plan = {
+        "proposed_entries": [scheduled],
+        "flows": [
+            {"key": f"f{index}", "name": f"Flow {index}", "entry_ids": list(map(entry_of, flow))}
+            for index, flow in enumerate(flows)
+        ],
+    }
+    older.save_plan(MapPlan.model_validate(plan))
+    stored = json.loads((older.root / "plan.json").read_text())
+    for name, flows, when in (
+        # Later, proposing nothing: the routes regrouped, the job no longer a flow.
+        ("ses_0000000000000001", [["list_rules", "create_rule"], ["delete_rule"]], 2),
+        # Later still, one flow per route as the default plan has it: passed over.
+        ("ses_0000000000000002", [["list_rules"], ["create_rule"], ["delete_rule"]], 3),
+    ):
+        root = older.root.parent / name
+        root.mkdir()
+        (root / "session.json").write_text(json.dumps({**older.session, "session_id": name}))
+        flows = [{"key": "f", "entry_ids": [entry_of(rule[key]) for key in flow]} for flow in flows]
+        (root / "plan.json").write_text(
+            json.dumps({**stored, "plan": {"flows": flows}, "proposed": []})
+        )
+        os.utime(root / "plan.json", (when, when))
+    os.utime(older.root / "plan.json", (1, 1))
+    write(source_repo, api, RULES_API.replace("RULES.pop(name, None)", "del RULES[name]"))
+    commit(source_repo)
+    result = prepare(source_repo, base="base", head="HEAD")
+    assert result["carried_entries"] == {
+        "from_session": "ses_0000000000000001",
+        "entries": 0,
+        "not_found": [],
+    }
+    review = Workspace(source_repo, result["session_id"])
+    # The change lands on the flow the latest map gave it, not on one an older map had.
+    assert affected(review) == [flow_id_for([rule["delete_rule"]])]
+    assert flow_id_for([rule["list_rules"], rule["create_rule"]]) in {
+        flow.flow_id for flow in review.stored_map().flows
+    }

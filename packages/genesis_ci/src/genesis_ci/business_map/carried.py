@@ -5,9 +5,9 @@ live only in the session that accepted them, so a review starts from the entries
 was planned with, and from how that map grouped entries into flows: a flow of several
 entries keeps its id only while they stay together. Then each change lands on the flow
 the map gave it, as long as the flow's entries all still exist. They come from the
-latest map session of the project that proposed entries of its own, or from a
-`business-map.json` named with `--entries-from`, such as a copy committed with a spec,
-which every clone has.
+latest map session of the project that proposed entries of its own or gave several
+entries one flow, or from a `business-map.json` named with `--entries-from`, such as a
+copy committed with a spec, which every clone has.
 """
 
 from __future__ import annotations
@@ -96,11 +96,11 @@ def _planned(root: Path) -> tuple[list[dict], list[list[str]]]:
 
 
 def latest_map(repo: Path) -> dict | None:
-    """The entries the agent added in the latest map session of the project that has any,
-    and how its plan grouped entries into flows.
+    """The entries the agent added in the latest map session of the project whose plan
+    uses any or gives several entries one flow, and how that plan grouped entries.
 
-    Latest by when its plan was last accepted. A later map whose plan uses no entry the
-    agent added is passed over: it carries nothing a review lacks without it.
+    Latest by when its plan was last accepted. A later map whose plan does neither, such
+    as the default plan, is passed over: it carries nothing a review lacks without it.
     """
     latest = None
     for path in (repo / ".genesis" / "sessions").glob("ses_*/plan.json"):
@@ -114,7 +114,7 @@ def latest_map(repo: Path) -> dict | None:
             key = (path.stat().st_mtime_ns, root.name)
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             continue
-        if entries and (latest is None or key > latest[0]):
+        if (entries or groups) and (latest is None or key > latest[0]):
             latest = (key, root.name, entries, groups)
     if latest is None:
         return None

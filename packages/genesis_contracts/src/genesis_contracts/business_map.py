@@ -496,8 +496,9 @@ class MapSource(ContractModel):
     checkout read converted; a file that differs from the commit has the digest of the
     bytes read. It holds no source text, and a file it does not list was not read.
     `integrity_status` is the snapshot's for that side: `partial` when files Genesis
-    would read were left out, such as a file over the size limit. The Python engine also
-    counts untracked source it was not asked to read; the agent engine does not.
+    would read were left out, such as a file over the size limit, or untracked Python
+    source or configuration when untracked files were not included. Either engine counts
+    those; neither counts untracked files in other languages.
     """
 
     revision: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
