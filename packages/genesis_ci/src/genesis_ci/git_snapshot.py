@@ -11,7 +11,8 @@ import selectors
 import stat
 import subprocess
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from genesis_contracts.models import (
@@ -92,6 +93,10 @@ class CapturedSnapshot:
     # Whether the head side read differs from the commit it was read on. Known when the
     # capture is taken; a snapshot loaded from disk does not carry it.
     worktree_dirty: bool | None = None
+    # The digest of a file as its commit holds it, for each file read from the working
+    # tree that is the commit's file but not byte for byte: the checkout converted it,
+    # such as its line endings. Known when the capture is taken, like `worktree_dirty`.
+    commit_digests: dict[str, str] = field(default_factory=dict)
 
 
 class _Git:
@@ -110,7 +115,8 @@ class _Git:
             LC_ALL="C",
         )
 
-    def run(self, *args: str, limit: int | None = None) -> bytes:
+    def run(self, *args: str, limit: int | None = None, stdin: bytes | None = None) -> bytes:
+        """Git's output for `args`, fed `stdin` if given, within the byte and time budgets."""
         limit = self.limits.max_metadata_bytes if limit is None else limit
         command = [
             "git",
@@ -130,7 +136,7 @@ class _Git:
                 command,
                 cwd=self.root,
                 env=self.env,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL if stdin is None else subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
@@ -138,17 +144,37 @@ class _Git:
             raise SnapshotError("git_unavailable", "Unable to start Git.") from error
         chunks: list[bytes] = []
         count = 0
+        pending = memoryview(stdin or b"")
         deadline = time.monotonic() + self.limits.git_timeout_seconds
         try:
-            # Drain both pipes with a shared hard output budget before accumulating bytes.
+            # Drain both pipes with a shared hard output budget before accumulating bytes,
+            # and feed the input as Git takes it, so that neither side waits on the other.
             with selectors.DefaultSelector() as selector:
                 selector.register(process.stdout, selectors.EVENT_READ, True)
                 selector.register(process.stderr, selectors.EVENT_READ, False)
+                if process.stdin is not None:
+                    if pending:
+                        os.set_blocking(process.stdin.fileno(), False)
+                        selector.register(process.stdin, selectors.EVENT_WRITE, None)
+                    else:
+                        process.stdin.close()
                 while selector.get_map():
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise SnapshotError("git_timeout", "Git exceeded the capture timeout.")
                     for key, _ in selector.select(timeout=min(remaining, 0.2)):
+                        if key.data is None:
+                            try:
+                                pending = pending[os.write(key.fd, pending[:65536]) :]
+                            except BlockingIOError:
+                                continue
+                            except BrokenPipeError:
+                                # Git stopped reading; its exit status tells why.
+                                pending = pending[len(pending) :]
+                            if not pending:
+                                selector.unregister(key.fileobj)
+                                key.fileobj.close()
+                            continue
                         block = os.read(key.fileobj.fileno(), min(65536, limit - count + 1))
                         if not block:
                             selector.unregister(key.fileobj)
@@ -174,6 +200,8 @@ class _Git:
             if process.poll() is None:
                 process.kill()
                 process.wait()
+            if process.stdin is not None and not process.stdin.closed:
+                process.stdin.close()
             process.stdout.close()
             process.stderr.close()
 
@@ -257,25 +285,48 @@ def excluded_by(path: str, spec: SnapshotSpec) -> str | None:
 def may_capture(path: str, spec: SnapshotSpec) -> bool:
     """Whether a capture can read `path` at all: it is no secret, and no rule of
     `excluded_by` leaves it out. Whether one does depends on what it is asked to read."""
-    return _kind(path, spec)[1] not in {"excluded", "secret_path"}
+    return _exclusion(path, spec) is None
 
 
-def _kind(path: str, spec: SnapshotSpec) -> tuple[EvidenceKind | None, str | None]:
+def is_secret(path: str) -> bool:
+    """Whether `path` is named like a secret, which no capture reads or lists."""
     parts = path.split("/")
-    name = parts[-1]
-    lowered = name.lower()
-    # Explicit inputs cannot override secret/generated-path exclusions.
-    if (
+    lowered = parts[-1].lower()
+    return (
         lowered == ".env"
         or lowered.startswith(".env.")
         or lowered.endswith((".pem", ".key", ".p12", ".pfx", ".keystore"))
         or lowered in {"id_rsa", "id_ed25519", "credentials", "credentials.json", ".netrc"}
         or any(part in {".ssh", ".aws", ".gnupg"} for part in parts)
-    ):
-        return None, "secret_path"
+    )
+
+
+def _exclusion(path: str, spec: SnapshotSpec) -> str | None:
+    """Why no capture reads `path`, whatever it is asked to read, or None."""
+    # Explicit inputs cannot override secret/generated-path exclusions.
+    if is_secret(path):
+        return "secret_path"
     if excluded_by(path, spec) is not None:
-        return None, "excluded"
-    explicit = {item.path: item.kind for item in spec.inputs}
+        return "excluded"
+    return None
+
+
+def _explicit(spec: SnapshotSpec) -> dict[str, EvidenceKind]:
+    """The kind of each input `spec` lists, by path. A spec may list every source file
+    of a project, so a caller that asks about many paths builds this once."""
+    return {item.path: item.kind for item in spec.inputs}
+
+
+def _kind(
+    path: str, spec: SnapshotSpec, explicit: dict[str, EvidenceKind] | None = None
+) -> tuple[EvidenceKind | None, str | None]:
+    exclusion = _exclusion(path, spec)
+    if exclusion is not None:
+        return None, exclusion
+    name = path.rsplit("/", 1)[-1]
+    parts = path.split("/")
+    if explicit is None:
+        explicit = _explicit(spec)
     if path in explicit:
         return explicit[path], None
     if path == ".genesis/flows.yaml":
@@ -407,6 +458,8 @@ class _Selection:
     kinds: dict[str, EvidenceKind]
     modes: dict[str, str]
     omissions: list[SnapshotOmission]
+    # Tracked files a working-tree read found deleted: gone, not left out.
+    deleted: set[str] = field(default_factory=set)
 
 
 def _collect(
@@ -429,7 +482,8 @@ def _collect(
     for a change as for a map.
     """
     untracked = untracked or set()
-    explicit = {item.path for item in spec.inputs}
+    kinds = _explicit(spec)
+    explicit = kinds.keys()
     selected = _Selection({}, {}, {}, [])
     paid = other.files if other is not None else {}
     paid_oids = other_oids or {}
@@ -444,7 +498,7 @@ def _collect(
         )
 
     for path in paths:
-        kind, exclusion = _kind(path, spec)
+        kind, exclusion = _kind(path, spec, kinds)
         entry = entries.get(path)
         if kind is None:
             if entry and entry.mode in {"120000", "160000"} and exclusion == "outside_scope":
@@ -491,6 +545,8 @@ def _collect(
                 omit(path, reason, True)
                 continue
             if raw is None:  # An actual deletion, not a placeholder empty file.
+                if entry is not None:
+                    selected.deleted.add(path)
                 continue
             repeated = raw == known
             if not repeated and (full or len(raw) > remaining):
@@ -605,31 +661,83 @@ def _diff(base: _Selection, head: _Selection, omissions: list[SnapshotOmission])
     )
 
 
-def _differs(head: _Selection, tree: dict[str, _Entry], spec: SnapshotSpec) -> bool:
-    """Whether the files read from the working tree differ from the commit they were read on.
+def _differs(
+    git: _Git,
+    head: _Selection,
+    anchor: str,
+    tree: dict[str, _Entry],
+    spec: SnapshotSpec,
+    reads: Callable[[str], bool] | None = None,
+) -> tuple[bool, dict[str, str]]:
+    """Whether the files read from the working tree differ from the commit they were read
+    on, and the digest of the commit's bytes for each file read that is the commit's
+    file but not byte for byte.
 
     A file edited, added or deleted counts, a changed file mode does not. Neither does a
-    file of the commit that the capture left out for a reason of its own, such as size.
+    file of the commit that the capture left out for a reason of its own, such as size,
+    nor bytes Git would store as the commit has them, such as line endings it converts.
+    A file of the commit counts as deleted when it was not read and the capture would
+    read it, by its own rules or by `reads`.
+
+    Git's index tells, as for `git status`, which files are as the commit has them
+    without reading them again; only those it cannot vouch for are compared byte by
+    byte. Such a file that a filter driver converts, such as one git-crypt unlocked,
+    counts as changed: the driver is a command of the repository and never runs here.
+    `git status` refreshes the index, after which it is known again. When Git cannot
+    list what differs within the budgets, every file is compared byte by byte.
     """
+    stored = _StoredBlobs(git)
+    try:
+        listed = stored.listed(anchor)
+    except SnapshotError as error:
+        if error.code not in {"git_read_failed", "metadata_budget"}:
+            raise
+        listed = None
+    dirty = False
+    converted = {}
     for path, raw in head.files.items():
         entry = tree.get(path)
-        if entry is None or _raw_blob_id(raw, len(entry.oid)) != entry.oid:
-            return True
-    left_out = {item.path for item in head.omissions}
-    return any(
+        if entry is None:
+            dirty = True
+            continue
+        found = listed.get(path) if listed is not None else None
+        vouched = listed is not None and found is None
+        if found is not None and found.new_oid.strip("0") and found.new_oid != entry.oid:
+            # The index holds other content, and the file is as the index has it.
+            dirty = True
+        elif _raw_blob_id(raw, len(entry.oid)) == entry.oid:
+            continue
+        elif vouched or stored.same(path, raw, entry.oid):
+            converted[path] = (entry, raw)
+        else:
+            dirty = True
+    # Outside the scope is no reason of its own: it is what `reads` may widen.
+    left_out = {item.path for item in head.omissions if item.reason != "outside_scope"}
+    kinds = _explicit(spec)
+    gone = tree if listed is None else (path for path, item in listed.items() if item.status == "D")
+    dirty = dirty or any(
         path not in head.files
         and path not in left_out
-        and entry.mode in _REGULAR
-        and _kind(path, spec)[0] is not None
-        for path, entry in tree.items()
+        and path in tree
+        and tree[path].mode in _REGULAR
+        and (_kind(path, spec, kinds)[0] is not None or (reads is not None and reads(path)))
+        for path in gone
     )
+    return dirty, stored.digests(converted)
 
 
-def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
+def capture_snapshot(
+    repo: Path, spec: SnapshotSpec, *, reads: Callable[[str], bool] | None = None
+) -> CapturedSnapshot:
     """Capture a repository root.
 
     A base that is named but missing is an error. Without a base only the head side
     is captured, and the file diff stays empty instead of calling every file added.
+
+    `reads` names, by path, the files a caller that lists its own inputs would ask to
+    read were they listed. A file of the commit the working tree is read on that it
+    names, and that was not read, makes the working tree differ from that commit: a
+    caller that lists the index does not see a file removed from it with `git rm`.
     """
     root = repo.expanduser().resolve(strict=True)
     git = _Git(root, spec.limits)
@@ -671,7 +779,7 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
         head_entries = git.tree(head_revision)
         head = _collect(git, head_entries, spec, HEAD, **starting)
         consistency = "not_applicable"
-        dirty = False
+        dirty, committed = False, {}
     else:
         for _ in range(spec.limits.worktree_attempts):
             try:
@@ -713,12 +821,13 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
         )
         head_revision = "worktree:" + hashlib.sha256(identity.encode()).hexdigest()
         consistency = "two_matching_reads"
-        dirty = _differs(head, anchor_tree, spec)
+        dirty, committed = _differs(git, head, anchor, anchor_tree, spec, reads)
     omissions = [*base.omissions, *head.omissions]
     for item in spec.inputs:
         if (
             item.path not in base.files
             and item.path not in head.files
+            and item.path not in head.deleted
             and not any(om.path == item.path for om in omissions)
         ):
             omissions.append(
@@ -773,7 +882,7 @@ def capture_snapshot(repo: Path, spec: SnapshotSpec) -> CapturedSnapshot:
             for path, raw in selection.files.items()
         },
     )
-    return CapturedSnapshot(capture, source, dirty)
+    return CapturedSnapshot(capture, source, dirty, committed)
 
 
 # ----- names only ----------------------------------------------------------------------
@@ -837,17 +946,6 @@ def _without_filters(git: _Git) -> list[str]:
     return options
 
 
-def _blob_id(root: Path, path: str, length: int, limit: int) -> str | None:
-    """The Git id of a working file's bytes as they are, or None if it cannot be read."""
-    try:
-        raw, _, _ = _read_worktree(root, path, limit)
-    except (SnapshotError, _ChangedDuringCapture):
-        return None
-    if raw is None:
-        return None
-    return _raw_blob_id(raw, length)
-
-
 def _raw_blob_id(raw: bytes, length: int) -> str:
     """The Git id of these bytes as a blob, in the hash whose ids have `length` digits."""
     digest = hashlib.sha256() if length == 64 else hashlib.sha1(usedforsecurity=False)
@@ -856,34 +954,20 @@ def _raw_blob_id(raw: bytes, length: int) -> str:
     return digest.hexdigest()
 
 
-def changed_paths(
-    repo: Path, base: str, head: str | None, limits: SnapshotLimits | None = None
-) -> list[tuple[str, str]]:
-    """`(status, path)` for each path that differs between `base` and `head`.
+@dataclass(frozen=True)
+class _Listed:
+    """One path of a raw `git diff-index` or `git diff-tree` listing."""
 
-    Without `head` the other side is the working tree. `status` is Git's letter (`A`,
-    `D`, `M`, `T`). A tracked file whose metadata changed since the index last saw it
-    is hashed here from its bytes as they are, with no filter: one whose bytes match
-    the base is not listed, one larger than the file budget is listed as modified.
-    """
-    root = repo.expanduser().resolve(strict=True)
-    limits = limits or SnapshotLimits()
-    git = _Git(root, limits)
-    if head is not None:
-        raw = git.run("diff-tree", "-r", "--no-renames", "--no-commit-id", "-z", base, head, "--")
-    else:
-        # Submodules are compared by the commit recorded, never by running Git in them.
-        raw = git.run(
-            *_without_filters(git),
-            "diff-index",
-            "--no-renames",
-            "--ignore-submodules=dirty",
-            "-z",
-            base,
-            "--",
-        )
+    status: str
+    new_mode: str
+    old_oid: str
+    new_oid: str
+
+
+def _listing(raw: bytes) -> dict[str, _Listed]:
+    """The paths of a raw, NUL-separated listing, in Git's order; one not safe is skipped."""
     fields = raw.split(b"\0")
-    found = []
+    found = {}
     for meta, raw_path in zip(fields[::2], fields[1::2], strict=False):
         parts = meta.decode("ascii", "replace").lstrip(":").split()
         if len(parts) != 5:
@@ -893,9 +977,163 @@ def changed_paths(
             path = _path(raw_path)
         except SnapshotError:
             continue
-        unread = head is None and not new_oid.strip("0") and status in {"M", "T"}
-        if unread and new_mode in _REGULAR:
-            if _blob_id(root, path, len(old_oid), limits.max_file_bytes) == old_oid:
+        found[path] = _Listed(status, new_mode, old_oid, new_oid)
+    return found
+
+
+class _StoredBlobs:
+    """Whether working-tree bytes are a blob as Git would store them at their path.
+
+    A checkout converts what it writes: line endings (`eol`, `text`, `core.autocrlf`),
+    `ident` and `working-tree-encoding`. Bytes whose own id is not the blob's are first
+    compared with each CRLF turned into LF, which is what Git stores for a file whose
+    line endings it converts. That needs no process, and it also covers `core.autocrlf`
+    set in the user's or the system's Git configuration, which no command here reads.
+    Bytes that still differ are given to `git hash-object --path`, which converts them
+    back the way `git add` would with the repository's attributes and configuration.
+    Those conversions are built into Git; every filter driver the repository configures
+    is switched off, so no command of the repository runs, and nothing is written. Bytes
+    Git cannot convert are not the blob.
+    """
+
+    def __init__(self, git: _Git):
+        self.git = git
+        self._options: list[str] | None = None
+        # The bytes of blobs met on the way, by id.
+        self.blobs: dict[str, bytes] = {}
+
+    @property
+    def options(self) -> list[str]:
+        if self._options is None:
+            self._options = _without_filters(self.git)
+        return self._options
+
+    def listed(self, base: str) -> dict[str, _Listed]:
+        """What `git diff-index` lists between `base` and the working tree.
+
+        A file Git's index vouches for is not listed when it is as `base` has it. One
+        whose timestamps the index cannot vouch for is listed with no new id; Git does
+        not read it.
+        """
+        # Submodules are compared by the commit recorded, never by running Git in them.
+        return _listing(
+            self.git.run(
+                *self.options,
+                "diff-index",
+                "--no-renames",
+                "--ignore-submodules=dirty",
+                "-z",
+                base,
+                "--",
+            )
+        )
+
+    def _normalized(self, raw: bytes, oid: str) -> bool:
+        """Whether `raw` with each CRLF turned into LF is the blob `oid`."""
+        if b"\r\n" not in raw:
+            return False
+        normalized = raw.replace(b"\r\n", b"\n")
+        if _raw_blob_id(normalized, len(oid)) != oid:
+            return False
+        self.blobs[oid] = normalized
+        return True
+
+    def same(self, path: str, raw: bytes, oid: str) -> bool:
+        if _raw_blob_id(raw, len(oid)) == oid or self._normalized(raw, oid):
+            return True
+        try:
+            found = self.git.run(
+                *self.options,
+                "-c",
+                "core.safecrlf=false",
+                "hash-object",
+                "--stdin",
+                "--path=" + path,
+                stdin=raw,
+            )
+        except SnapshotError as error:
+            if error.code != "git_read_failed":
+                raise
+            return False
+        return found.decode("ascii", "replace").strip() == oid
+
+    def _read_blobs(self, oids: list[str], sizes: dict[str, int | None]) -> None:
+        """Read the blobs `oids` from Git in one go. What Git cannot give within the
+        budgets, or does not have, as in a partial clone, is skipped."""
+        limit = sum((sizes[oid] or self.git.limits.max_file_bytes) + len(oid) + 32 for oid in oids)
+        try:
+            raw = self.git.run(
+                "cat-file",
+                "--batch",
+                stdin="".join(oid + "\n" for oid in oids).encode(),
+                limit=limit,
+            )
+        except SnapshotError as error:
+            if error.code not in {"git_read_failed", "metadata_budget"}:
+                raise
+            return
+        position = 0
+        for oid in oids:
+            end = raw.find(b"\n", position)
+            header = raw[position:end].split() if end >= 0 else []
+            if header[1:] == [b"missing"]:
+                position = end + 1
                 continue
-        found.append((status, path))
+            if len(header) != 3 or header[0] != oid.encode() or header[1] != b"blob":
+                return
+            size = int(header[2])
+            self.blobs[oid] = raw[end + 1 : end + 1 + size]
+            position = end + 2 + size
+
+    def digests(self, converted: dict[str, tuple[_Entry, bytes]]) -> dict[str, str]:
+        """The digest of each blob, by path, given with the bytes it was read as.
+
+        Blobs not met yet are read from Git in one go. One it cannot read is left out.
+        """
+        for entry, raw in converted.values():
+            if entry.oid not in self.blobs:
+                self._normalized(raw, entry.oid)
+        missing = sorted({entry.oid for entry, _ in converted.values()} - self.blobs.keys())
+        if missing:
+            self._read_blobs(missing, {entry.oid: entry.size for entry, _ in converted.values()})
+        return {
+            path: content_digest(self.blobs[entry.oid])
+            for path, (entry, _) in sorted(converted.items())
+            if entry.oid in self.blobs
+        }
+
+
+def changed_paths(
+    repo: Path, base: str, head: str | None, limits: SnapshotLimits | None = None
+) -> list[tuple[str, str]]:
+    """`(status, path)` for each path that differs between `base` and `head`.
+
+    Without `head` the other side is the working tree. `status` is Git's letter (`A`,
+    `D`, `M`, `T`). A tracked file whose metadata changed since the index last saw it
+    is compared here from its bytes as Git would store them, with no filter driver: one
+    that matches the base is not listed, one larger than the file budget or that cannot
+    be read is listed as modified.
+    """
+    root = repo.expanduser().resolve(strict=True)
+    limits = limits or SnapshotLimits()
+    git = _Git(root, limits)
+    stored = None
+    if head is not None:
+        listed = _listing(
+            git.run("diff-tree", "-r", "--no-renames", "--no-commit-id", "-z", base, head, "--")
+        )
+    else:
+        stored = _StoredBlobs(git)
+        listed = stored.listed(base)
+    found = []
+    for path, item in listed.items():
+        unread = stored is not None and not item.new_oid.strip("0") and item.status in {"M", "T"}
+        if unread and item.new_mode in _REGULAR:
+            try:
+                current, _, _ = _read_worktree(root, path, limits.max_file_bytes)
+            except (SnapshotError, _ChangedDuringCapture):
+                current = None
+            if current is not None and stored.same(path, current, item.old_oid):
+                continue
+        found.append((item.status, path))
     return found

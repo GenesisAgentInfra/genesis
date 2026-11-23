@@ -280,10 +280,11 @@ genesis map plan --repo /absolute/app --session SESSION_ID --input -
 - In a review, and in a map prepared with `--entries-from` (section 5), `entries` also
   lists the entries proposed in the map the session started from, with `"detection":
   "agent_proposed"` and `attributes.carried_from` naming that map's session or file.
-  Use them by `entry_id` like a recognised entry: they cannot be proposed again, they
-  cite the first line of the function, and their flows keep the ids the map gave
-  them. When the code no longer bears one out, skip it as `not_an_entry` with a
-  `note`.
+  Use them by `entry_id` like a recognised entry: they cannot be proposed again, and
+  they cite the first line of the function. A flow keeps the id the map gave it while
+  all its entries still exist and stay together: the skeleton and the default plan
+  keep the entries the map gave one flow in one flow, and so must your plan. When the
+  code no longer bears one out, skip it as `not_an_entry` with a `note`.
 - Without `--input` the CLI makes one flow per framework entry. Use that only when the
   user wants the quickest possible result.
 
@@ -687,13 +688,15 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    keeps your accepted explanations. When it reports `"engine": "agent"`, the project
    is not Python: continue in `other-languages.md`.
 
-   In a Python project the review starts from the entries the project's last map
-   proposed, so a change lands on the flow that map gave it. `--entries-from PATH`
-   names the `business-map.json` to start from instead, by its path from the
-   repository root, for example the copy committed with a spec: every clone then gets
-   the same flow ids. Pass it each time you run `prepare` for that review. Once a plan
-   is accepted, the session keeps the entries it was planned with, and `prepare`
-   refuses a map other than the one it started from.
+   In a Python project the review starts from the latest map of the project that
+   proposed entries of its own, a later map without any passed over: from its
+   entries, and from its flows of several entries, kept together. So a change lands
+   on the flow that map gave it, while that flow's entries all exist.
+   `--entries-from PATH` names the `business-map.json` to start from instead, by its
+   path from the repository root, for example the copy committed with a spec: every
+   clone then gets the same flow ids. Pass it each time you run `prepare` for that
+   review. Once a plan is accepted, the session keeps the entries it was planned
+   with, and `prepare` refuses a map other than the one it started from.
 2. `diff` lists every change, where each sits, the tests static analysis links to it,
    and the flows (`possibly_affected`) and candidate entries (`possible_entries`) that
    reach it. Read its long output in parts through `jq` or Python, for example
@@ -770,12 +773,13 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    nobody described is drawn as its code structure, with steps named by lines of
    code, and that is the layer underneath, not the result. `status` lists under
    `change.affected_flows` the flows the changes land on, those that start at an
-   entry carried from a map included. Plan all of them, plus a flow for each
-   candidate under `possible_entries` you confirm as a real way in, and no others. A
-   plan replaces the static skeleton: a listed flow it leaves out is no longer on the
-   map, its changes turn `unassigned` and stop counting in `changes_waiting`, and it
-   leaves `affected_flows` and `possibly_affected`. So keep every listed flow in every
-   later plan too. Describe each as "Placing changes on flows" below sets out; when
+   entry carried from a map included. Plan all of them, each with all the
+   `entry_ids` it lists so that it keeps its `flow_id`, plus a flow for each candidate
+   under `possible_entries` you confirm as a real way in, and no others. A plan
+   replaces the static skeleton: a listed flow it leaves out is no longer on the map,
+   its changes turn `unassigned` and stop counting in `changes_waiting`, and it leaves
+   `affected_flows` and `possibly_affected`. So keep every listed flow in every later
+   plan too. Describe each as "Placing changes on flows" below sets out; when
    more than three are listed, describe the three that carry the most changes, tell
    the user which ones are left as code structure, and offer to describe them. When
    no flow is listed, check those candidates first.
@@ -805,10 +809,10 @@ as flows are described. `changes_waiting` counts those the report needs explaine
 3) and goes down only as `task_change` accepts explanations. `changes_unexplained` in
 the context counts every change without an explanation. `carried_entries` names the
 map whose proposed entries the review starts from (section 2): `from_session` for the
-project's last map, or `from_map` with the `path` and `snapshot_id` of the file
-`--entries-from` named. `entries` counts those carried, and `not_found` lists those
-whose function no longer exists at head. Propose one again only if it moved and is
-still a way in.
+latest map session that proposed entries, or `from_map` with the `path` and
+`snapshot_id` of the file `--entries-from` named. `entries` counts those carried, and
+`not_found` lists those whose function no longer exists at head; `removed_flows` has
+the flow each started. Propose one again only if it moved and is still a way in.
 
 - `changes` has one entry per changed condition, call, loop, result or definition, and
   `source_*` entries for everything else that changed, such as a constant or a default
@@ -841,15 +845,22 @@ still a way in.
   decorators that call a function later, property reads, or chains longer than five
   calls: look for such tests yourself.
 - `possibly_affected` lists flows that can reach changed code without a step on it;
-  `removed_flows` the entries that no longer exist; `unanalyzed_changes` the changed
-  files Genesis did not analyze, which step 4 reads. Mention those that are not empty.
+  `removed_flows` the flows of entries that no longer exist, those carried from a map
+  included; `unanalyzed_changes` the changed files Genesis did not analyze, which
+  step 4 reads, each with its `reason`: another language, or a file no snapshot
+  reads, such as one in a dependency, build or cache folder or over a size limit,
+  which the limitation `changed_files_not_read` counts. Mention those that are not
+  empty.
   Changed files in `.genesis/`, Genesis's own folder, and in folders passed to
   `--exclude` are counted by folder instead, untracked ones included, in the
   limitation `changed_files_left_out`. Give the count as files Genesis did not
   analyze.
 - `limitations` says what the analysis could not do. `unresolved_local_calls` means
   calls into the code base's own modules failed to resolve: changes that look
-  unreachable may be reached, and their tests may not be linked.
+  unreachable may be reached, and their tests may not be linked. `risks_not_shown`
+  means accepted risks name files `unanalyzed_changes` no longer lists, as after
+  `prepare` with other `--exclude` folders; `diff` lists them under
+  `risks_not_shown`. Withdraw them, or run `prepare` with the earlier flags.
 - `closest_flow` says where to describe changed code no flow has expanded (see below).
 - `possible_entries` lists functions no code calls that lead to the changed code and
   start no flow. Each has its `entry_id`, its `symbol_id` and the `change_ids` it
@@ -1108,8 +1119,9 @@ Do not run tests yourself unless the user asks for it.
 - **A question about an existing map or review:** `.genesis/out/latest/` holds the
   session rendered last. Its `summary.md` starts with `# Genesis map` for a map and
   `# Genesis map with changes` for a review, which also has `change-report.json`. A
-  review's `business-map.json` says `"mode": "change"` and has only the flows the
-  review planned. When that is not the one the user means, look in the other folders
+  review's `business-map.json` says `"mode": "change"`: it covers what the review
+  analyzed, only the planned flows once there is a plan, and is no map of the whole
+  project. When that is not the one the user means, look in the other folders
   under `.genesis/out/`, one per session id. Answer from those files; do not start a
   new analysis.
 - **The code changed and the user wants the map again:** run `map prepare` again. New

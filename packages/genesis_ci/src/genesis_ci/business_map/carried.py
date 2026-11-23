@@ -1,10 +1,13 @@
 """Entries a session carries over from an earlier map, so that its flows keep their ids.
 
-A flow's id comes from the symbols of its entries. The entries the agent proposed live
-only in the session that accepted them, so a review that starts from the entries a map
-was planned with puts each change on the flow the map gave it. They come from the
-latest map session of the project, or from a `business-map.json` named with
-`--entries-from`, such as a copy committed with a spec, which every clone has.
+A flow's id comes from the symbols of all its entries. The entries the agent proposed
+live only in the session that accepted them, so a review starts from the entries a map
+was planned with, and from how that map grouped entries into flows: a flow of several
+entries keeps its id only while they stay together. Then each change lands on the flow
+the map gave it, as long as the flow's entries all still exist. They come from the
+latest map session of the project that proposed entries of its own, or from a
+`business-map.json` named with `--entries-from`, such as a copy committed with a spec,
+which every clone has.
 """
 
 from __future__ import annotations
@@ -59,19 +62,29 @@ def named_map(repo: Path, given: str | Path) -> dict:
         "source": {"from_map": {"path": shown, "snapshot_id": business_map.snapshot_id}},
         "origin": origin,
         "entries": list(found.values()),
+        "groups": _groups(
+            [entry.entry_id for entry in flow.entries] for flow in business_map.flows
+        ),
         # The same map can be planned again with other entries; kept to tell them apart.
         "proposed": sorted(item["symbol_id"] for item in found.values()),
     }
 
 
-def _planned(root: Path) -> list[dict]:
-    """The entries the agent added that a flow of a session's plan starts from.
+def _groups(flows) -> list[list[str]]:
+    """The entry ids of each flow that has more than one entry."""
+    return [list(entries) for entries in flows if len(entries) > 1]
+
+
+def _planned(root: Path) -> tuple[list[dict], list[list[str]]]:
+    """The entries the agent added that a flow of a session's plan starts from, and the
+    entries of each flow of that plan that has several.
 
     Those it proposed and those the session carried itself. One the plan only skipped
     is left out, as a map leaves it out of its flows.
     """
     plan = json.loads((root / "plan.json").read_text(encoding="utf-8"))
-    used = {entry for flow in plan["plan"].get("flows", []) for entry in flow["entry_ids"]}
+    flows = plan["plan"].get("flows", [])
+    used = {entry for flow in flows for entry in flow["entry_ids"]}
     carried = []
     if (root / CARRIED).is_file():
         carried = json.loads((root / CARRIED).read_text(encoding="utf-8")).get("entries", [])
@@ -79,31 +92,39 @@ def _planned(root: Path) -> list[dict]:
     for raw in (*carried, *plan.get("proposed", [])):
         if raw["entry_id"] in used:
             found[raw["entry_id"]] = raw
-    return list(found.values())
+    return list(found.values()), _groups(flow["entry_ids"] for flow in flows)
 
 
 def latest_map(repo: Path) -> dict | None:
-    """The entries the agent added in the latest map session of the project that has any.
+    """The entries the agent added in the latest map session of the project that has any,
+    and how its plan grouped entries into flows.
 
-    Latest by when its plan was last accepted.
+    Latest by when its plan was last accepted. A later map whose plan uses no entry the
+    agent added is passed over: it carries nothing a review lacks without it.
     """
     latest = None
     for path in (repo / ".genesis" / "sessions").glob("ses_*/plan.json"):
         root = path.parent
         try:
             session = json.loads((root / "session.json").read_text(encoding="utf-8"))
-            if session.get("mode") != "map" or session.get("engine") != "python":
+            # A session from before sessions named their engine is a Python one.
+            if session.get("mode") != "map" or session.get("engine", "python") != "python":
                 continue
-            entries = _planned(root)
+            entries, groups = _planned(root)
             key = (path.stat().st_mtime_ns, root.name)
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             continue
         if entries and (latest is None or key > latest[0]):
-            latest = (key, root.name, entries)
+            latest = (key, root.name, entries, groups)
     if latest is None:
         return None
-    _, origin, entries = latest
-    return {"source": {"from_session": origin}, "origin": origin, "entries": entries}
+    _, origin, entries, groups = latest
+    return {
+        "source": {"from_session": origin},
+        "origin": origin,
+        "entries": entries,
+        "groups": groups,
+    }
 
 
 def carry(found: dict, facts: FactSet, source) -> dict:
@@ -112,7 +133,8 @@ def carry(found: dict, facts: FactSet, source) -> dict:
     An entry is carried while its function exists at head and the analyzers do not
     recognise it. It cites the first line of the function, its first decorator if it
     has one, since evidence belongs to one snapshot; `attributes.carried_from` names
-    where it came from.
+    where it came from. The groups of entries are kept as they are, and so is each entry
+    no longer found, for a review to show the flow it started as removed.
     """
     symbols = {item.symbol_id: item for item in facts.symbols if item.side == HEAD}
     recognised = {
@@ -124,7 +146,7 @@ def carry(found: dict, facts: FactSet, source) -> dict:
     for raw in found["entries"]:
         symbol = symbols.get(raw["symbol_id"])
         if symbol is None or symbol.kind != "function":
-            missing.append(raw["symbol_id"])
+            missing.append(raw)
             continue
         if symbol.symbol_id in recognised:
             continue
@@ -146,7 +168,9 @@ def carry(found: dict, facts: FactSet, source) -> dict:
     return {
         **found["source"],
         "entries": entries,
-        "not_found": missing,
+        "not_found": [raw["symbol_id"] for raw in missing],
+        **({"not_found_entries": missing} if missing else {}),
+        **({"groups": found["groups"]} if found.get("groups") else {}),
         **({"proposed": found["proposed"]} if "proposed" in found else {}),
         "evidence": evidence,
     }

@@ -164,9 +164,11 @@ def test_render_records_the_code_a_map_was_read_from(source_repo):
     published = source_repo / ".genesis" / "out" / session / "business-map.json"
     first = published.read_bytes()
     assert rendered_source(source_repo, session) == clean and published.read_bytes() == first
-    # The page names the commit but leaves the digests out: they grow with the project.
-    view = (source_repo / ".genesis" / "out" / session / "view.html").read_text()
-    assert sha in view and clean["files"]["app.py"] not in view
+    # Neither page carries it: with no GitHub link to make, the commit is not named.
+    run("render", "--repo", str(source_repo), "--session", session, "--share")
+    for name in ("view.html", "view.share.html"):
+        view = (source_repo / ".genesis" / "out" / session / name).read_text()
+        assert sha not in view and clean["files"]["app.py"] not in view
     # Uncommitted work that is read is said to be, with the commit it was read on.
     edited = APP.replace("return name", "return name.title()")
     write(source_repo, "app.py", edited)
@@ -201,6 +203,28 @@ def test_a_review_records_the_code_its_map_was_read_from(source_repo, engine):
     }
 
 
+def test_the_agent_engine_says_a_committed_file_it_did_not_read_was_removed(source_repo):
+    write(source_repo, "a.ts", "export const a = 1;\n")
+    write(source_repo, "b.ts", "export const b = 2;\n")
+    sha = commit(source_repo)
+
+    def read():
+        summary = prepared(source_repo, "--engine", "agent")
+        source = rendered_source(source_repo, summary["session_id"])
+        assert source["revision"] == sha
+        return summary["worktree_dirty"], summary["integrity_status"], list(source["files"])
+
+    # Removed from the index too: Git no longer lists it, yet the commit has it.
+    git(source_repo, "rm", "-q", "b.ts")
+    assert read() == (True, "complete", ["a.ts"])
+    # Removed from the working tree only. Either way the file is gone, not left out, so
+    # the snapshot is complete.
+    git(source_repo, "reset", "-q", "--", "b.ts")
+    assert read() == (True, "complete", ["a.ts"])
+    git(source_repo, "checkout", "--", "b.ts")
+    assert read() == (False, "complete", ["a.ts", "b.ts"])
+
+
 def test_a_reader_can_tell_that_a_map_no_longer_matches_the_code(source_repo):
     write(source_repo, "app.py", APP)
     write(source_repo, "README.md", "# App\n")
@@ -221,6 +245,23 @@ def test_a_reader_can_tell_that_a_map_no_longer_matches_the_code(source_repo):
     assert source["revision"] == first
     assert changed(first) == [] and changed(docs) == []
     assert changed(code) == ["app.py"]
+
+
+@pytest.mark.parametrize("engine", ["python", "agent"])
+def test_a_map_records_files_as_their_commit_holds_them(source_repo, engine):
+    write(source_repo, ".gitattributes", "*.py text eol=crlf\n")
+    write(source_repo, "app.py", APP)
+    sha = commit(source_repo)
+    # A checkout with CRLF line endings, as on Windows: Git converts them back on commit.
+    (source_repo / "app.py").unlink()
+    git(source_repo, "checkout", "--", "app.py")
+    assert b"\r\n" in (source_repo / "app.py").read_bytes()
+    worktree = rendered_source(source_repo, prepared(source_repo, "--engine", engine)["session_id"])
+    assert (worktree["revision"], worktree["worktree_dirty"]) == (sha, False)
+    # The digests are those of the commit, which every clone has, as for a map of it.
+    assert worktree["files"]["app.py"] == digest(git(source_repo, "show", f"{sha}:app.py"))
+    flags = ("--engine", engine, "--head", "HEAD")
+    assert rendered_source(source_repo, prepared(source_repo, *flags)["session_id"]) == worktree
 
 
 def test_a_session_from_an_earlier_version_renders_without_a_source(source_repo):
@@ -538,6 +579,45 @@ def test_a_review_lists_the_changed_files_no_one_chose_to_leave_out(source_repo,
         "2 changed files in `.genesis/` or in folders passed to `--exclude`: not analyzed "
         "(.genesis: 1, vendor: 1)."
     )
+
+
+def test_a_changed_file_in_a_folder_no_run_reads_says_why_it_was_not_analyzed(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "build/tool.py", "def run():\n    return 1\n")
+    write(source_repo, "Dockerfile", "FROM python:3.12\n")
+    commit(source_repo)
+    write(source_repo, "build/tool.py", "def run():\n    return 2\n")
+    write(source_repo, "Dockerfile", "FROM python:3.13\n")
+    report = change_report(source_repo, prepared(source_repo, "--base", "HEAD"))
+    reasons = {item.path: item.reason for item in report.unanalyzed_changes}
+    # Python, yet in a build folder, which no run reads: not a language Genesis lacks.
+    assert reasons == {
+        "Dockerfile": "Not a supported source language; not analyzed.",
+        "build/tool.py": "In `build/`: Genesis reads no dependency, build or cache folder; "
+        "not analyzed.",
+    }
+    codes = {item.code: item.message for item in report.limitations}
+    assert codes["changed_files_outside_languages"].startswith("1 changed file outside")
+    assert codes["changed_files_not_read"].startswith("1 changed file that no snapshot")
+
+
+def test_a_new_file_in_a_folder_no_run_reads_is_named_like_a_changed_one(source_repo):
+    write(source_repo, "app.py", APP)
+    write(source_repo, "build/tool.py", "def run():\n    return 1\n")
+    commit(source_repo)
+    write(source_repo, "build/tool.py", "def run():\n    return 2\n")
+    write(source_repo, "build/added.sh", "make dist\n")
+    # Left out unless asked for, as any untracked file, and named.
+    report = change_report(source_repo, prepared(source_repo, "--base", "HEAD"))
+    assert [item.path for item in report.unanalyzed_changes] == ["build/tool.py"]
+    [note] = [item for item in report.limitations if item.code == "untracked_files_left_out"]
+    assert "build/added.sh" in note.message
+    # Listed as added with the changes when untracked files are included.
+    summary = prepared(source_repo, "--base", "HEAD", "--include-untracked")
+    listed = {
+        item.path: item.change for item in change_report(source_repo, summary).unanalyzed_changes
+    }
+    assert listed == {"build/added.sh": "added", "build/tool.py": "modified"}
 
 
 @pytest.mark.parametrize("engine", ["python", "agent"])

@@ -4,6 +4,8 @@ import hashlib
 
 from genesis_ci.business_map.changes import CHANGE_TASK
 from genesis_ci.business_map.render import render_html, render_summary
+from genesis_ci.business_map.session import prepare
+from genesis_ci.business_map.workspace import Workspace
 from test_change_analysis import by_kind, two_commits
 from test_map_loop import codes
 
@@ -164,3 +166,28 @@ def test_an_accepted_risk_is_withdrawn_by_its_id_and_the_result_names_it(source_
     assert result["status"] == "accepted" and result["risks"] == 1, result
     assert result["withdrawn"] == 1 and result["withdrawn_risks"] == [kept]
     assert [item.statement for item in workspace.stored_report().risks] == [reworded["statement"]]
+
+
+def test_a_risk_on_a_file_a_later_prepare_leaves_out_is_named_not_dropped(source_repo):
+    workspace, first = two_commits(source_repo, BASE, HEAD)
+    assert workspace.submit(CHANGE_TASK, {"risks": [DOCS_RISK]})["status"] == "accepted"
+    (risk,) = workspace.stored_report().risks
+    # The same revisions with docs/ left out: the same session, its accepted work kept,
+    # and docs/feed.md now counted by its folder instead of listed.
+    again = prepare(source_repo, base="base", head="HEAD", exclude=("docs",))
+    assert (again["session_id"], again["resumed"]) == (first["session_id"], True)
+    workspace = Workspace(source_repo, again["session_id"])
+    report = workspace.stored_report()
+    assert report.risks == ()
+    note = next(item for item in report.limitations if item.code == "risks_not_shown")
+    assert risk.risk_id in note.message and not note.affects_completeness
+    # `diff` lists it by the id that withdraws it.
+    hidden = workspace.change_summary()["risks_not_shown"]
+    assert hidden == [
+        {"risk_id": risk.risk_id, "statement": risk.statement, "paths": ["docs/feed.md"]}
+    ]
+    result = workspace.submit(CHANGE_TASK, {"withdrawn_risks": [risk.risk_id]})
+    assert result["withdrawn_risks"] == [risk.risk_id]
+    codes_left = {item.code for item in workspace.stored_report().limitations}
+    assert "risks_not_shown" not in codes_left
+    assert "risks_not_shown" not in workspace.change_summary()

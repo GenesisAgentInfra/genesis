@@ -643,7 +643,8 @@ class Workspace:
 
     def _publish(self, business_map: BusinessMap) -> ChangeReport | None:
         """Store the map, the change report that follows from it, and their excerpts."""
-        # A change session plans only the flows the changes reach; its map says so.
+        # The map of a change session covers what the review analyzed, not the whole
+        # project; it says so.
         business_map = business_map.model_copy(update={"mode": MapMode(self.session["mode"])})
         write_json(
             self.root / "business-map.json",
@@ -856,7 +857,7 @@ class Workspace:
             },
             "changes": items,
             "unanalyzed_changes": [
-                {**item, "reason": "Not a source file Genesis reads."}
+                {"reason": "Not a source file Genesis reads.", **item}
                 for item in self._other_files()
             ],
             "finding_changes": finding_changes,

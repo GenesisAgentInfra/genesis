@@ -18,11 +18,19 @@ from genesis_contracts.change_report import ChangeReport
 from genesis_contracts.evidence_bundle import EvidenceBundle, validate_evidence_bundle
 from genesis_contracts.snapshot import SnapshotSpec
 
-from genesis_ci.git_snapshot import SnapshotError, changed_paths, left_out_by, untracked_names
+from genesis_ci.git_snapshot import (
+    SnapshotError,
+    changed_paths,
+    excluded_by,
+    is_secret,
+    left_out_by,
+    untracked_names,
+)
 from genesis_ci.snapshot import slice_source
 
 PRIVATE_DIRECTORIES = ("sessions/", "out/")
 IGNORE_FILE = ".genesis/.gitignore"
+COMMIT_DIGESTS = "commit-digests.json"
 OTHER_CHANGE_LIMIT = 100
 LISTED_FOLDERS = 5
 _GIT_STATUS = {"A": "added", "D": "deleted"}
@@ -53,8 +61,48 @@ def keep_private(repo: Path) -> None:
         write_text(ignore, "\n".join([*present, *missing]) + "\n")
 
 
+# Why the snapshot left out a file it would otherwise read, as a change report says it.
+_OMITTED = {
+    "file_budget": "Larger than the size limit for one file; not analyzed.",
+    "total_budget": "Over the size limit for all files; not analyzed.",
+    "count_budget": "Over the file limit; not analyzed.",
+    "binary": "Not text Genesis can read; not analyzed.",
+    "unsupported_encoding": "Not text Genesis can read; not analyzed.",
+    "symlink": "A symbolic link, which Genesis does not follow; not analyzed.",
+    "submodule": "A submodule; not analyzed.",
+    "special_file": "Not a regular file; not analyzed.",
+}
+
+
+def unread_reason(path: str, spec: SnapshotSpec, omitted: dict[str, str]) -> str | None:
+    """Why no snapshot read a changed file, when its language is not the reason: it is
+    named like a secret, lies in a dependency, build or cache folder, or was left out
+    for a reason `omitted` gives by path."""
+    if is_secret(path):
+        return "Named like a secret, which Genesis never reads; not analyzed."
+    folder = excluded_by(path, spec)
+    if folder is not None:
+        return f"In `{folder}/`: Genesis reads no dependency, build or cache folder; not analyzed."
+    return _OMITTED.get(omitted.get(path, ""))
+
+
+def unread_untracked(repo: Path, spec: SnapshotSpec) -> list[str]:
+    """Untracked files a review of the working tree names: every one Git does not ignore,
+    except those named like a secret and those `other_changes` counts by folder."""
+    return [
+        path
+        for path in untracked_names(repo, spec.limits)
+        if not is_secret(path) and left_out_by(path, spec) is None
+    ]
+
+
 def other_changes(
-    repo: Path, base: str, head: str | None, captured: set[str], spec: SnapshotSpec
+    repo: Path,
+    base: str,
+    head: str | None,
+    captured: set[str],
+    spec: SnapshotSpec,
+    omitted: dict[str, str] | None = None,
 ) -> tuple[list[dict], dict]:
     """Files changed between the two revisions that the snapshot did not capture.
 
@@ -65,7 +113,9 @@ def other_changes(
     are counted by that folder instead: they are not what the change is about, and one
     by one they could crowd its files out of the list. A dependency, build or cache
     folder is no such choice, and a change there, such as to a release script, can
-    matter: its files are listed like any other.
+    matter: its files are listed like any other. A file listed for a reason other than
+    its language carries that `reason` (see `unread_reason`); `omitted` gives, by path,
+    why the snapshot left a file out.
     """
     try:
         listing = changed_paths(repo, base, head, spec.limits)
@@ -79,7 +129,14 @@ def other_changes(
         if folder is not None:
             folders[folder] += 1
         else:
-            found.append({"path": path, "change": _GIT_STATUS.get(status[:1], "modified")})
+            reason = unread_reason(path, spec, omitted or {})
+            found.append(
+                {
+                    "path": path,
+                    "change": _GIT_STATUS.get(status[:1], "modified"),
+                    **({"reason": reason} if reason else {}),
+                }
+            )
     if head is None:
         # Against the working tree, new files in those folders count too. Git does not
         # list what it ignores, such as the sessions, and the `.gitignore` that ignores
@@ -129,11 +186,26 @@ def evidence_bundle(snapshot, evidence) -> EvidenceBundle:
     return bundle
 
 
-def map_source(session: dict, capture, side: str) -> dict | None:
+def keep_commit_digests(root: Path, snapshot) -> None:
+    """Keep beside a session the digests of the files its working-tree read found to be
+    their commit's files but not byte for byte, such as files whose line endings the
+    checkout converted. `map_source` records those."""
+    path = root / COMMIT_DIGESTS
+    if snapshot.commit_digests:
+        write_json(path, snapshot.commit_digests)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def map_source(session: dict, capture, side: str, root: Path | None = None) -> dict | None:
     """The code a published map was read from: its commit and the digest of each file.
 
-    Nothing when the session does not know whether the files read differ from their
-    commit: it was prepared by an earlier version, and preparing again tells.
+    A file is recorded by the digest of its bytes as its commit holds them, which is
+    what `git show <revision>:<path>` prints, whatever the checkout it was read from
+    converted; a file read with uncommitted changes, by the bytes read. `root` is the
+    session's folder. Nothing when the session does not know whether the files read
+    differ from their commit: it was prepared by an earlier version, and preparing
+    again tells.
     """
     if side == "base":
         revision, dirty = capture.manifest.base_revision, False
@@ -141,13 +213,20 @@ def map_source(session: dict, capture, side: str) -> dict | None:
         revision, dirty = capture.head_commit, session.get("worktree_dirty")
     if revision is None or dirty is None:
         return None
+    committed = {}
+    if side == "head" and root is not None and (root / COMMIT_DIGESTS).is_file():
+        committed = json.loads((root / COMMIT_DIGESTS).read_text(encoding="utf-8"))
     omitted = any(item.startswith(side + ":") for item in capture.manifest.omitted_inputs)
     files = sorted(capture.manifest.files, key=lambda item: item.path)
     return {
         "revision": revision,
         "worktree_dirty": dirty,
         "integrity_status": "partial" if omitted else "complete",
-        "files": {item.path: item.content_digest for item in files if item.side == side},
+        "files": {
+            item.path: committed.get(item.path, item.content_digest)
+            for item in files
+            if item.side == side
+        },
     }
 
 
@@ -165,9 +244,9 @@ def load(repo: Path, session_id: str) -> tuple[dict, BusinessMap, EvidenceBundle
     )
     if session.get("snapshot_id") != business_map.snapshot_id:
         raise ValueError("session and map come from different snapshots")
-    if session.get("mode") == "change" and business_map.mode != "change":
-        # Stored before maps said which kind they are.
-        business_map = business_map.model_copy(update={"mode": MapMode.change})
+    if session.get("mode") in set(MapMode) and business_map.mode != session["mode"]:
+        # Stored before maps said which kind they are: the session knows.
+        business_map = business_map.model_copy(update={"mode": MapMode(session["mode"])})
     return session, business_map, bundle
 
 

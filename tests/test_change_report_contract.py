@@ -418,3 +418,21 @@ def test_a_submitted_risk_names_changes_or_files_and_accepted_risks_can_be_withd
             ChangeSubmission.model_validate({"risks": [bad]})
     with pytest.raises(ValidationError, match="names risks or withdraws them"):
         ChangeSubmission.model_validate({})
+
+
+def test_the_exported_schemas_require_a_risk_to_name_changes_or_files():
+    schemas = map_schemas()
+    report = Draft202012Validator(schemas["change-report.schema.json"])
+    submission = Draft202012Validator(schemas["change-submission.schema.json"])
+    data = load("change-report")
+    named = (
+        ({"change_ids": ["chg_threshold_condition"]}, True),
+        ({"paths": ["docs/policy.md"]}, True),
+        ({"change_ids": [], "paths": ["docs/policy.md"]}, True),
+        ({}, False),
+        ({"change_ids": [], "paths": []}, False),
+    )
+    for fields, valid in named:
+        risk = {"risk_id": "risk_docs", "statement": "x", "severity": "low", **fields}
+        assert report.is_valid({**data, "risks": [risk]}) is valid, fields
+        assert submission.is_valid({"risks": [{"statement": "x", **fields}]}) is valid, fields

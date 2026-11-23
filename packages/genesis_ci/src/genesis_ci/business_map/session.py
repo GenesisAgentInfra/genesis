@@ -6,6 +6,7 @@ import os
 from collections import Counter
 from pathlib import Path
 
+from genesis_contracts.business_map import MapMode
 from genesis_contracts.facts import CodeEntry, FactSet
 from genesis_contracts.python import PythonOptions
 from genesis_contracts.snapshot import SnapshotLimits, SnapshotSpec
@@ -29,9 +30,12 @@ from .skeleton import build_skeleton
 from .store import (
     OTHER_CHANGE_LIMIT,
     evidence_bundle,
+    keep_commit_digests,
     keep_private,
     other_changes,
     session_root,
+    unread_reason,
+    unread_untracked,
     write_json,
     write_text,
 )
@@ -123,7 +127,7 @@ def _workers(files) -> int:
 
 def _untracked(repo: Path, spec: SnapshotSpec) -> list[str]:
     try:
-        return untracked_paths(repo, spec)
+        return unread_untracked(repo, spec)
     except SnapshotError:
         return []
 
@@ -140,8 +144,9 @@ def prepare(
 ) -> dict:
     """Freeze a snapshot, extract facts and write the static skeleton. No model is called.
 
-    `entries_from` names a `business-map.json` whose agent-proposed entries the session
-    starts from. Without it, a review starts from those of the latest map session.
+    `entries_from` names a `business-map.json` whose agent-proposed entries and flows the
+    session starts from. Without it, a review starts from those of the latest map session
+    that proposed entries.
     """
     repo = repo.expanduser().resolve(strict=True)
     # Read before the long part, so that a wrong file is refused at once.
@@ -179,8 +184,9 @@ def prepare(
     session_id = "ses_" + manifest.snapshot_id.removeprefix("sha256:")[:16]
     root = session_root(repo, session_id)
     planned = (root / "plan.json").is_file()
-    # A review starts from the entries the last map was planned with, or from those of
-    # the map named. Once a plan exists, the entries it was made with stay as they are.
+    # A review starts from the entries and flows of the latest map that proposed entries,
+    # or from those of the map named. Once a plan exists, the entries it was made with
+    # stay as they are.
     carried = {}
     if planned:
         if named is not None:
@@ -190,12 +196,13 @@ def prepare(
     elif base is not None:
         found = latest_map(repo)
         carried = carry(found, facts, snapshot.source) if found else {}
-        if not carried.get("entries") and not carried.get("not_found"):
+        if not any(carried.get(key) for key in ("entries", "not_found", "groups")):
             carried = {}
     skeleton = build_skeleton(
         facts,
         carried=tuple(CodeEntry.model_validate(item) for item in carried.get("entries", ())),
         minted=tuple(carried.get("evidence", ())),
+        groups=tuple(tuple(group) for group in carried.get("groups", ())),
     )
     keep_private(repo)
     session = {
@@ -215,12 +222,14 @@ def prepare(
     counted = {}
     if base is not None:
         captured = {item.path for item in manifest.files}
+        omitted = {item.path: item.reason for item in snapshot.capture.omissions}
         others, folders = other_changes(
             repo,
             manifest.base_revision,
             snapshot.capture.head_commit if head is not None else None,
             captured,
             spec,
+            omitted,
         )
         if folders:
             counted["left_out"] = folders
@@ -232,7 +241,15 @@ def prepare(
                 [
                     *others,
                     *(
-                        {"path": path, "change": "added"}
+                        {
+                            "path": path,
+                            "change": "added",
+                            **(
+                                {"reason": reason}
+                                if (reason := unread_reason(path, spec, omitted))
+                                else {}
+                            ),
+                        }
                         for path in untracked
                         if path not in captured and path not in listed
                     ),
@@ -253,6 +270,10 @@ def prepare(
                 "files": ordered[:OTHER_CHANGE_LIMIT],
             }
         session.update(base_ref=base, head_ref=head)
+        # Those listed for a reason other than their language.
+        unread = sum(1 for item in others if "reason" in item)
+        if unread:
+            counted["not_read"] = unread
         # Names only, kept beside the session so they do not crowd every status output.
         write_json(
             root / "changed-files.json",
@@ -262,6 +283,7 @@ def prepare(
         # Later commands read source only from this frozen copy, never from the live tree.
         save_snapshot(snapshot, root / "snapshot")
     write_json(root / "session.json", session)
+    keep_commit_digests(root, snapshot)
     # Read by programs only, and large: written compactly, straight from the model.
     write_text(root / "facts.json", facts.model_dump_json(exclude_none=True) + "\n")
     from .workspace import Workspace
@@ -284,6 +306,7 @@ def prepare(
             Workspace(repo, session_id).adopt_evidence(
                 {ref.evidence_id: ref for ref in carried["evidence"]}
             )
+        skeleton = skeleton.model_copy(update={"mode": MapMode(session["mode"])})
         write_json(root / "business-map.json", skeleton.model_dump(mode="json", exclude_none=True))
         bundle = evidence_bundle(snapshot, skeleton.evidence)
         write_json(root / "evidence-bundle.json", bundle.model_dump(mode="json"))

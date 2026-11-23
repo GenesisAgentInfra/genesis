@@ -147,9 +147,9 @@ def map_prepare(
     entries_from: Path | None = typer.Option(
         None,
         "--entries-from",
-        help="Start from the entries the agent proposed in this business-map.json, by its "
-        "path from the repository root or absolute, instead of those of the latest map. "
-        "Python engine only",
+        help="Start from the entries the agent proposed in this business-map.json, and from "
+        "its flows of several entries, by its path from the repository root or absolute, "
+        "instead of from the latest map that proposed entries. Python engine only",
     ),
 ) -> None:
     """Freeze a snapshot and open a session. Calls no model.
@@ -379,7 +379,9 @@ def map_render(
                 )
         snapshot = load_snapshot(session_root(repo, session) / "snapshot")
         # What the map was read from, so that a reader can tell whether it still matches.
-        source = map_source(stored, snapshot.capture, business_map.side.value)
+        source = map_source(
+            stored, snapshot.capture, business_map.side.value, session_root(repo, session)
+        )
         if source is not None:
             business_map = BusinessMap.model_validate(
                 {**business_map.model_dump(mode="json", exclude_none=True), "source": source}

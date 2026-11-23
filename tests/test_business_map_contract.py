@@ -118,9 +118,14 @@ def test_a_map_says_whether_it_comes_from_a_review():
     review = json.loads((SAMPLES / "change" / "business-map.json").read_text(encoding="utf-8"))
     assert {load(name)["mode"] for name in ("complete", "skeleton", "partial")} == {"map"}
     assert BusinessMap.model_validate(review).mode == "change"
-    # A map written before the field existed reads as a map of the project.
+    # A map written before the field existed may be either kind: it says neither, and
+    # neither does the schema.
     legacy = {key: value for key, value in load("complete").items() if key != "mode"}
-    assert BusinessMap.model_validate(legacy).mode == "map"
+    assert BusinessMap.model_validate(legacy).mode is None
+    schema = BusinessMap.model_json_schema()
+    assert (
+        "mode" not in schema.get("required", ()) and schema["properties"]["mode"]["default"] is None
+    )
     rejects("complete", lambda data: data.update(mode="review"), "mode")
 
 

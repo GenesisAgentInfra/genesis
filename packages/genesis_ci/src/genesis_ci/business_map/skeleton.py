@@ -306,6 +306,23 @@ def skeleton_flow(entries, by_symbol, *, max_steps: int = MAX_STEPS) -> tuple[di
     )
 
 
+def grouped(shown, known: dict, groups=()) -> list[list[CodeEntry]]:
+    """The flows the `shown` entries start, in the order of their first symbol: one each,
+    except that entries a map gave one flow, `groups` by entry id, stay in one flow
+    together with the other entries of that flow `known` has. A flow's id comes from all
+    its entries, so that flow keeps the id the map gave it."""
+    ids = {entry.entry_id for entry in shown}
+    taken: set[str] = set()
+    flows = []
+    for group in groups:
+        members = [known[key] for key in dict.fromkeys(group) if key in known and key not in taken]
+        if len(members) > 1 and not ids.isdisjoint(item.entry_id for item in members):
+            taken.update(item.entry_id for item in members)
+            flows.append(sorted(members, key=lambda item: item.symbol_id))
+    flows += [[entry] for entry in shown if entry.entry_id not in taken]
+    return sorted(flows, key=lambda members: members[0].symbol_id)
+
+
 def build_skeleton(
     facts: FactSet,
     *,
@@ -313,11 +330,13 @@ def build_skeleton(
     max_steps: int = MAX_STEPS,
     carried: tuple[CodeEntry, ...] = (),
     minted: tuple[EvidenceRef, ...] = (),
+    groups: tuple[tuple[str, ...], ...] = (),
 ) -> BusinessMap:
     """Build the skeleton map of one snapshot side from its facts.
 
     `carried` are entries an earlier map proposed, shown like the recognised ones;
-    `minted` holds the references they cite that the facts do not.
+    `minted` holds the references they cite that the facts do not. `groups` are the
+    entries that map gave one flow, by id, which stay in one flow here too.
     """
     found = {entry.entry_id: entry for entry in facts.entries if entry.side == side}
     kept = {entry.entry_id for entry in carried}
@@ -340,17 +359,19 @@ def build_skeleton(
             }
         )
     shown += carried
+    placed = grouped(shown, {entry.entry_id: entry for entry in entries}, groups)
     flows, domains, evidence = [], {}, set()
-    for entry in sorted(shown, key=lambda item: item.symbol_id):
-        flow, cited = skeleton_flow([entry], by_symbol, max_steps=max_steps)
+    for members in placed:
+        flow, cited = skeleton_flow(members, by_symbol, max_steps=max_steps)
         flows.append(flow)
         evidence.update(cited)
-        folder = str(PurePosixPath(entry.symbol_id.partition("#")[0]).parent)
+        folder = str(PurePosixPath(members[0].symbol_id.partition("#")[0]).parent)
         domains.setdefault("(repository root)" if folder == "." else folder, []).append(
             flow["flow_id"]
         )
     catalog = {ref.evidence_id: ref for ref in (*facts.evidence, *minted)}
-    hidden = len(entries) - len(shown)
+    count = sum(len(members) for members in placed)
+    hidden = len(entries) - count
     return BusinessMap.model_validate(
         {
             "snapshot_id": facts.snapshot_id,
@@ -367,7 +388,7 @@ def build_skeleton(
             ],
             "flows": flows,
             "coverage": {
-                "scope": f"Static skeleton of {len(shown)} entries, not yet synthesized; "
+                "scope": f"Static skeleton of {count} entries, not yet synthesized; "
                 f"{hidden} further candidate entries are not shown.",
                 "entries_total": len(entries),
                 "entries_planned": 0,

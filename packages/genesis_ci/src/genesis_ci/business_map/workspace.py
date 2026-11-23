@@ -58,6 +58,7 @@ from .skeleton import (
     _evaluation_order,
     control_edges,
     flow_id_for,
+    grouped,
     shown_facts,
     skeleton_flow,
 )
@@ -290,7 +291,8 @@ class Workspace:
 
     def _publish(self, business_map: BusinessMap) -> ChangeReport | None:
         """Store the map, the change report that follows from it, and their excerpts."""
-        # A change session plans only the flows the changes reach; its map says so.
+        # The map of a change session covers what the review analyzed, not the whole
+        # project; it says so.
         business_map = business_map.model_copy(update={"mode": MapMode(self.session["mode"])})
         write_json(
             self.root / "business-map.json",
@@ -407,6 +409,12 @@ class Workspace:
         stored = self._read(CARRIED) if (self.root / CARRIED).is_file() else {}
         return {raw["entry_id"]: CodeEntry.model_validate(raw) for raw in stored.get("entries", [])}
 
+    @cached_property
+    def carried_groups(self) -> list[list[str]]:
+        """The entries the map this session started from gave one flow, by id."""
+        stored = self._read(CARRIED) if (self.root / CARRIED).is_file() else {}
+        return stored.get("groups", [])
+
     def recognised(self) -> dict[str, CodeEntry]:
         """The entries known before a plan: those the analyzers found, and carried ones."""
         found = {item.entry_id: item for item in self.facts.entries if item.side == HEAD}
@@ -423,23 +431,27 @@ class Workspace:
         return fact_fingerprint(symbol=entry.symbol_id, kind="entry", text=_entry_label(entry))
 
     def default_plan(self) -> MapPlan:
-        folders: dict[str, list[CodeEntry]] = {}
-        for entry in self.entries().values():
-            if entry.detection == "adapter" or entry.entry_id in self.carried:
-                folder = str(PurePosixPath(entry.symbol_id.partition("#")[0]).parent)
-                folders.setdefault("(repository root)" if folder == "." else folder, []).append(
-                    entry
-                )
+        entries = self.entries()
+        chosen = [
+            entry
+            for entry in entries.values()
+            if entry.detection == "adapter" or entry.entry_id in self.carried
+        ]
+        folders: dict[str, list[list[CodeEntry]]] = {}
+        # Entries a map this session started from gave one flow stay in one.
+        for members in grouped(chosen, entries, self.carried_groups):
+            folder = str(PurePosixPath(members[0].symbol_id.partition("#")[0]).parent)
+            folders.setdefault("(repository root)" if folder == "." else folder, []).append(members)
         return MapPlan(
             domains=[{"key": "d_" + _digest(name), "name": name[:200]} for name in sorted(folders)],
             flows=[
                 {
-                    "key": "f_" + entry.entry_id[6:],
+                    "key": "f_" + members[0].entry_id[6:],
                     "domain": "d_" + _digest(name),
-                    "entry_ids": [entry.entry_id],
+                    "entry_ids": [entry.entry_id for entry in members],
                 }
                 for name in sorted(folders)
-                for entry in sorted(folders[name], key=lambda item: item.symbol_id)
+                for members in folders[name]
             ],
         )
 

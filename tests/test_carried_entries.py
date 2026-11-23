@@ -195,6 +195,16 @@ def test_the_latest_map_is_the_one_carried(source_repo):
     assert set(review.carried) == {entry_of(STATUS)}
 
 
+def test_a_map_session_that_does_not_name_its_engine_is_a_python_one(source_repo):
+    workspace, _ = mapped(source_repo)
+    # Sessions written before they named their engine were all Python ones.
+    session = {key: value for key, value in workspace.session.items() if key != "engine"}
+    (workspace.root / "session.json").write_text(json.dumps(session))
+    review, result = reviewed(source_repo)
+    assert result["carried_entries"]["from_session"] == workspace.session["session_id"]
+    assert set(review.carried) == {entry_of(REFUND), entry_of(STATUS)}
+
+
 def test_a_review_without_a_map_starts_from_the_recognised_entries(source_repo):
     for path, text in BEFORE.items():
         write(source_repo, path, text)
@@ -417,3 +427,55 @@ def test_a_map_session_starts_from_the_map_named(source_repo, cli):
         "Refund an order": flows["Refund an order"],
         "Order status": flows["Order status"],
     }
+
+
+def test_entries_a_map_gave_one_flow_stay_in_one_flow(source_repo, cli):
+    for path, text in BEFORE.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    git(source_repo, "tag", "base")
+    workspace = Workspace(source_repo, prepare(source_repo)["session_id"])
+    main = entry(workspace, "#main").entry_id
+    handlers = [entry_of(REFUND), entry_of(STATUS)]
+    plan = {
+        "proposed_entries": [
+            proposal(REFUND, 4, "return self._refund(order)"),
+            proposal(STATUS, 5, "return self._status(order)"),
+        ],
+        "flows": [
+            {"key": "message", "name": "Answer a message", "entry_ids": [main]},
+            # The lookups and upkeep of one thing in one supporting flow.
+            {"key": "orders", "name": "Handle orders", "tier": "supporting", "entry_ids": handlers},
+        ],
+    }
+    status = workspace.save_plan(MapPlan.model_validate(plan))
+    orders = flow_id_for([REFUND, STATUS])
+    assert {task["name"]: task["flow_id"] for task in status["tasks"]}["Handle orders"] == orders
+    committed_map(source_repo, cli, workspace)
+    review, result = reviewed(source_repo)
+    assert result["carried_entries"]["entries"] == 2
+    # The change to the refund handler lands on the flow the map gave it, with both
+    # entries, not on a flow of its own the map never had.
+    (flow,) = review.status()["change"]["affected_flows"]
+    assert (flow["flow_id"], flow["entry_ids"]) == (orders, handlers)
+    assert {item.projection.flow_id for item in review.stored_report().changes} == {orders}
+    # So it does from a committed copy of the map.
+    named = prepare(source_repo, base="base", head="HEAD", entries_from=SPEC)
+    review = Workspace(source_repo, named["session_id"])
+    assert affected(review) == [orders]
+    # A plan with the entries it lists keeps the id, and so does the default plan.
+    status = review.save_plan(None)
+    assert orders in {task["flow_id"] for task in status["tasks"]}
+    assert affected(review) == [orders]
+
+
+def test_a_change_that_removes_a_carried_entry_shows_its_flow_as_removed(source_repo):
+    _, flows = mapped(source_repo)
+    without = BEFORE[AGENT].replace("return self._status(order)", 'return order["status"]')
+    without = without[: without.index("    def _status")].rstrip() + "\n"
+    review, result = reviewed(source_repo, {**AFTER, AGENT: without})
+    assert result["carried_entries"]["not_found"] == [STATUS]
+    report = review.stored_report()
+    # The flow the map gave it is gone, as for an entry the analyzers recognise.
+    assert [flow.flow_id for flow in report.removed_flows] == [flows["Order status"]]
+    assert "handler · Agent._status" in review.change_summary()["removed_flows"][0]

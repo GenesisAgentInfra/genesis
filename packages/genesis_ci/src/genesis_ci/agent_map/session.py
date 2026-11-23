@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 from genesis_contracts.models import EvidenceKind, EvidenceSide
@@ -11,6 +12,7 @@ from genesis_contracts.snapshot import SnapshotLimits, SnapshotSpec
 
 from genesis_ci.business_map.store import (
     OTHER_CHANGE_LIMIT,
+    keep_commit_digests,
     keep_private,
     other_changes,
     session_root,
@@ -51,6 +53,11 @@ def _is_source(path: str) -> bool:
     return name.rpartition(".")[2] in SOURCE_SUFFIXES and ".min." not in name
 
 
+def _reads(spec: SnapshotSpec) -> Callable[[str], bool]:
+    """The engine's rule for what it reads: source, by name, that a capture can read."""
+    return lambda path: _is_source(path) and may_capture(path, spec)
+
+
 def source_paths(
     repo: Path,
     base: str | None,
@@ -73,8 +80,7 @@ def source_paths(
             found.update(
                 raw.decode("utf-8", "replace") for raw in git.run(*listing).split(b"\0") if raw
             )
-    spec = SnapshotSpec(exclude_paths=exclude)
-    return sorted(path for path in found if _is_source(path) and may_capture(path, spec))
+    return sorted(filter(_reads(SnapshotSpec(exclude_paths=exclude)), found))
 
 
 def prepare(
@@ -100,7 +106,9 @@ def prepare(
             for path in paths
         ],
     )
-    snapshot = capture_snapshot(repo, spec)
+    # The working tree is listed from the index, so a file removed with `git rm` is not
+    # among the inputs; the capture still tells that the commit has it.
+    snapshot = capture_snapshot(repo, spec, reads=_reads(spec))
     manifest = snapshot.capture.manifest
     frozen = [item.path for item in manifest.files if item.side == EvidenceSide.head]
     if not frozen:
@@ -131,6 +139,7 @@ def prepare(
             snapshot.capture.head_commit if head is not None else None,
             {item.path for item in manifest.files},
             spec,
+            {item.path: item.reason for item in snapshot.capture.omissions},
         )
         session.update(base_ref=base, head_ref=head)
         write_json(
@@ -145,6 +154,7 @@ def prepare(
         # Later commands read source only from this frozen copy, never from the live tree.
         save_snapshot(snapshot, root / "snapshot")
     write_json(root / "session.json", session)
+    keep_commit_digests(root, snapshot)
     from .workspace import Workspace
 
     workspace = Workspace(repo, session_id)

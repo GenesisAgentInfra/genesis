@@ -32,7 +32,7 @@ from .business_map import (
     SymbolId,
     Text,
 )
-from .models import ContractModel, EvidenceSide, Severity, validate_repo_path
+from .models import ContractModel, EvidenceSide, Severity, any_named, validate_repo_path
 
 MAX_STEPS = 60
 MAX_EDGES = 150
@@ -302,6 +302,8 @@ class SubmittedChangeRisk(ContractModel):
     the two. `evidence` may cite code beyond the changed lines that the risk lands on,
     such as what runs after a new `break`.
     """
+
+    model_config = any_named("change_ids", "paths")
 
     statement: Text
     severity: Literal[Severity.info, Severity.low, Severity.medium] = Severity.low

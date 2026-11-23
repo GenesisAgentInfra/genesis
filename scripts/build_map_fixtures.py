@@ -608,6 +608,7 @@ def document(snapshot_id, ev, **fields):
         "schema_version": "0.1.0",
         "snapshot_id": snapshot_id,
         "side": "head",
+        "mode": "map",
         **fields,
         "evidence": ev.catalog(),
     }

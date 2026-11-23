@@ -33,6 +33,7 @@ from .models import (
     EvidenceSide,
     Limitation,
     Severity,
+    any_named,
     validate_evidence_refs,
     validate_repo_path,
 )
@@ -291,6 +292,8 @@ class FindingChange(ContractModel):
 
 class ChangeRisk(ContractModel):
     """A risk an agent saw in the changes. Its own reading: never rated high, never a gate."""
+
+    model_config = any_named("change_ids", "paths")
 
     risk_id: Identifier
     statement: Text
