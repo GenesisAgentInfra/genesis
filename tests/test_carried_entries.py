@@ -600,6 +600,56 @@ def purge_rules():
 """
 
 
+RULES_FILE = "rules/api.py"
+PURGE = f"{RULES_FILE}#purge_rules"
+DELETE_RULE = f"{RULES_FILE}#delete_rule"
+
+
+@pytest.mark.parametrize("removed", ["purge_rules", "delete_rule"])
+def test_a_removed_flow_shows_a_public_proposed_entry_as_the_map_had_it(source_repo, removed):
+    write(source_repo, RULES_FILE, RULES_API)
+    commit(source_repo)
+    git(source_repo, "tag", "base")
+    older = Workspace(source_repo, prepare(source_repo)["session_id"])
+    line = RULES_API.splitlines().index("def purge_rules():") + 1
+    others = [f"{RULES_FILE}#{name}" for name in ("list_rules", "create_rule")]
+    plan = {
+        # Nothing calls the job, so the analyzers also take it for a root.
+        "proposed_entries": [
+            {
+                "symbol_id": PURGE,
+                "kind": "scheduled",
+                "reason": "cron runs it",
+                "evidence": [
+                    {"path": RULES_FILE, "start_line": line, "end_line": line, "quote": "def"}
+                ],
+            }
+        ],
+        "flows": [
+            {"key": f"f{index}", "name": f"Flow {index}", "entry_ids": list(map(entry_of, group))}
+            for index, group in enumerate([[DELETE_RULE, PURGE], *([item] for item in others)])
+        ],
+    }
+    older.save_plan(MapPlan.model_validate(plan))
+    if removed == "purge_rules":
+        text = RULES_API[: RULES_API.index("def purge_rules")].rstrip() + "\n"
+    else:
+        start = RULES_API.index('@app.delete("/rules/{name}")')
+        text = RULES_API[:start] + RULES_API[RULES_API.index("def purge_rules") :]
+    write(source_repo, RULES_FILE, text)
+    commit(source_repo)
+    review = Workspace(source_repo, prepare(source_repo, base="base", head="HEAD")["session_id"])
+    (flow,) = review.stored_report().removed_flows
+    assert flow.flow_id == flow_id_for([DELETE_RULE, PURGE])
+    entries = {item.symbol_id: (item.detection.value, item.kind.value) for item in flow.entries}
+    # The entry the map proposed, not the root the analyzers would take it for.
+    assert entries == {
+        DELETE_RULE: ("adapter", "http_route"),
+        PURGE: ("agent_proposed", "scheduled"),
+    }
+    assert flow.name.endswith(" + scheduled · purge_rules")
+
+
 def test_the_latest_map_that_grouped_entries_is_carried_without_proposals(source_repo):
     api = "rules/api.py"
     rule = {name: f"{api}#{name}" for name in ("list_rules", "create_rule", "delete_rule")}

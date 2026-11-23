@@ -510,7 +510,7 @@ def test_a_file_a_filter_driver_converts_is_clean_while_the_index_vouches_for_it
     assert not marker.exists()
 
 
-def test_converted_files_are_compared_without_a_process_each(repo, monkeypatch):
+def test_converted_files_are_compared_in_one_process(repo, monkeypatch):
     from genesis_ci.git_snapshot import _Git
 
     write(repo, ".gitattributes", "*.py text eol=crlf\n")
@@ -531,11 +531,12 @@ def test_converted_files_are_compared_without_a_process_each(repo, monkeypatch):
 
     monkeypatch.setattr(_Git, "run", counted)
     assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
-    # With timestamps the index cannot vouch for, the bytes are compared in process.
+    assert not [args for args in calls if "hash-object" in args]
+    # With timestamps the index cannot vouch for, Git converts them all in one go.
     stale(repo, *paths)
     assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
     assert changed_paths(repo, "HEAD", None) == []
-    assert not [args for args in calls if "hash-object" in args]
+    assert len([args for args in calls if "hash-object" in args]) == 2
 
 
 def test_without_a_listing_from_git_every_file_is_compared_byte_by_byte(
@@ -672,6 +673,83 @@ def test_a_file_restored_while_it_is_read_is_read_again(repo, monkeypatch):
     assert (snapshot.worktree_dirty, snapshot.commit_digests) == (False, {})
 
 
+@pytest.mark.parametrize("change", ["edit", "delete"])
+def test_a_file_changed_while_git_converts_it_is_read_again(repo, monkeypatch, change):
+    from genesis_ci.git_snapshot import _Git
+    from genesis_ci.source_snapshot import content_digest
+
+    # A path may begin with a quote; Git is given it quoted.
+    paths = ("src/app.py", 'src/"quoted".py')
+    write(repo, ".gitattributes", "src/*.py ident\n")
+    for path in paths:
+        write(repo, path, "# $Id$\nvalue = 1\n")
+    commit(repo)
+    for path in paths:
+        (repo / path).unlink()
+    git(repo, "checkout", "--", *paths)
+    stale(repo, *paths)
+    run = _Git.run
+    changed = []
+
+    def changing(self, *args, **options):
+        if "hash-object" in args and not changed:
+            # After the capture read it, before Git reads it again to convert it.
+            if change == "edit":
+                write(repo, "src/app.py", "# $Id$\nvalue = 2\n")
+            else:
+                (repo / "src/app.py").unlink()
+            changed.append(args)
+        return run(self, *args, **options)
+
+    monkeypatch.setattr(_Git, "run", changing)
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert changed and snapshot.worktree_dirty is True
+    assert ("src/app.py" in snapshot.source.list_files(HEAD)) is (change == "edit")
+    committed = content_digest(b"# $Id$\nvalue = 1\n")
+    assert snapshot.commit_digests == {'src/"quoted".py': committed}
+
+
+def test_a_file_put_back_and_edited_again_while_git_converts_it_is_dirty(repo, monkeypatch):
+    from genesis_ci.git_snapshot import _Git
+
+    write(repo, ".gitattributes", "src/*.py text eol=crlf\n")
+    write(repo, "src/app.py", "value = 1\n")
+    commit(repo)
+    write(repo, "src/app.py", "value = 2\r\n")
+    run = _Git.run
+    flipped = []
+
+    def flipping(self, *args, **options):
+        if "hash-object" not in args or flipped:
+            return run(self, *args, **options)
+        # Git reads the commit's bytes; the same edit is back before the second read.
+        flipped.append(args)
+        write(repo, "src/app.py", "value = 1\r\n")
+        try:
+            return run(self, *args, **options)
+        finally:
+            write(repo, "src/app.py", "value = 2\r\n")
+
+    monkeypatch.setattr(_Git, "run", flipping)
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert flipped and snapshot.source.read_bytes(HEAD, "src/app.py") == b"value = 2\r\n"
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (True, {})
+    flipped.clear()
+    assert changed_paths(repo, "HEAD", None) == [("M", "src/app.py")]
+    assert flipped
+
+
+def test_git_is_given_each_path_to_convert_quoted_as_it_reads_it_back(repo):
+    from genesis_ci.git_snapshot import SnapshotLimits, _Git, _StoredBlobs
+
+    # Names no capture reads, yet quoted so that Git would read them back unchanged.
+    names = ['"lead.py', 'a\\"b.py', "back\\slash.py", "trail\\"]
+    for index, name in enumerate(names):
+        write(repo, name, f"value = {index}\n")
+    found = _StoredBlobs(_Git(repo, SnapshotLimits())).ids(dict.fromkeys(names, b""))
+    assert found == {name: git(repo, "hash-object", "--", name).decode().strip() for name in names}
+
+
 def test_executable_mode_changes_are_captured_and_affect_worktree_id(repo):
     first = capture_snapshot(repo, SnapshotSpec(base="HEAD"))
     (repo / "src/helper.py").chmod(0o755)
@@ -728,12 +806,12 @@ def test_live_changes_fail_after_bounded_retries(repo, monkeypatch):
     original = module._read_worktree
     counter = 0
 
-    def unstable(root, path, limit):
+    def unstable(root, path, limit, *rest):
         nonlocal counter
         if path == "src/helper.py":
             counter += 1
             write(repo, path, f"counter = {counter}\n")
-        return original(root, path, limit)
+        return original(root, path, limit, *rest)
 
     monkeypatch.setattr(module, "_read_worktree", unstable)
     with pytest.raises(SnapshotError) as caught:
@@ -748,13 +826,13 @@ def test_single_worktree_change_is_retried_successfully(repo, monkeypatch):
     original = module._read_worktree
     reads = 0
 
-    def once(root, path, limit):
+    def once(root, path, limit, *rest):
         nonlocal reads
         if path == "src/helper.py":
             reads += 1
             if reads == 2:
                 write(repo, path, "stable after edit\n")
-        return original(root, path, limit)
+        return original(root, path, limit, *rest)
 
     monkeypatch.setattr(module, "_read_worktree", once)
     result = capture_snapshot(repo, SnapshotSpec(base="HEAD"))

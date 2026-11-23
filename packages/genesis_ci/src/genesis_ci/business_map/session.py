@@ -125,11 +125,11 @@ def _workers(files) -> int:
     return max(1, min(os.cpu_count() or 1, MAX_WORKERS))
 
 
-def _untracked(repo: Path, spec: SnapshotSpec) -> list[str]:
+def _untracked(repo: Path, spec: SnapshotSpec) -> tuple[list[str], dict]:
     try:
         return unread_untracked(repo, spec)
     except SnapshotError:
-        return []
+        return [], {}
 
 
 def prepare(
@@ -233,7 +233,10 @@ def prepare(
         )
         if folders:
             counted["left_out"] = folders
-        untracked = _untracked(repo, spec) if head is None else []
+        untracked, by_folder = _untracked(repo, spec) if head is None else ([], {})
+        if by_folder:
+            # Never listed one by one, whether untracked files are included or not.
+            counted["untracked_by_folder"] = by_folder
         if include_untracked:
             # New files of the change that are not source: listed as added, by name,
             # after the changed tracked files, so that a cut list keeps those.
@@ -322,6 +325,8 @@ def prepare(
         }
         if "untracked" in counted:
             change["untracked_left_out"] = counted["untracked"]["total"]
+        if "untracked_by_folder" in counted:
+            change["untracked_by_folder"] = counted["untracked_by_folder"]["total"]
     entries = Counter(entry.detection.value for entry in facts.entries if entry.side == "head")
     unsupported = [item.path for item in facts.files if item.status == "unsupported"]
     other = _other_languages(repo, spec)

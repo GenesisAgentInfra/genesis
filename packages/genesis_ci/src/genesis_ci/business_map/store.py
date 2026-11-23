@@ -88,24 +88,56 @@ def unread_reason(path: str, spec: SnapshotSpec, omitted: dict[str, str]) -> str
     return _OMITTED.get(omitted.get(path, ""))
 
 
-def unread_untracked(repo: Path, spec: SnapshotSpec) -> list[str]:
-    """Untracked files a review of the working tree names: every one Git does not ignore,
-    except those named like a secret, those `other_changes` counts by folder, and those
-    in a dependency, build or cache folder that holds no tracked file, such as a virtual
-    environment or compiled files Git is not told to ignore. Running the code made
-    those; one by one they would crowd the files of the change out of every list."""
+def unread_untracked(repo: Path, spec: SnapshotSpec) -> tuple[list[str], dict]:
+    """Untracked files a review of the working tree names, and those it counts by folder
+    instead: every one Git does not ignore is either, except those named like a secret
+    and those `other_changes` counts by folder.
+
+    Counted by folder are those in a dependency, build or cache folder that holds no
+    tracked file, such as a virtual environment or compiled files Git is not told to
+    ignore: one by one they would crowd the files of the change out of every list. So
+    is a new folder of the project with such a name, such as a package called `build`:
+    counted, it is still never left out without a word. The count is by the innermost
+    such folder; up to five folders are named, those with the most files first.
+    """
     found = [
         path
         for path in untracked_names(repo, spec.limits)
         if not is_secret(path) and left_out_by(path, spec) is None
     ]
     if not any(cache_folder(path) for path in found):
-        return found
+        return found, {}
     holding = set()
     for path in tracked_paths(repo, spec.limits):
         parts = path.split("/")
         holding.update("/".join(parts[:index]) for index in range(1, len(parts)))
-    return [path for path in found if (folder := cache_folder(path)) is None or folder in holding]
+    named, folders = [], Counter()
+    for path in found:
+        folder = cache_folder(path)
+        if folder is None or folder in holding:
+            named.append(path)
+        else:
+            folders[folder] += 1
+    if not folders:
+        return named, {}
+    return named, {"total": folders.total(), "folders": dict(folders.most_common(LISTED_FOLDERS))}
+
+
+def untracked_folders_limitation(counted: dict) -> dict:
+    """The note a change report carries for the untracked files `unread_untracked`
+    counted by folder."""
+    count = counted["total"]
+    shown = counted["folders"]
+    folders = ", ".join(f"{folder}: {number}" for folder, number in shown.items())
+    more = ", ..." if sum(shown.values()) < count else ""
+    return {
+        "code": "untracked_files_by_folder",
+        "message": f"{count} untracked file{'s' * (count != 1)} in dependency, build or cache "
+        "folders that hold no tracked file, such as a virtual environment: counted by folder, "
+        f"not listed or analyzed ({folders}{more}). Read those that belong to the change "
+        "yourself; `--exclude PATH` leaves a folder out on purpose.",
+        "affects_completeness": False,
+    }
 
 
 def other_changes(

@@ -675,7 +675,10 @@ genesis map render  --repo /absolute/app --session SESSION_ID
      files are otherwise left out; `prepare` counts them under `untracked_left_out`,
      the report names them, and untracked source left out makes the report partial.
      New files in a dependency, build or cache folder that holds no tracked file, such
-     as a virtual environment, are neither counted nor listed.
+     as a virtual environment, are counted by folder instead, with the flag or
+     without, under `untracked_by_folder`; the limitation `untracked_files_by_folder`
+     names up to five folders. Genesis never analyzes them: read those that belong to
+     the change.
      `--exclude PATH` leaves a file out on purpose.
 
    When there is nothing to review, say so and stop there. That is the case when
@@ -683,7 +686,9 @@ genesis map render  --repo /absolute/app --session SESSION_ID
    revision to compare with is not in the local repository: a typo, a branch that was
    not fetched, or the parent of the only commit. Do not render an empty report or
    answer from your own reading as if Genesis had. Tell the user which comparison you
-   tried and why there was nothing in it, then offer what fits: another revision, a
+   tried and why there was nothing in it, and say what `prepare` counted but did not
+   analyze, if anything: `changed_files_not_analyzed`, `untracked_left_out` and
+   `untracked_by_folder`. Then offer what fits: another revision, a
    review of the uncommitted work when `git status -s` shows some, or a map of the
    project (sections 1 to 4), the usual first step in a repository Genesis has not seen.
 
@@ -811,14 +816,17 @@ result of `prepare` adds `changes`, `changes_placed`, `change_status` and
 and `status`, `changes_placed` counts the changes with a place on the map and goes up
 as flows are described. `changes_waiting` counts those the report needs explained (step
 3) and goes down only as `task_change` accepts explanations. `changes_unexplained` in
-the context counts every change without an explanation. `carried_entries` names the
-map whose entries and flows the review starts from (section 2): `from_session` for the
-latest map session that proposed entries or gave several one flow, or `from_map` with
-the `path` and `snapshot_id` of the file `--entries-from` named. `entries` counts the
-entries carried, and `not_found` lists those whose function no longer exists at head.
-When the function existed at base, `removed_flows` shows the flow the map gave it, by
-that flow's id and with all its entries. Propose one again only if it moved and is
-still a way in.
+the context counts every change without an explanation. `carried_entries`, in the
+result of `prepare` only, names the map whose entries and flows the review starts from
+(section 2): `from_session` for the latest map session that proposed entries or gave
+several one flow, or `from_map` with the `path` and `snapshot_id` of the file
+`--entries-from` named. `entries` counts the entries carried, and `not_found` lists
+those whose function no longer exists at head. When this change removed the function,
+`removed_flows` shows the flow the map gave it, by that flow's id with all its
+entries, or as a flow of that entry alone, with an id of its own, when Genesis cannot
+rebuild that flow at base. One that moved has a `symbol_moved` change instead, and
+`possible_entries` may offer it at its new place: propose it there only if it is still
+a way in.
 
 - `changes` has one entry per changed condition, call, loop, result or definition, and
   `source_*` entries for everything else that changed, such as a constant or a default
@@ -859,8 +867,9 @@ still a way in.
   empty.
   Changed files in `.genesis/`, Genesis's own folder, and in folders passed to
   `--exclude` are counted by folder instead, untracked ones included, in the
-  limitation `changed_files_left_out`. Give the count as files Genesis did not
-  analyze.
+  limitation `changed_files_left_out`; so are untracked files in a dependency, build
+  or cache folder that holds no tracked file, in `untracked_files_by_folder`. Give
+  either count as files Genesis did not analyze.
 - `limitations` says what the analysis could not do. `unresolved_local_calls` means
   calls into the code base's own modules failed to resolve: changes that look
   unreachable may be reached, and their tests may not be linked. `risks_not_shown`

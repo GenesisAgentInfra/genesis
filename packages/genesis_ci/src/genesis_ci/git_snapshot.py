@@ -13,7 +13,6 @@ import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import cached_property
 from pathlib import Path
 
 from genesis_contracts.models import (
@@ -392,9 +391,10 @@ def _worktree_listing(
 
 
 def _read_worktree(
-    root: Path, path: str, limit: int
+    root: Path, path: str, limit: int, stamps: dict[str, tuple[int, ...]] | None = None
 ) -> tuple[bytes | None, str | None, str | None]:
-    """Open every component relative to a directory FD, never follow a symlink."""
+    """Open every component relative to a directory FD, never follow a symlink. The
+    file's identity and times go into `stamps`, if given: a rewrite changes them."""
     descriptors = []
     try:
         directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
@@ -459,6 +459,8 @@ def _read_worktree(
         if len(raw) > limit:
             return None, None, "file_budget"
         mode = "100755" if before.st_mode & stat.S_IXUSR else "100644"
+        if stamps is not None:
+            stamps[path] = signature(current)
         return bytes(raw), mode, None
     except (PermissionError, OSError) as error:
         raise SnapshotError(
@@ -477,6 +479,9 @@ class _Selection:
     omissions: list[SnapshotOmission]
     # Tracked files a working-tree read found deleted: gone, not left out.
     deleted: set[str] = field(default_factory=set)
+    # What each file read from the working tree was when read, so that two reads
+    # match only if nothing wrote it in between, even the same bytes back.
+    stamps: dict[str, tuple[int, ...]] = field(default_factory=dict)
 
 
 def _collect(
@@ -554,7 +559,10 @@ def _collect(
                 continue
             limit = spec.limits.max_file_bytes
             raw, mode, reason = _read_worktree(
-                git.root, path, limit if known is not None else min(limit, remaining)
+                git.root,
+                path,
+                limit if known is not None else min(limit, remaining),
+                selected.stamps,
             )
             if reason:
                 if reason == "file_budget" and known is None and remaining < limit:
@@ -686,10 +694,10 @@ def _differs(
     tree: dict[str, _Entry],
     spec: SnapshotSpec,
     reads: Callable[[str], bool] | None = None,
-) -> tuple[bool, dict[str, str]]:
+) -> tuple[bool, dict[str, _Entry]]:
     """Whether the files read from the working tree differ from the commit they were read
-    on, and the digest of the commit's bytes for each file read that is the commit's
-    file but not byte for byte.
+    on, and the commit's entry for each file read that is the commit's file but not
+    byte for byte.
 
     A file edited, added or deleted counts, a changed file mode does not. Neither does a
     file of the commit that the capture left out for a reason of its own, such as size,
@@ -699,12 +707,14 @@ def _differs(
 
     `listed` is what `git diff-index` lists against the commit, or None when Git could
     not list it. Git's index tells, as for `git status`, which files are as the commit
-    has them without reading them again; only those it cannot vouch for are compared
-    byte by byte, and so are the `unchecked` ones, which Git is told not to look at.
-    Such a file that a filter driver converts, such as one git-crypt unlocked, counts
-    as changed: the driver is a command of the repository and never runs here. `git
-    status` refreshes the index, after which it is known again. Without `listed`,
-    every file is compared byte by byte.
+    has them without reading them again. Git reads the others again, and the
+    `unchecked` ones, which it is told not to look at, and converts them as it would
+    store them; a caller reads them once more afterwards, and they match only when
+    their bytes, identity and times are as before. Such a file that a filter driver
+    converts, such as one git-crypt unlocked, counts as changed: the driver is a
+    command of the repository and never runs here. `git status` refreshes the index,
+    after which it is known again. Without `listed`, Git converts every file whose
+    bytes are not the commit's.
     """
     dirty = False
     converted, compared = {}, {}
@@ -721,13 +731,13 @@ def _differs(
         elif _raw_blob_id(raw, len(entry.oid)) == entry.oid:
             continue
         elif vouched:
-            converted[path] = (entry, raw)
+            converted[path] = entry
         else:
-            compared[path] = (entry, raw)
-    stored.read_attributes(path for path, (_, raw) in compared.items() if b"\r\n" in raw)
-    for path, (entry, raw) in compared.items():
-        if stored.same(path, raw, entry.oid):
-            converted[path] = (entry, raw)
+            compared[path] = raw
+    ids = stored.ids(compared)
+    for path in compared:
+        if ids.get(path) == tree[path].oid:
+            converted[path] = tree[path]
         else:
             dirty = True
     # Outside the scope is no reason of its own: it is what `reads` may widen.
@@ -747,7 +757,7 @@ def _differs(
         and (_kind(path, spec, kinds)[0] is not None or (reads is not None and reads(path)))
         for path in gone
     )
-    return dirty, stored.digests(converted)
+    return dirty, converted
 
 
 def capture_snapshot(
@@ -812,8 +822,13 @@ def capture_snapshot(
                 anchor_tree = git.tree(anchor)
                 listing, others, unchecked = _worktree_listing(git, anchor_tree)
                 first = _collect(git, listing, spec, HEAD, live=True, untracked=others, **starting)
-                # Between the two reads, so that what Git lists is of the files read.
+                # Between the two reads, so that what Git lists, and the files it reads
+                # again to convert them, are as read: the second read must match the
+                # first, in each file's bytes, identity and times.
                 listed = _index_listing(stored, anchor)
+                dirty, converted = _differs(
+                    stored, first, listed, unchecked, anchor_tree, spec, reads
+                )
                 second_listing, second_others, second_unchecked = _worktree_listing(
                     git, anchor_tree
                 )
@@ -837,6 +852,8 @@ def capture_snapshot(
                 "worktree_changed",
                 "Working files or Git index changed during capture; retry when editing stops.",
             )
+        # Blobs do not change: their bytes are read once the reads match.
+        committed = stored.digests(converted)
         # Include HEAD provenance and captured modes, not unselected file contents.
         identity = json.dumps(
             {
@@ -851,7 +868,6 @@ def capture_snapshot(
         )
         head_revision = "worktree:" + hashlib.sha256(identity.encode()).hexdigest()
         consistency = "two_matching_reads"
-        dirty, committed = _differs(stored, head, listed, unchecked, anchor_tree, spec, reads)
     omissions = [*base.omissions, *head.omissions]
     for item in spec.inputs:
         if (
@@ -984,11 +1000,6 @@ def _raw_blob_id(raw: bytes, length: int) -> str:
     return digest.hexdigest()
 
 
-_LINE_ENDING_ATTRIBUTES = ("text", "eol", "crlf")
-# Control characters Git's test of text counts against it (convert.c); NUL is apart.
-_NONPRINTABLE = bytes([*range(1, 8), 11, *range(14, 27), *range(28, 32), 127])
-
-
 def _user_autocrlf(git: _Git) -> str | None:
     """`core.autocrlf` as the user's own Git has it, from every configuration file Git
     reads, or None when none sets it. Reading a setting runs nothing."""
@@ -1011,33 +1022,9 @@ def _user_autocrlf(git: _Git) -> str | None:
     return "input" if value == "input" else None
 
 
-def _git_text(raw: bytes) -> bool:
-    """Whether Git takes `raw` for text where it guesses (convert.c): no NUL, no CR but
-    in a CRLF, and few other control characters."""
-    if b"\0" in raw or b"\r" in raw.replace(b"\r\n", b""):
-        return False
-    nonprintable = len(raw) - len(raw.translate(None, _NONPRINTABLE))
-    printable = len(raw) - raw.count(b"\r") - raw.count(b"\n") - nonprintable
-    # A final end-of-file character does not count.
-    nonprintable -= raw.endswith(b"\x1a")
-    return printable >> 7 >= nonprintable
-
-
-def _converts_line_endings(attributes: dict[str, str], autocrlf: str | None, raw: bytes) -> bool:
-    """Whether Git turns each CRLF of `raw` into LF when it stores it, by the `text`,
-    `eol` and legacy `crlf` attributes of its path and `core.autocrlf` (convert.c)."""
-    action = attributes["text"]
-    if action == "unspecified":
-        action = attributes["crlf"]
-    if action == "unset":
-        return False
-    if action in {"set", "input"}:
-        return True
-    if action != "auto" and attributes["eol"] in {"lf", "crlf"}:
-        return True
-    if action == "auto" or autocrlf in {"true", "input"}:
-        return _git_text(raw)
-    return False
+def _quoted(path: str) -> bytes:
+    """`path` as the inside of a C-style quoted name, which Git reads back as `path`."""
+    return path.encode().replace(b"\\", b"\\\\").replace(b'"', b'\\"')
 
 
 def _index_listing(stored: _StoredBlobs, base: str) -> dict[str, _Listed] | None:
@@ -1079,66 +1066,29 @@ def _listing(raw: bytes) -> dict[str, _Listed]:
 
 
 class _StoredBlobs:
-    """Whether working-tree bytes are a blob as Git would store them at their path.
+    """The ids working files would get as blobs at their paths, and the bytes of blobs.
 
     A checkout converts what it writes: line endings (`eol`, `text`, `core.autocrlf`),
-    `ident` and `working-tree-encoding`. `core.autocrlf` is read once from the user's
-    own Git configuration, which every other command here leaves unread, as Git for
-    Windows sets it there. Bytes whose own id is not the blob's are first compared with
-    each CRLF turned into LF, which needs no process, when that is what Git does at
-    their path: by its `text`, `eol` and `crlf` attributes and `core.autocrlf`, as
-    `convert.c` decides. Bytes that still differ are given to `git hash-object --path`,
-    which converts them back the way `git add` would. Those conversions are built into
-    Git; every filter driver the repository configures is switched off, so no command
-    of the repository runs, and nothing is written. Bytes Git cannot convert are not
-    the blob.
+    `ident` and `working-tree-encoding`. `git hash-object --stdin-paths` reads the files
+    and converts them back the way `git add` would, at their paths. Those conversions
+    are built into Git; every filter driver the repository configures is switched off,
+    so no command of the repository runs, and nothing is written. `core.autocrlf` is
+    read once from the user's own Git configuration, which every other command here
+    leaves unread, as Git for Windows sets it there.
     """
 
     def __init__(self, git: _Git):
         self.git = git
         self._options: list[str] | None = None
-        # The line-ending attributes of paths, by path; None where Git could not tell.
-        self._attributes: dict[str, dict[str, str] | None] = {}
-        # The bytes of blobs met on the way, by id.
-        self.blobs: dict[str, bytes] = {}
-
-    @cached_property
-    def autocrlf(self) -> str | None:
-        return _user_autocrlf(self.git)
 
     @property
     def options(self) -> list[str]:
         if self._options is None:
+            autocrlf = _user_autocrlf(self.git)
             self._options = _without_filters(self.git)
-            if self.autocrlf is not None:
-                self._options += ["-c", "core.autocrlf=" + self.autocrlf]
+            if autocrlf is not None:
+                self._options += ["-c", "core.autocrlf=" + autocrlf]
         return self._options
-
-    def read_attributes(self, paths) -> None:
-        """Read the line-ending attributes of `paths` from Git in one go."""
-        paths = sorted(set(paths) - self._attributes.keys())
-        if not paths:
-            return
-        self._attributes.update(dict.fromkeys(paths))
-        try:
-            raw = self.git.run(
-                "check-attr",
-                "-z",
-                "--stdin",
-                *_LINE_ENDING_ATTRIBUTES,
-                stdin=b"".join(path.encode() + b"\0" for path in paths),
-            )
-        except SnapshotError as error:
-            if error.code not in {"git_read_failed", "metadata_budget"}:
-                raise
-            return
-        fields = raw.split(b"\0")
-        found: dict[str, dict[str, str]] = {}
-        for path, name, value in zip(fields[::3], fields[1::3], fields[2::3], strict=False):
-            found.setdefault(path.decode("utf-8", "replace"), {})[name.decode()] = value.decode()
-        for path in paths:
-            if found.get(path, {}).keys() >= set(_LINE_ENDING_ATTRIBUTES):
-                self._attributes[path] = found[path]
 
     def listed(self, base: str) -> dict[str, _Listed]:
         """What `git diff-index` lists between `base` and the working tree.
@@ -1160,50 +1110,40 @@ class _StoredBlobs:
             )
         )
 
-    def _normalized(self, raw: bytes, oid: str) -> bool:
-        """Whether `raw` with each CRLF turned into LF is the blob `oid`."""
-        if b"\r\n" not in raw:
-            return False
-        normalized = raw.replace(b"\r\n", b"\n")
-        if _raw_blob_id(normalized, len(oid)) != oid:
-            return False
-        self.blobs[oid] = normalized
-        return True
+    def ids(self, files: dict[str, bytes]) -> dict[str, str]:
+        """The id Git would store for each of `files`, by path, as Git reads them again.
 
-    def _line_endings(self, path: str, raw: bytes, oid: str) -> bool:
-        """Whether Git turns each CRLF of `raw` into LF at `path`, which gives the blob."""
-        if b"\r\n" not in raw:
-            return False
-        self.read_attributes([path])
-        attributes = self._attributes.get(path)
-        return (
-            attributes is not None
-            and _converts_line_endings(attributes, self.autocrlf, raw)
-            and self._normalized(raw, oid)
-        )
-
-    def same(self, path: str, raw: bytes, oid: str) -> bool:
-        if _raw_blob_id(raw, len(oid)) == oid or self._line_endings(path, raw, oid):
-            return True
+        Git reads them all in one go, following each path as it then is, so a caller
+        reads them again afterwards to know they were as `files` has them, by their
+        bytes, identity and times. Where Git gives no ids, as when a file is gone, none
+        is given.
+        """
+        if not files:
+            return {}
         try:
-            found = self.git.run(
+            raw = self.git.run(
                 *self.options,
                 "-c",
                 "core.safecrlf=false",
                 "hash-object",
-                "--stdin",
-                "--path=" + path,
-                stdin=raw,
+                "--stdin-paths",
+                # Quoted, since a path may begin with a quote.
+                stdin=b"".join(b'"%s"\n' % _quoted(path) for path in files),
             )
         except SnapshotError as error:
-            if error.code != "git_read_failed":
+            if error.code not in {"git_read_failed", "git_timeout", "metadata_budget"}:
                 raise
-            return False
-        return found.decode("ascii", "replace").strip() == oid
+            raw = b""
+        found = raw.decode("ascii", "replace").split()
+        return dict(zip(files, found, strict=True)) if len(found) == len(files) else {}
 
-    def _read_blobs(self, oids: list[str], sizes: dict[str, int | None]) -> None:
-        """Read the blobs `oids` from Git in one go. What Git cannot give within the
-        budgets, or does not have, as in a partial clone, is skipped."""
+    def digests(self, converted: dict[str, _Entry]) -> dict[str, str]:
+        """The digest of each blob, by path, read from Git in one go. What Git cannot give
+        within the budgets, or does not have, as in a partial clone, is left out."""
+        oids = sorted({entry.oid for entry in converted.values()})
+        if not oids:
+            return {}
+        sizes = {entry.oid: entry.size for entry in converted.values()}
         limit = sum((sizes[oid] or self.git.limits.max_file_bytes) + len(oid) + 32 for oid in oids)
         try:
             raw = self.git.run(
@@ -1215,8 +1155,8 @@ class _StoredBlobs:
         except SnapshotError as error:
             if error.code not in {"git_read_failed", "metadata_budget"}:
                 raise
-            return
-        position = 0
+            return {}
+        blobs, position = {}, 0
         for oid in oids:
             end = raw.find(b"\n", position)
             header = raw[position:end].split() if end >= 0 else []
@@ -1224,26 +1164,14 @@ class _StoredBlobs:
                 position = end + 1
                 continue
             if len(header) != 3 or header[0] != oid.encode() or header[1] != b"blob":
-                return
+                break
             size = int(header[2])
-            self.blobs[oid] = raw[end + 1 : end + 1 + size]
+            blobs[oid] = raw[end + 1 : end + 1 + size]
             position = end + 2 + size
-
-    def digests(self, converted: dict[str, tuple[_Entry, bytes]]) -> dict[str, str]:
-        """The digest of each blob, by path, given with the bytes it was read as.
-
-        Blobs not met yet are read from Git in one go. One it cannot read is left out.
-        """
-        for entry, raw in converted.values():
-            if entry.oid not in self.blobs:
-                self._normalized(raw, entry.oid)
-        missing = sorted({entry.oid for entry, _ in converted.values()} - self.blobs.keys())
-        if missing:
-            self._read_blobs(missing, {entry.oid: entry.size for entry, _ in converted.values()})
         return {
-            path: content_digest(self.blobs[entry.oid])
-            for path, (entry, _) in sorted(converted.items())
-            if entry.oid in self.blobs
+            path: content_digest(blobs[entry.oid])
+            for path, entry in sorted(converted.items())
+            if entry.oid in blobs
         }
 
 
@@ -1261,33 +1189,39 @@ def changed_paths(
     root = repo.expanduser().resolve(strict=True)
     limits = limits or SnapshotLimits()
     git = _Git(root, limits)
-    stored = None
     if head is not None:
         listed = _listing(
             git.run("diff-tree", "-r", "--no-renames", "--no-commit-id", "-z", base, head, "--")
         )
-    else:
-        stored = _StoredBlobs(git)
-        listed = stored.listed(base)
-
-    def unread(item: _Listed) -> bool:
-        return (
-            stored is not None
-            and not item.new_oid.strip("0")
-            and item.status in {"M", "T"}
-            and item.new_mode in _REGULAR
-        )
-
-    if stored is not None:
-        stored.read_attributes(path for path, item in listed.items() if unread(item))
-    found = []
+        return [(item.status, path) for path, item in listed.items()]
+    stored = _StoredBlobs(git)
+    listed = stored.listed(base)
+    compared, unchanged, read, again_read = {}, set(), {}, {}
     for path, item in listed.items():
-        if unread(item):
-            try:
-                current, _, _ = _read_worktree(root, path, limits.max_file_bytes)
-            except (SnapshotError, _ChangedDuringCapture):
-                current = None
-            if current is not None and stored.same(path, current, item.old_oid):
-                continue
-        found.append((item.status, path))
-    return found
+        if (
+            item.new_oid.strip("0")
+            or item.status not in {"M", "T"}
+            or item.new_mode not in _REGULAR
+        ):
+            continue
+        try:
+            current, _, _ = _read_worktree(root, path, limits.max_file_bytes, read)
+        except (SnapshotError, _ChangedDuringCapture):
+            continue
+        if current is None:
+            continue
+        if _raw_blob_id(current, len(item.old_oid)) == item.old_oid:
+            unchanged.add(path)
+        else:
+            compared[path] = current
+    ids = stored.ids(compared)
+    for path, raw in compared.items():
+        # Read again, as Git read it: one changed meanwhile is listed.
+        try:
+            again, _, _ = _read_worktree(root, path, len(raw), again_read)
+        except (SnapshotError, _ChangedDuringCapture):
+            continue
+        same = again == raw and again_read.get(path) == read[path]
+        if same and ids.get(path) == listed[path].old_oid:
+            unchanged.add(path)
+    return [(item.status, path) for path, item in listed.items() if path not in unchanged]

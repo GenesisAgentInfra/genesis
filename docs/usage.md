@@ -28,8 +28,9 @@ the agent compares with the point where your branch started.
 Uncommitted work is a review of its own, compared with your last commit: ask for it,
 as in the third example above. New files Git does not track yet are included when the
 agent judges they belong to the change. In a Python project the report names any it
-left out. In other languages it does not: the agent checks for new files itself before
-it starts.
+left out, except new files in a dependency, build or cache folder no tracked file is
+in, such as a virtual environment: it counts those by folder. In other languages it
+does not: the agent checks for new files itself before it starts.
 
 When there is nothing to compare (no change since that revision, or a revision your
 local repository does not have), the agent says so. It suggests another revision, a
@@ -49,10 +50,10 @@ skips the flows. In other languages it describes the flows the changed code belo
 before it explains the changes, because that is how a change gets its place on the map.
 In a Python project mapped before, the review starts from the latest map in which the
 agent found entry points of its own or grouped several into one flow: from the entry
-points that map used and the way it grouped them into flows. So a change lands on the flow the map showed, as long as
-the code that starts that flow is all still there. Ask it to start from a committed
-copy of a map instead, such as the one Genesis EDD keeps with a spec, and every clone
-of the project gets the same flows.
+points that map used and the way it grouped them into flows. So a change lands on the
+flow the map showed, as long as the code that starts that flow is all still there. Ask
+it to start from a committed copy of a map instead, such as the one Genesis EDD keeps
+with a spec, and every clone of the project gets the same flows.
 
 ## Map the project
 

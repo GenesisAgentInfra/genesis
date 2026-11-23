@@ -634,16 +634,34 @@ def test_untracked_caches_git_does_not_ignore_do_not_crowd_out_the_changes(sourc
     write(source_repo, "app/__pycache__/app.cpython-312.pyc", b"\x00compiled")
     write(source_repo, "build/__pycache__/tool.cpython-312.pyc", b"\x00compiled")
     summary = prepared(source_repo, "--base", "HEAD")
-    assert summary["untracked_left_out"] == 1
-    [note] = [
-        item
-        for item in change_report(source_repo, summary).limitations
-        if item.code == "untracked_files_left_out"
-    ]
+    assert (summary["untracked_left_out"], summary["untracked_by_folder"]) == (1, 132)
+    notes = {item.code: item for item in change_report(source_repo, summary).limitations}
+    note = notes["untracked_files_left_out"]
     assert note.message.startswith("1 untracked file left out") and "build/added.sh" in note.message
+    # Counted by the folder each lies in, not listed.
+    counted = notes["untracked_files_by_folder"]
+    assert "(.venv: 130, app/__pycache__: 1, build/__pycache__: 1)" in counted.message
+    assert not counted.affects_completeness
     summary = prepared(source_repo, "--base", "HEAD", "--include-untracked")
     listed = [item.path for item in change_report(source_repo, summary).unanalyzed_changes]
     assert listed == ["build/tool.py", "docs/feed.md", "build/added.sh"]
+    assert summary["untracked_by_folder"] == 132
+
+
+@pytest.mark.parametrize("flags", [(), ("--include-untracked",)])
+def test_new_project_folders_named_like_a_build_folder_are_counted_by_folder(source_repo, flags):
+    write(source_repo, "app/main.py", APP)
+    commit(source_repo)
+    # New folders of the project, not made by running it, with a build or env name.
+    write(source_repo, "app/build/__init__.py", "")
+    write(source_repo, "app/build/runner.py", "def run(job):\n    if job:\n        return 1\n")
+    write(source_repo, "config/env/production.cfg", "debug = false\n")
+    summary = prepared(source_repo, "--base", "HEAD", *flags)
+    assert summary["untracked_by_folder"] == 3
+    report = change_report(source_repo, summary)
+    [note] = [item for item in report.limitations if item.code == "untracked_files_by_folder"]
+    assert note.message.startswith("3 untracked files in dependency, build or cache folders")
+    assert "(app/build: 2, config/env: 1)" in note.message
 
 
 def test_the_changes_are_listed_before_new_files_when_the_list_is_cut(source_repo):

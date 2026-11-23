@@ -38,7 +38,7 @@ from .loop import CHANGE_TASK
 from .python_entries import entry_id
 from .python_facts import canonical_python
 from .skeleton import _evaluation_order, _short, shown_facts, skeleton_flow
-from .store import left_out_limitation
+from .store import left_out_limitation, untracked_folders_limitation
 
 CONTEXT_LIMIT = 30
 # How many possible entries `status` and `diff` list at a time.
@@ -1663,6 +1663,8 @@ class ChangeAnalysis:
             )
         if outside.get("left_out"):
             limits.append(left_out_limitation(outside["left_out"]))
+        if outside.get("untracked_by_folder"):
+            limits.append(untracked_folders_limitation(outside["untracked_by_folder"]))
         untracked = outside.get("untracked")
         if untracked and untracked["total"]:
             count, readable = untracked["total"], untracked["analyzable"]
@@ -1725,7 +1727,9 @@ class ChangeAnalysis:
         """Skeletons of entries that exist only on the base side, those carried from a map
         included. One that the map this session started from gave a flow together with
         other entries is shown as that flow, with all of them as the base has them, so
-        that the flow keeps the id the map gave it; that flow is shown once."""
+        that the flow keeps the id the map gave it; that flow is shown once. An entry the
+        map proposed is shown as proposed, as at head, unless the analyzers recognise its
+        function at base as more than a function nothing calls."""
         facts = self.workspace.facts
         kept = {entry.symbol_id for entry in facts.entries if entry.side == HEAD}
         taken = {flow.flow_id for flow in business_map.flows}
@@ -1741,7 +1745,15 @@ class ChangeAnalysis:
         carried = self._base_carried()
         for entry in self._carried_removed(carried):
             removed.setdefault(entry.symbol_id, entry)
-        known = {**carried, **{item.entry_id: item for item in facts.entries if item.side == BASE}}
+        found = {item.entry_id: item for item in facts.entries if item.side == BASE}
+        known = {
+            **found,
+            **{
+                key: item
+                for key, item in carried.items()
+                if key not in found or found[key].detection == "root_heuristic"
+            },
+        }
         groups = {key: group for group in self.workspace.carried_groups for key in group}
         for _, entry in sorted(removed.items()):
             members = [known.get(key) for key in dict.fromkeys(groups.get(entry.entry_id, ()))]
