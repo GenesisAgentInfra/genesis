@@ -2,6 +2,7 @@
 
 import json
 import re
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -59,6 +60,26 @@ def test_view_carries_the_map_the_report_and_the_excerpts():
     assert payload["map"] == head.model_dump(mode="json", exclude_none=True)
     assert payload["report"] == report.model_dump(mode="json", exclude_none=True)
     assert payload["excerpts"] == {item.evidence_id: item.text for item in bundle.excerpts}
+
+
+def test_neither_page_carries_the_code_the_map_was_read_from():
+    head, bundle, report = change_sample()
+    data = head.model_dump(mode="json", exclude_none=True)
+    revision = "f00d" * 10
+    files = {ref.path: "sha256:" + sha256(ref.path.encode()).hexdigest() for ref in head.evidence}
+    source = {
+        "revision": revision,
+        "worktree_dirty": True,
+        "integrity_status": "partial",
+        "files": files,
+    }
+    sourced = BusinessMap.model_validate({**data, "source": source})
+    # The page has no use for it; a reader finds it in business-map.json. The commit is
+    # named only in the links to GitHub.
+    for page in (render_view(sourced, bundle, report), render_view(sourced, None, report)):
+        assert embedded(page)["map"] == data
+        assert revision not in page and "worktree_dirty" not in page
+        assert not any(digest in page for digest in files.values())
 
 
 def test_share_view_carries_no_source_excerpts():

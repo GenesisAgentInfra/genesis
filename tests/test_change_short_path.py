@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 
 SKELETON = "affected_flow_not_synthesized"
 UNTRACKED = "untracked_files_left_out"
+LEFT_OUT = "changed_files_left_out"
 APP = {"app/__init__.py": "", "app/core.py": "def run():\n    return 1\n"}
 
 
@@ -181,3 +182,30 @@ def test_untracked_files_left_out_are_named_in_the_report(source_repo):
         ("notes.txt", "added")
     ]
     assert any(item.symbol_id.startswith("app/extra.py#") for item in report.changes)
+
+
+def test_changed_files_in_folders_left_out_are_counted_by_folder(source_repo):
+    for path, text in APP.items():
+        write(source_repo, path, text)
+    commit(source_repo)
+    write(source_repo, "app/core.py", APP["app/core.py"].replace("1", "2"))
+    write(source_repo, "docs/guide.md", "new\n")
+    # More than the list holds: Genesis EDD's evals in Genesis's own folder, which no
+    # snapshot reads, and a folder left out on purpose. Neither crowds out the files
+    # of the change, and neither goes unmentioned.
+    for index in range(120):
+        write(source_repo, f".genesis/edd/refund/evals/s{index}/tests/test.sh", "exit 0\n")
+    write(source_repo, "vendor/lib/util.py", "def util():\n    return 1\n")
+    commit(source_repo)
+    result = prepare(source_repo, base="HEAD~1", head="HEAD", exclude=("vendor",))
+    assert result["changed_files_not_analyzed"] == 1
+    report = report_of(source_repo, result)
+    assert [(item.path, item.change) for item in report.unanalyzed_changes] == [
+        ("docs/guide.md", "added")
+    ]
+    found = limitation(report, LEFT_OUT)
+    assert not found.affects_completeness
+    assert found.message == (
+        "121 changed files in `.genesis/` or in folders passed to `--exclude`: not analyzed "
+        "(.genesis: 120, vendor: 1)."
+    )

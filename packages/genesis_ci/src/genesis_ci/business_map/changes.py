@@ -28,14 +28,17 @@ from genesis_contracts.change_report import (
     ChangeReport,
     validate_change_report_against_map,
 )
-from genesis_contracts.facts import CodeFact, CodeTest, FactKind
+from genesis_contracts.facts import CodeEntry, CodeFact, CodeTest, FactKind
 from genesis_contracts.map_tasks import ChangeAssessment, ChangeSubmission
 from pydantic import ValidationError
 
+from .carried import read_carried
 from .fact_diff import BASE, HEAD, FactDiff, RawChange, _innermost, diff_facts
 from .loop import CHANGE_TASK
+from .python_entries import entry_id
 from .python_facts import canonical_python
 from .skeleton import _evaluation_order, _short, shown_facts, skeleton_flow
+from .store import left_out_limitation, untracked_folders_limitation
 
 CONTEXT_LIMIT = 30
 # How many possible entries `status` and `diff` list at a time.
@@ -1623,8 +1626,9 @@ class ChangeAnalysis:
         if listing.is_file():
             outside = json.loads(listing.read_text(encoding="utf-8"))
         others = outside["files"]
+        # A file left out for a reason of its own, such as its folder, says which.
         listed += [
-            {**item, "reason": "Not a supported source language; not analyzed."} for item in others
+            {"reason": "Not a supported source language; not analyzed.", **item} for item in others
         ]
         if broken:
             limits.append(
@@ -1636,7 +1640,8 @@ class ChangeAnalysis:
                     "affects_completeness": True,
                 }
             )
-        total = outside["total"]
+        unread = outside.get("not_read", 0)
+        total = outside["total"] - unread
         if total:
             limits.append(
                 {
@@ -1646,6 +1651,20 @@ class ChangeAnalysis:
                     "affects_completeness": False,
                 }
             )
+        if unread:
+            limits.append(
+                {
+                    "code": "changed_files_not_read",
+                    "message": f"{unread} changed file{'s' * (unread != 1)} that no snapshot "
+                    "reads, such as one in a dependency, build or cache folder, or over a size "
+                    "limit: not analyzed. Each names its reason.",
+                    "affects_completeness": False,
+                }
+            )
+        if outside.get("left_out"):
+            limits.append(left_out_limitation(outside["left_out"]))
+        if outside.get("untracked_by_folder"):
+            limits.append(untracked_folders_limitation(outside["untracked_by_folder"]))
         untracked = outside.get("untracked")
         if untracked and untracked["total"]:
             count, readable = untracked["total"], untracked["analyzable"]
@@ -1668,20 +1687,82 @@ class ChangeAnalysis:
             )
         return listed[:MAX_UNANALYZED], limits
 
+    def _base_carried(self) -> dict[str, CodeEntry]:
+        """The entries carried from a map, found at head or not, as base-side entries that
+        cite the function itself, by entry id. One whose function the base lacks, as one
+        from a map of other code, is left out."""
+        base = {item.symbol_id: item for item in self.workspace.facts.symbols if item.side == BASE}
+        carried = read_carried(self.workspace.root)
+        found = {}
+        for raw in (*carried.get("entries", ()), *carried.get("not_found_entries", ())):
+            symbol = base.get(raw["symbol_id"])
+            if symbol is None or symbol.kind != "function" or not symbol.evidence_ids:
+                continue
+            found[entry_id(symbol.symbol_id)] = CodeEntry.model_validate(
+                {
+                    **{key: raw[key] for key in ("kind", "framework", "attributes") if key in raw},
+                    "entry_id": entry_id(symbol.symbol_id),
+                    "symbol_id": symbol.symbol_id,
+                    "detection": "agent_proposed",
+                    "evidence_ids": list(symbol.evidence_ids),
+                    "side": BASE.value,
+                }
+            )
+        return found
+
+    def _carried_removed(self, carried: dict[str, CodeEntry]) -> list[CodeEntry]:
+        """Entries carried from a map whose function this change removed, of the `carried`
+        ones (see `_base_carried`): the flow the map gave each is gone too. One whose
+        function the base lacks has no flow to show removed."""
+        head = {item.symbol_id for item in self.workspace.facts.symbols if item.side == HEAD}
+        found = []
+        for raw in read_carried(self.workspace.root).get("not_found_entries", ()):
+            entry = carried.get(entry_id(raw["symbol_id"]))
+            if entry is None or self.diff.moved.get(entry.symbol_id, entry.symbol_id) in head:
+                continue
+            found.append(entry)
+        return found
+
     def _removed_flows(self, business_map: BusinessMap) -> tuple[list[dict], set[str]]:
-        """Skeletons of entries that exist only on the base side."""
+        """Skeletons of entries that exist only on the base side, those carried from a map
+        included. One that the map this session started from gave a flow together with
+        other entries is shown as that flow, with all of them as the base has them, so
+        that the flow keeps the id the map gave it; that flow is shown once. An entry the
+        map proposed is shown as proposed, as at head, unless the analyzers recognise its
+        function at base as more than a function nothing calls."""
         facts = self.workspace.facts
         kept = {entry.symbol_id for entry in facts.entries if entry.side == HEAD}
-        present = {flow.flow_id for flow in business_map.flows}
+        taken = {flow.flow_id for flow in business_map.flows}
         shown = shown_facts(facts, BASE)
         flows, cited = [], set()
-        for entry in sorted(facts.entries, key=lambda item: item.symbol_id):
-            symbol = self.diff.moved.get(entry.symbol_id, entry.symbol_id)
-            if entry.side != BASE or entry.detection != "adapter" or symbol in kept:
+        removed = {
+            entry.symbol_id: entry
+            for entry in facts.entries
+            if entry.side == BASE
+            and entry.detection == "adapter"
+            and self.diff.moved.get(entry.symbol_id, entry.symbol_id) not in kept
+        }
+        carried = self._base_carried()
+        for entry in self._carried_removed(carried):
+            removed.setdefault(entry.symbol_id, entry)
+        found = {item.entry_id: item for item in facts.entries if item.side == BASE}
+        known = {
+            **found,
+            **{
+                key: item
+                for key, item in carried.items()
+                if key not in found or found[key].detection == "root_heuristic"
+            },
+        }
+        groups = {key: group for group in self.workspace.carried_groups for key in group}
+        for _, entry in sorted(removed.items()):
+            members = [known.get(key) for key in dict.fromkeys(groups.get(entry.entry_id, ()))]
+            if len(members) < 2 or any(item is None for item in members):
+                members = [entry]
+            flow, evidence = skeleton_flow(members, shown)
+            if flow["flow_id"] in taken or len(flows) >= MAX_REMOVED_FLOWS:
                 continue
-            flow, evidence = skeleton_flow([entry], shown)
-            if flow["flow_id"] in present or len(flows) >= MAX_REMOVED_FLOWS:
-                continue
+            taken.add(flow["flow_id"])
             flows.append(flow)
             cited |= evidence
         return flows, cited
@@ -1864,13 +1945,30 @@ class ChangeAnalysis:
         removed_flows, removed_refs = self._removed_flows(business_map)
         cited |= removed_refs
         known = {change.change_id for change in diff.changes}
-        risks = [
-            {"risk_id": key, **risk}
-            for key, risk in sorted(self.risks().items())
-            if set(risk["change_ids"]) <= known
-        ]
-        cited.update(ref for risk in risks for ref in risk.get("evidence_ids", ()))
         unanalyzed, limitations = self._unanalyzed()
+        listed = {item["path"] for item in unanalyzed}
+        risks, hidden = [], []
+        for key, risk in sorted(self.risks().items()):
+            if set(risk["change_ids"]) <= known and set(risk.get("paths", ())) <= listed:
+                risks.append({"risk_id": key, **risk})
+            else:
+                hidden.append(key)
+        cited.update(ref for risk in risks for ref in risk.get("evidence_ids", ()))
+        if hidden:
+            # Running `prepare` again with other folders left out keeps the session and
+            # its accepted risks, but a file a risk names may no longer be listed.
+            named = ", ".join(hidden[:5]) + (", ..." if len(hidden) > 5 else "")
+            one = len(hidden) == 1
+            limitations.append(
+                {
+                    "code": "risks_not_shown",
+                    "message": f"{len(hidden)} accepted risk{'' if one else 's'} "
+                    f"name{'s' if one else ''} changes or changed files the report no longer "
+                    f"lists, and {'is' if one else 'are'} not shown, such as after `prepare` "
+                    f"with other `--exclude` folders: {named}.",
+                    "affects_completeness": False,
+                }
+            )
         waiting = [flows[key].name for key in sorted(touched) if flows[key].stage == "skeleton"]
         if waiting:
             named = ", ".join(waiting[:5]) + (", ..." if len(waiting) > 5 else "")
@@ -2256,6 +2354,8 @@ class ChangeAnalysis:
                 item.model_dump(mode="json", exclude={"support"}, exclude_none=True)
                 for item in report.risks
             ],
+            # Accepted risks the report leaves out, by the id that withdraws them.
+            **self._risks_not_shown(report),
             # Observations an agent recorded on the map, as far as this change touches them.
             "risk_findings": [
                 {
@@ -2277,6 +2377,21 @@ class ChangeAnalysis:
                 for item in report.limitations
             ],
         }
+
+    def _risks_not_shown(self, report: ChangeReport) -> dict:
+        """The accepted risks `report` leaves out, as the limitation `risks_not_shown`
+        counts them: they name files it no longer lists."""
+        shown = {item.risk_id for item in report.risks}
+        hidden = [
+            {
+                "risk_id": key,
+                "statement": risk["statement"],
+                **({"paths": risk["paths"]} if risk.get("paths") else {}),
+            }
+            for key, risk in sorted(self.risks().items())
+            if key not in shown
+        ]
+        return {"risks_not_shown": hidden} if hidden else {}
 
     def check(self, raw) -> tuple[dict[str, dict], list[tuple[str, str, str]]]:
         """Validate a submission. Returns the assessments to store, or the problems."""
@@ -2312,6 +2427,10 @@ class ChangeAnalysis:
                     said.add((field, code, message))
                     problems.append((f"{where}.{field}", code, message))
                 accepted[change_id] = {**stored, "change_id": change_id}
+        # A risk names analyzed code by its changes, and a changed file Genesis did not
+        # analyze by its path as `unanalyzed_changes` lists it. Files left out on purpose,
+        # in `.genesis/` or a folder passed to `--exclude`, are not listed there.
+        listed = {item["path"] for item in self._unanalyzed()[0]} if submission.risks else set()
         for index, risk in enumerate(submission.risks):
             missing = [key for key in risk.change_ids if key not in known]
             if missing:
@@ -2321,5 +2440,22 @@ class ChangeAnalysis:
                         "unknown_change",
                         f"No change {', '.join(missing)}.",
                     )
+                )
+            for position, path in enumerate(risk.paths):
+                if path not in listed:
+                    problems.append(
+                        (
+                            f"risks[{index}].paths[{position}]",
+                            "not_in_unanalyzed_changes",
+                            f"{path} is not listed under `unanalyzed_changes`: `paths` names "
+                            "only files listed there, and analyzed code is named by its change "
+                            "in `change_ids`.",
+                        )
+                    )
+        stored = self.risks()
+        for index, key in enumerate(submission.withdrawn_risks):
+            if key not in stored:
+                problems.append(
+                    (f"withdrawn_risks[{index}]", "unknown_risk", f"No accepted risk {key}.")
                 )
         return accepted, problems

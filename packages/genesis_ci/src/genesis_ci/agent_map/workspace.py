@@ -15,7 +15,7 @@ from functools import cached_property
 from pathlib import Path
 
 from genesis_contracts.agent_tasks import AgentChangeSubmission, AgentPlan
-from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, StepKind
+from genesis_contracts.business_map import BusinessMap, EdgeRelation, MapFlow, MapMode, StepKind
 from genesis_contracts.change_report import ChangeReport, validate_change_report_against_map
 from genesis_contracts.fingerprint import fact_fingerprint
 from genesis_contracts.map_tasks import EvidenceCite, FlowSubmission
@@ -34,7 +34,12 @@ from genesis_ci.business_map.loop import (
     read_source,
     search_source,
 )
-from genesis_ci.business_map.store import evidence_bundle, session_root, write_json
+from genesis_ci.business_map.store import (
+    evidence_bundle,
+    left_out_limitation,
+    session_root,
+    write_json,
+)
 from genesis_ci.snapshot_store import load_snapshot
 
 from .changes import (
@@ -638,6 +643,9 @@ class Workspace:
 
     def _publish(self, business_map: BusinessMap) -> ChangeReport | None:
         """Store the map, the change report that follows from it, and their excerpts."""
+        # The map of a change session covers what the review analyzed, not the whole
+        # project; it says so.
+        business_map = business_map.model_copy(update={"mode": MapMode(self.session["mode"])})
         write_json(
             self.root / "business-map.json",
             business_map.model_dump(mode="json", exclude_none=True),
@@ -732,8 +740,11 @@ class Workspace:
         ]
 
     def _other_files(self) -> list[dict]:
+        return self._changed_files().get("files", [])
+
+    def _changed_files(self) -> dict:
         path = self.root / "changed-files.json"
-        return self._read("changed-files.json")["files"] if path.is_file() else []
+        return self._read("changed-files.json") if path.is_file() else {}
 
     def _report(self, business_map: BusinessMap) -> ChangeReport:
         changes, truncated = self._line_changes
@@ -825,6 +836,9 @@ class Workspace:
                     "affects_completeness": True,
                 }
             )
+        left_out = self._changed_files().get("left_out")
+        if left_out:
+            limitations.append(left_out_limitation(left_out))
         waiting = len(self._waiting())
         if waiting:
             limitations.append(
@@ -843,7 +857,7 @@ class Workspace:
             },
             "changes": items,
             "unanalyzed_changes": [
-                {**item, "reason": "Not a source file Genesis reads."}
+                {"reason": "Not a source file Genesis reads.", **item}
                 for item in self._other_files()
             ],
             "finding_changes": finding_changes,

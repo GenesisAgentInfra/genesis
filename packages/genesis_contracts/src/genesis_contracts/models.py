@@ -15,6 +15,18 @@ class ContractModel(BaseModel):
     )
 
 
+def any_named(*fields: str) -> ConfigDict:
+    """Config whose JSON Schema asks for at least one of `fields`, each a list, to be
+    non-empty: what a model validator checks, said to readers of the exported schema."""
+
+    def extra(schema: dict) -> None:
+        schema["anyOf"] = [
+            {"required": [name], "properties": {name: {"minItems": 1}}} for name in fields
+        ]
+
+    return ConfigDict(json_schema_extra=extra)
+
+
 class SectionStatus(StrEnum):
     analyzed = "analyzed"
     insufficient_context = "insufficient_context"

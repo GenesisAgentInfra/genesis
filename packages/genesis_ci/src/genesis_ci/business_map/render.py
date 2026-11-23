@@ -79,6 +79,7 @@ VERDICT_TEXT = {
 }
 
 
+SAID_ABOVE = '<p class="muted">Explained together with the change above.</p>'
 STATIC_REACHED = "called by tests, not assessed"
 VERDICT_LEGEND = (
     "Test verdicts come from reading source, never from running tests. covered: a test runs "
@@ -188,16 +189,9 @@ def _side_text(part) -> str:
     return f'<code class="side">{escape(part.text)}</code>'
 
 
-def _change_card(item, refs, excerpts, reason: str | None, *, anchor: bool = True) -> str:
-    """One change, as it is shown on the step it belongs to."""
-    body = (
-        f'<p><span class="what">{escape(item.kind.value.replace("_", " "))}</span></p>'
-        f"<p>{_side_text(item.before)} → {_side_text(item.after)}</p>"
-    )
-    if item.detail:
-        body += f"<p>{escape(item.detail)}</p>"
-    if reason:
-        body += f'<p class="muted">{escape(reason)}</p>'
+def _said(item, refs, excerpts) -> str:
+    """The agent's explanation of a change and what the tests say about it."""
+    body = ""
     if item.explanation:
         body += f"<p>{escape(item.explanation.summary)}"
         if item.explanation.effect:
@@ -221,6 +215,22 @@ def _change_card(item, refs, excerpts, reason: str | None, *, anchor: bool = Tru
             named = _tag("named") if "assessed" in case.tags else ""
             body += f'<p class="muted" style="margin:2px 0 0 0">{escape(case.test_id)}{named}</p>'
             body += _evidence(case.evidence_ids, refs, excerpts)
+    return body
+
+
+def _change_card(
+    item, refs, excerpts, reason: str | None, *, anchor: bool = True, said: str | None = None
+) -> str:
+    """One change, as it is shown on the step it belongs to."""
+    body = (
+        f'<p><span class="what">{escape(item.kind.value.replace("_", " "))}</span></p>'
+        f"<p>{_side_text(item.before)} → {_side_text(item.after)}</p>"
+    )
+    if item.detail:
+        body += f"<p>{escape(item.detail)}</p>"
+    if reason:
+        body += f'<p class="muted">{escape(reason)}</p>'
+    body += _said(item, refs, excerpts) if said is None else said
     sides = [
         *(item.before.evidence_ids if item.before else ()),
         *(item.after.evidence_ids if item.after else ()),
@@ -245,16 +255,31 @@ class _Overlay:
         self.finding_status = {
             item.finding.finding_id: item.status for item in report.finding_changes
         }
+        # One explanation can cover several changes and is stored on each of them. Changes
+        # told in the same words at one place sit together, and what they share is shown once.
+        placed: dict[tuple, list] = {}
         for item in report.changes:
-            if item.projection.status == "unassigned":
-                self.off_map.append(
-                    f"<li>{_change_card(item, refs, excerpts, item.projection.reason)}</li>"
-                )
-                continue
             for index, target in enumerate((item.projection, *item.other_projections)):
-                card = _change_card(item, refs, excerpts, target.reason, anchor=index == 0)
-                self.count[target.flow_id] = self.count.get(target.flow_id, 0) + 1
-                if target.status == "projected":
+                if target.status != "unassigned":
+                    self.count[target.flow_id] = self.count.get(target.flow_id, 0) + 1
+                gone = target.removed_step.step_id if target.removed_step else None
+                place = (target.flow_id, target.step_id, gone)
+                said = _said(item, refs, excerpts)
+                key = (place, said if item.explanation else item.change_id)
+                placed.setdefault(key, []).append((item, target, index, said))
+        for members in placed.values():
+            for order, (item, target, index, said) in enumerate(members):
+                card = _change_card(
+                    item,
+                    refs,
+                    excerpts,
+                    target.reason,
+                    anchor=index == 0,
+                    said=SAID_ABOVE if order else said,
+                )
+                if target.status == "unassigned":
+                    self.off_map.append(f"<li>{card}</li>")
+                elif target.status == "projected":
                     self.on_step.setdefault(target.step_id, []).append(card)
                 else:
                     self.removed.setdefault(target.flow_id, []).append(
@@ -411,7 +436,7 @@ def _off_map(report: ChangeReport, overlay: _Overlay, refs, excerpts) -> str:
     )
     risks = "".join(
         f"<li>{escape(item.severity.value)}: {escape(item.statement)}{_tag('agent reading')}"
-        f'<span class="muted"> · {escape(", ".join(item.change_ids))}</span>'
+        f'<span class="muted"> · {escape(", ".join([*item.change_ids, *item.paths]))}</span>'
         f"{_evidence(item.evidence_ids, refs, excerpts)}</li>"
         for item in report.risks
     )
@@ -565,9 +590,12 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
         # the code the risk cites, or else the functions of the changes it is about.
         where = [_where(refs[item]) for item in risk.evidence_ids if item in refs]
         where = where or [symbols[item] for item in risk.change_ids if item in symbols]
+        # A file Genesis did not analyze has no code to cite: the risk names it.
+        where += risk.paths
         return f" (at {', '.join(dict.fromkeys(where))})" if where else ""
 
-    def told(item, indent: str, reason: str | None) -> list[str]:
+    def said(item) -> tuple[str, ...]:
+        # What a change does and what the tests say about it; the first line heads its entry.
         if item.explanation:
             text = item.explanation.summary
             if item.explanation.effect:
@@ -575,16 +603,36 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
         else:
             text = f"{item.kind.value.replace('_', ' ')} in {item.symbol_id}"
         verdict = f" (tests: {verdict_text(item.tests)})" if item.tests else ""
-        lines = [f"{indent}- {text}{verdict}"]
-        if reason:
-            # On the map this says how the step was chosen; off it, why there is none.
-            placed = item.projection.status != "unassigned"
-            lines.append(f"{indent}  - {'placement: ' if placed else ''}{reason}")
+        lines = [f"{text}{verdict}"]
         if item.tests and item.tests.note and item.explanation:
-            lines.append(f"{indent}  - {item.tests.note}")
+            lines.append(item.tests.note)
         if item.tests and item.tests.items:
-            lines.append(f"{indent}  - tests: {tests_line(item.tests)}")
-        return lines
+            lines.append(f"tests: {tests_line(item.tests)}")
+        return tuple(lines)
+
+    def together(found) -> list[list]:
+        # One explanation can cover several changes, and each change stores a copy. At one
+        # place, explained changes that would read the same are one entry.
+        groups: dict = {}
+        for item, reason in found:
+            groups.setdefault(said(item) if item.explanation else item.change_id, []).append(
+                (item, reason)
+            )
+        return list(groups.values())
+
+    def told(found, indent: str) -> list[str]:
+        item = found[0][0]
+        head, *rest = said(item)
+        lines = [f"{indent}- {head}"]
+        if len(found) > 1:
+            sides = [(member.after or member.before).evidence_ids for member, _ in found]
+            where = dict.fromkeys(_where(refs[ref]) for ids in sides for ref in ids)
+            lines.append(f"{indent}  - covers {len(found)} changes: {', '.join(where)}")
+        # On the map a reason says how the step was chosen; off it, why there is none.
+        placed = item.projection.status != "unassigned"
+        for reason in dict.fromkeys(reason for _, reason in found if reason):
+            lines.append(f"{indent}  - {'placement: ' if placed else ''}{reason}")
+        return lines + [f"{indent}  - {line}" for line in rest]
 
     on_step: dict[tuple[str, str], list] = {}
     removed: dict[str, list] = {}
@@ -617,15 +665,20 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
             found = on_step.get((flow.flow_id, step.step_id))
             if found:
                 lines.append(f"- {step.name}")
-                for item, target in found:
-                    lines += told(item, "  ", target.reason)
+                for group in together((item, target.reason) for item, target in found):
+                    lines += told(group, "  ")
+        gone: dict[tuple[str, str], list] = {}
         for item, target in removed.get(flow.flow_id, ()):
-            lines.append(f"- removed: {target.removed_step.name}")
-            lines += told(item, "  ", None)
+            step = target.removed_step
+            gone.setdefault((step.step_id, step.name), []).append((item, None))
+        for (_, name), found in gone.items():
+            lines.append(f"- removed: {name}")
+            for group in together(found):
+                lines += told(group, "  ")
     if apart:
         lines += ["", "## Changes not on the map", ""]
-        for item in apart:
-            lines += told(item, "", item.projection.reason)
+        for group in together((item, item.projection.reason) for item in apart):
+            lines += told(group, "")
     if report.risks:
         lines += ["", "## Risks seen in the changes (agent reading)", ""]
         lines += [

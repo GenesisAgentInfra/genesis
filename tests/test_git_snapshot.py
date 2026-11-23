@@ -1,9 +1,10 @@
 import os
 import shutil
 import subprocess
+import time
 
 import pytest
-from genesis_ci.git_snapshot import SnapshotError, capture_snapshot
+from genesis_ci.git_snapshot import SnapshotError, capture_snapshot, changed_paths
 from genesis_ci.snapshot_store import load_snapshot, save_snapshot
 from genesis_ci.source_snapshot import EvidenceRegistry, FrozenSourceSnapshot
 from genesis_contracts.models import EvidenceSide, ReferenceRange
@@ -363,6 +364,392 @@ def test_git_metadata_budget_is_bounded(repo):
     assert caught.value.code == "metadata_budget"
 
 
+def test_a_worktree_capture_says_whether_it_differs_from_its_commit(repo):
+    def dirty(**spec):
+        return capture_snapshot(repo, SnapshotSpec(**spec)).worktree_dirty
+
+    assert dirty() is False
+    # A changed mode, a file outside the scope and untracked source left out do not count.
+    (repo / "src/helper.py").chmod(0o755)
+    write(repo, "notes.md", "draft\n")
+    write(repo, "src/scratch.py", "scratch = 1\n")
+    assert dirty() is False
+    # Untracked source that is read is not in the commit.
+    assert dirty(include_untracked=True) is True
+    (repo / "src/scratch.py").unlink()
+    write(repo, "src/helper.py", "def run():\n    return 2\n")
+    assert dirty() is True
+    # A commit is never dirty, whatever the working tree holds.
+    assert dirty(head="HEAD") is False
+    git(repo, "checkout", "--", "src/helper.py")
+    (repo / "tests/test_app.py").unlink()
+    assert dirty() is True
+    # A folder left out on purpose is not compared.
+    assert dirty(exclude_paths=("tests",)) is False
+
+
+def converted_checkout(repo, tmp_path):
+    """Files the checkout converts as their attributes ask, and a filter that must not run."""
+    marker = tmp_path / "filtered"
+    write(repo, ".gitattributes", "*.py text eol=crlf filter=evil\nsrc/app.py ident\n")
+    write(repo, "src/app.py", "# $Id$\nfrom .helper import run\n")
+    commit(repo)
+    for path in ("src/helper.py", "src/app.py"):
+        (repo / path).unlink()
+        git(repo, "checkout", "--", path)
+    git(repo, "config", "filter.evil.clean", f"touch {marker}")
+    git(repo, "config", "filter.evil.process", f"touch {marker}")
+    git(repo, "config", "core.safecrlf", "true")
+    assert (repo / "src/helper.py").read_bytes() == b"def run():\r\n    return 1\r\n"
+    assert (repo / "src/app.py").read_bytes().startswith(b"# $Id: ")
+    return marker
+
+
+def test_a_clean_checkout_with_converted_line_endings_is_not_dirty(repo, tmp_path):
+    marker = converted_checkout(repo, tmp_path)
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    write(repo, "src/helper.py", "def run():\r\n    return 2\r\n")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+    # Git converted the bytes; no filter driver of the repository ran.
+    assert not marker.exists()
+
+
+def test_a_file_with_stale_metadata_is_compared_as_git_would_store_it(repo, tmp_path):
+    marker = converted_checkout(repo, tmp_path)
+    index = repo / ".git" / "index"
+
+    def changed():
+        # The index cannot vouch for the files any more, so their bytes are compared.
+        later = time.time() + 60
+        for path in ("src/helper.py", "src/app.py"):
+            os.utime(repo / path, (later, later))
+        before = index.read_bytes()
+        found = changed_paths(repo, "HEAD", None)
+        assert index.read_bytes() == before
+        return found
+
+    assert changed() == []
+    write(repo, "src/helper.py", "def run():\r\n    return 2\r\n")
+    assert changed() == [("M", "src/helper.py")]
+    assert not marker.exists()
+
+
+def test_a_sha256_repository_is_compared_in_its_own_hash(tmp_path):
+    repo = tmp_path / "sha256"
+    repo.mkdir()
+    git(repo, "init", "-q", "--object-format=sha256")
+    git(repo, "config", "user.name", "Snapshot Test")
+    git(repo, "config", "user.email", "snapshot@example.invalid")
+    write(repo, "app.py", "value = 1\n")
+    commit(repo)
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    write(repo, "app.py", "value = 2\n")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+
+
+def settle(repo, *paths):
+    """Make the index vouch for `paths`, as it does for a checkout made a while ago."""
+    earlier = time.time() - 600
+    for path in paths:
+        os.utime(repo / path, (earlier, earlier))
+    git(repo, "update-index", "-q", "--refresh")
+
+
+def stale(repo, *paths):
+    """Leave the index unable to vouch for `paths`, as a tool that touched them does."""
+    later = time.time() + 60
+    for path in paths:
+        os.utime(repo / path, (later, later))
+
+
+def user_configuration(tmp_path, monkeypatch, autocrlf):
+    """The user's own Git configuration, which a capture reads `core.autocrlf` from."""
+    if autocrlf is not None:
+        path = tmp_path / "user.gitconfig"
+        path.write_text(f"[core]\n\tautocrlf = {autocrlf}\n")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
+
+
+def test_a_checkout_the_user_configuration_converts_is_not_dirty(repo, tmp_path, monkeypatch):
+    # Git for Windows turns CRLF conversion on in its own configuration, outside the
+    # repository, and checks files out with CRLF line endings.
+    user_configuration(tmp_path, monkeypatch, "true")
+    for path in ("src/app.py", "src/helper.py"):
+        (repo / path).unlink()
+        git(repo, "-c", "core.autocrlf=true", "checkout", "--", path)
+    assert (repo / "src/helper.py").read_bytes() == b"def run():\r\n    return 1\r\n"
+    assert git(repo, "-c", "core.autocrlf=true", "status", "--porcelain") == b""
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert snapshot.worktree_dirty is False
+    stale(repo, "src/app.py", "src/helper.py")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    assert changed_paths(repo, "HEAD", None) == []
+    write(repo, "src/helper.py", "def run():\r\n    return 2\r\n")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+    assert changed_paths(repo, "HEAD", None) == [("M", "src/helper.py")]
+
+
+def test_a_file_a_filter_driver_converts_is_clean_while_the_index_vouches_for_it(repo, tmp_path):
+    marker = tmp_path / "filtered"
+    git(repo, "config", "filter.up.clean", f"touch {marker}; tr a-z A-Z")
+    git(repo, "config", "filter.up.smudge", "tr A-Z a-z")
+    write(repo, ".gitattributes", "settings/*.py filter=up\n")
+    write(repo, "settings/conf.py", "x = 1\n")
+    commit(repo)
+    (repo / "settings/conf.py").unlink()
+    git(repo, "checkout", "--", "settings/conf.py")
+    assert git(repo, "show", "HEAD:settings/conf.py") == b"X = 1\n"
+    assert (repo / "settings/conf.py").read_bytes() == b"x = 1\n"
+    settle(repo, "settings/conf.py")
+    assert git(repo, "status", "--porcelain") == b""
+    marker.unlink()
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    write(repo, "settings/conf.py", "x = 2\n")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+    # The index told; the driver, a command of the repository, never ran.
+    assert not marker.exists()
+
+
+def test_converted_files_are_compared_in_one_process(repo, monkeypatch):
+    from genesis_ci.git_snapshot import _Git
+
+    write(repo, ".gitattributes", "*.py text eol=crlf\n")
+    paths = [f"pkg/module_{index}.py" for index in range(12)]
+    for index, path in enumerate(paths):
+        write(repo, path, f"value = {index}\n")
+    commit(repo)
+    for path in paths:
+        (repo / path).unlink()
+    git(repo, "checkout", "--", "pkg")
+    assert (repo / paths[0]).read_bytes() == b"value = 0\r\n"
+    calls = []
+    run = _Git.run
+
+    def counted(self, *args, **options):
+        calls.append(args)
+        return run(self, *args, **options)
+
+    monkeypatch.setattr(_Git, "run", counted)
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    assert not [args for args in calls if "hash-object" in args]
+    # With timestamps the index cannot vouch for, Git converts them all in one go.
+    stale(repo, *paths)
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    assert changed_paths(repo, "HEAD", None) == []
+    assert len([args for args in calls if "hash-object" in args]) == 2
+
+
+def test_without_a_listing_from_git_every_file_is_compared_byte_by_byte(
+    repo, tmp_path, monkeypatch
+):
+    from genesis_ci.git_snapshot import _StoredBlobs
+
+    def refused(self, base):
+        raise SnapshotError("metadata_budget", "Git output exceeded its byte budget.")
+
+    converted_checkout(repo, tmp_path)
+    monkeypatch.setattr(_StoredBlobs, "listed", refused)
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    (repo / "tests/test_app.py").unlink()
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+
+
+def test_a_capture_builds_what_it_knows_of_its_inputs_once(repo):
+    class Counted(tuple):
+        reads = 0
+
+        def __iter__(self):
+            Counted.reads += 1
+            return super().__iter__()
+
+    paths = [f"web/module_{index}.ts" for index in range(40)]
+    for path in paths:
+        write(repo, path, "export const value = 1;\n")
+    commit(repo)
+    spec = SnapshotSpec(inputs=[{"path": path, "kind": "code"} for path in paths])
+    spec = spec.model_copy(update={"inputs": Counted(spec.inputs)})
+    snapshot = capture_snapshot(repo, spec, reads=lambda path: path.endswith(".ts"))
+    assert len(snapshot.source.list_files(HEAD)) > len(paths)
+    # Not once for every path it considers: an input list can name every file.
+    assert Counted.reads < 10
+
+
+def test_a_converted_file_is_recorded_with_the_digest_of_its_commit(repo, tmp_path):
+    from genesis_ci.source_snapshot import content_digest
+
+    converted_checkout(repo, tmp_path)
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert snapshot.worktree_dirty is False
+    # Converted by its line endings, and by `ident`, which only Git can undo.
+    assert snapshot.commit_digests == {
+        path: content_digest(git(repo, "show", f"HEAD:{path}"))
+        for path in ("src/app.py", "src/helper.py")
+    }
+    # The snapshot itself holds the bytes as read.
+    read = {item.path: item.content_digest for item in snapshot.capture.manifest.files}
+    assert read["src/helper.py"] == content_digest(b"def run():\r\n    return 1\r\n")
+    stale(repo, "src/app.py", "src/helper.py")
+    assert capture_snapshot(repo, SnapshotSpec()).commit_digests == snapshot.commit_digests
+    assert capture_snapshot(repo, SnapshotSpec(head="HEAD")).commit_digests == {}
+
+
+@pytest.mark.parametrize(
+    ("attributes", "autocrlf", "dirty"),
+    [
+        ("", None, True),
+        ("", "input", False),
+        ("*.py text\n*.sh text\n", None, False),
+        ("*.py -text\n*.sh -text\n", "true", True),
+        ("*.py binary\n*.sh binary\n", "true", True),
+    ],
+)
+def test_line_endings_alone_differ_only_where_git_converts_them(
+    repo, tmp_path, monkeypatch, attributes, autocrlf, dirty
+):
+    from genesis_ci.source_snapshot import content_digest
+
+    user_configuration(tmp_path, monkeypatch, autocrlf)
+    write(repo, ".gitattributes", attributes)
+    write(repo, "run.sh", "make dist\n")
+    commit(repo)
+    # Rewritten with CRLF line endings, as an editor set to them does.
+    write(repo, "src/helper.py", "def run():\r\n    return 1\r\n")
+    write(repo, "run.sh", "make dist\r\n")
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert snapshot.worktree_dirty is dirty
+    committed = content_digest(b"def run():\n    return 1\n")
+    assert snapshot.commit_digests == ({} if dirty else {"src/helper.py": committed})
+    listed = changed_paths(repo, "HEAD", None)
+    assert listed == ([("M", "run.sh"), ("M", "src/helper.py")] if dirty else [])
+    # As Git itself compares the content (`git status` may go by the size alone), and
+    # the same once the change is staged.
+    options = ["-c", f"core.autocrlf={autocrlf}"] if autocrlf else []
+    assert bool(git(repo, *options, "diff", "--name-only")) is dirty
+    git(repo, *options, "add", "src/helper.py", "run.sh")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is dirty
+
+
+def test_a_file_git_is_told_not_to_check_is_compared_by_its_bytes(repo):
+    git(repo, "update-index", "--assume-unchanged", "src/helper.py", "tests/test_app.py")
+    write(repo, "src/helper.py", "def run():\n    return 2\n")
+    # Git itself no longer looks at it.
+    assert git(repo, "status", "--porcelain") == b""
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (True, {})
+    write(repo, "src/helper.py", "def run():\n    return 1\n")
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is False
+    (repo / "tests/test_app.py").unlink()
+    assert capture_snapshot(repo, SnapshotSpec()).worktree_dirty is True
+
+
+def test_a_file_added_while_git_ignores_timestamps_is_compared_by_its_bytes(repo):
+    git(repo, "config", "core.ignoreStat", "true")
+    write(repo, "src/rates.py", "rate = 1\n")
+    commit(repo)
+    assert b"h src/rates.py" in git(repo, "ls-files", "-v")
+    write(repo, "src/rates.py", "rate = 2\n")
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (True, {})
+
+
+def test_a_file_restored_while_it_is_read_is_read_again(repo, monkeypatch):
+    from genesis_ci.git_snapshot import _StoredBlobs
+
+    write(repo, "src/helper.py", "def run():\n    return 2\n")
+    listed = _StoredBlobs.listed
+    restored = []
+
+    def restoring(self, base):
+        if not restored:
+            # Restored after the file was read, before Git lists what differs.
+            git(repo, "checkout", "--", "src/helper.py")
+            restored.append(base)
+        return listed(self, base)
+
+    monkeypatch.setattr(_StoredBlobs, "listed", restoring)
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    # What was read and what is said of it agree.
+    assert snapshot.source.read_bytes(HEAD, "src/helper.py") == b"def run():\n    return 1\n"
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (False, {})
+
+
+@pytest.mark.parametrize("change", ["edit", "delete"])
+def test_a_file_changed_while_git_converts_it_is_read_again(repo, monkeypatch, change):
+    from genesis_ci.git_snapshot import _Git
+    from genesis_ci.source_snapshot import content_digest
+
+    # A path may begin with a quote; Git is given it quoted.
+    paths = ("src/app.py", 'src/"quoted".py')
+    write(repo, ".gitattributes", "src/*.py ident\n")
+    for path in paths:
+        write(repo, path, "# $Id$\nvalue = 1\n")
+    commit(repo)
+    for path in paths:
+        (repo / path).unlink()
+    git(repo, "checkout", "--", *paths)
+    stale(repo, *paths)
+    run = _Git.run
+    changed = []
+
+    def changing(self, *args, **options):
+        if "hash-object" in args and not changed:
+            # After the capture read it, before Git reads it again to convert it.
+            if change == "edit":
+                write(repo, "src/app.py", "# $Id$\nvalue = 2\n")
+            else:
+                (repo / "src/app.py").unlink()
+            changed.append(args)
+        return run(self, *args, **options)
+
+    monkeypatch.setattr(_Git, "run", changing)
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert changed and snapshot.worktree_dirty is True
+    assert ("src/app.py" in snapshot.source.list_files(HEAD)) is (change == "edit")
+    committed = content_digest(b"# $Id$\nvalue = 1\n")
+    assert snapshot.commit_digests == {'src/"quoted".py': committed}
+
+
+def test_a_file_put_back_and_edited_again_while_git_converts_it_is_dirty(repo, monkeypatch):
+    from genesis_ci.git_snapshot import _Git
+
+    write(repo, ".gitattributes", "src/*.py text eol=crlf\n")
+    write(repo, "src/app.py", "value = 1\n")
+    commit(repo)
+    write(repo, "src/app.py", "value = 2\r\n")
+    run = _Git.run
+    flipped = []
+
+    def flipping(self, *args, **options):
+        if "hash-object" not in args or flipped:
+            return run(self, *args, **options)
+        # Git reads the commit's bytes; the same edit is back before the second read.
+        flipped.append(args)
+        write(repo, "src/app.py", "value = 1\r\n")
+        try:
+            return run(self, *args, **options)
+        finally:
+            write(repo, "src/app.py", "value = 2\r\n")
+
+    monkeypatch.setattr(_Git, "run", flipping)
+    snapshot = capture_snapshot(repo, SnapshotSpec())
+    assert flipped and snapshot.source.read_bytes(HEAD, "src/app.py") == b"value = 2\r\n"
+    assert (snapshot.worktree_dirty, snapshot.commit_digests) == (True, {})
+    flipped.clear()
+    assert changed_paths(repo, "HEAD", None) == [("M", "src/app.py")]
+    assert flipped
+
+
+def test_git_is_given_each_path_to_convert_quoted_as_it_reads_it_back(repo):
+    from genesis_ci.git_snapshot import SnapshotLimits, _Git, _StoredBlobs
+
+    # Names no capture reads, yet quoted so that Git would read them back unchanged.
+    names = ['"lead.py', 'a\\"b.py', "back\\slash.py", "trail\\"]
+    for index, name in enumerate(names):
+        write(repo, name, f"value = {index}\n")
+    found = _StoredBlobs(_Git(repo, SnapshotLimits())).ids(dict.fromkeys(names, b""))
+    assert found == {name: git(repo, "hash-object", "--", name).decode().strip() for name in names}
+
+
 def test_executable_mode_changes_are_captured_and_affect_worktree_id(repo):
     first = capture_snapshot(repo, SnapshotSpec(base="HEAD"))
     (repo / "src/helper.py").chmod(0o755)
@@ -419,12 +806,12 @@ def test_live_changes_fail_after_bounded_retries(repo, monkeypatch):
     original = module._read_worktree
     counter = 0
 
-    def unstable(root, path, limit):
+    def unstable(root, path, limit, *rest):
         nonlocal counter
         if path == "src/helper.py":
             counter += 1
             write(repo, path, f"counter = {counter}\n")
-        return original(root, path, limit)
+        return original(root, path, limit, *rest)
 
     monkeypatch.setattr(module, "_read_worktree", unstable)
     with pytest.raises(SnapshotError) as caught:
@@ -439,13 +826,13 @@ def test_single_worktree_change_is_retried_successfully(repo, monkeypatch):
     original = module._read_worktree
     reads = 0
 
-    def once(root, path, limit):
+    def once(root, path, limit, *rest):
         nonlocal reads
         if path == "src/helper.py":
             reads += 1
             if reads == 2:
                 write(repo, path, "stable after edit\n")
-        return original(root, path, limit)
+        return original(root, path, limit, *rest)
 
     monkeypatch.setattr(module, "_read_worktree", once)
     result = capture_snapshot(repo, SnapshotSpec(base="HEAD"))
@@ -634,3 +1021,28 @@ def test_a_link_that_may_be_a_directory_still_makes_the_snapshot_partial(repo, t
     commit(repo)
     result = capture_snapshot(repo, SnapshotSpec(base="HEAD", head="HEAD"))
     assert result.capture.manifest.integrity_status == "partial"
+
+
+@pytest.mark.parametrize(
+    ("path", "exclude", "excluded", "on_purpose"),
+    [
+        (".genesis/edd/refund/evals/s1/tests/test.sh", (), ".genesis", ".genesis"),
+        ("services/api/.genesis/edd/x.sh", (), "services/api/.genesis", "services/api/.genesis"),
+        (".genesis/flows.yaml", (), None, None),
+        (".genesis/flows.yaml", (".genesis",), ".genesis", ".genesis"),
+        ("web/node_modules/pkg/index.js", (), "web/node_modules", None),
+        ("build/release.sh", (), "build", None),
+        ("deploy/env/production.yaml", (), "deploy/env", None),
+        ("build/release.sh", ("build",), "build", "build"),
+        ("vendor/lib/util.py", ("vendor",), "vendor", "vendor"),
+        ("vendored.py", ("vendor",), None, None),
+        ("app/core.py", (), None, None),
+    ],
+)
+def test_excluded_by_names_what_every_capture_leaves_out(path, exclude, excluded, on_purpose):
+    from genesis_ci.git_snapshot import excluded_by, left_out_by
+
+    spec = SnapshotSpec(exclude_paths=exclude)
+    # Only Genesis's own folder and what `--exclude` names are left out by choice: no
+    # capture reads a build or dependency folder either, but that is no one's choice.
+    assert (excluded_by(path, spec), left_out_by(path, spec)) == (excluded, on_purpose)

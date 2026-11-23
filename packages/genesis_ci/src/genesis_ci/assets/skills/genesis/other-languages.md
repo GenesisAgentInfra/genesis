@@ -29,12 +29,13 @@ Without `--base` the session maps the code as it is. With `--base REV` it also l
 what changed since that revision. For one commit, a commit range, a branch, a pull
 request or uncommitted work, choose `--base` and `--head` as step 1 of section 5 in
 `SKILL.md` says; the flags mean the same here. Two things differ. This engine does
-not count untracked files and the report does not name them: check `git status -s`
-yourself and add `--include-untracked` when new files belong to the change. And
-`resumed` is true only once a plan is accepted; accepted explanations are kept either
-way. Run `map size` first as `SKILL.md` says: here `prepare` only freezes the files
-and takes seconds, but the file limit applies the same way. The result has
-`session_id`, `files` (how many source files were frozen) and `file_types`.
+not count the untracked files it could read, and the report does not name them:
+check `git status -s` yourself and add `--include-untracked` when new files belong to
+the change. And `resumed` is true only once a plan is accepted; accepted explanations
+are kept either way. Run `map size` first as `SKILL.md` says: here `prepare` only
+freezes the files and takes seconds, but the file limit applies the same way. The
+result has `session_id`, `files` (how many source files were frozen) and
+`file_types`.
 
 Tests are told apart by their path: a folder named `test`, `tests`, `__tests__`,
 `spec`, `specs` or `e2e` anywhere in it, or a file name that starts with `test_` or
@@ -220,7 +221,9 @@ lines with `before` and `after`, and a `placement`.
 - `unanalyzed_changes` are changed files Genesis does not read: configuration,
   documents, and code with an extension it does not read, such as `.mts`. Read them as
   step 4 of section 5 in `SKILL.md` says, and report what they change as your own
-  reading.
+  reading. Changed files in `.genesis/` and in folders passed to `--exclude` are not
+  listed: the limitation `changed_files_left_out` counts them by folder, untracked
+  ones included. Give that count as files Genesis did not analyze.
 - A session lists the first 200 changes. With more, the rest are not listed, `render`
   exits 2 even when every listed change is explained, and the report's limitations say
   `changes_truncated`. Tell the user the review covers only part of the change, and

@@ -132,6 +132,8 @@ def test_the_skill_reads_for_risks_in_a_pass_of_its_own():
     # The pass reads the code outside the changes before writing anything.
     assert step.index("`unchanged_callers`") < step.index("**Inputs.**")
     assert "open the code below before you write a risk" in step
+    # A risk read in a file Genesis did not analyze names that file, not some change.
+    assert "comes from such a file names it in `paths`" in step
     # The intended behaviour is not a risk only for the inputs it is meant for.
     assert "The same behaviour reaching inputs it was not meant\n   for is a risk." in step
     assert "once the explanations are accepted" in step and "a submission of its own" in step

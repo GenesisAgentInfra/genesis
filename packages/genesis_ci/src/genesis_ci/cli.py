@@ -64,6 +64,9 @@ REPO_HELP = "Git root of the project"
 SESSION_HELP = "Session id printed by `map prepare`"
 TASK_HELP = "Task id from `map status`"
 UNTRACKED_HELP = "Also read new files Git does not track yet"
+EXCLUDE_HELP = (
+    "Leave out a file or folder, by its path from the repository root. Repeatable. No wildcards"
+)
 
 
 class Engine(StrEnum):
@@ -94,6 +97,7 @@ def map_size(
     base: str | None = typer.Option(None, "--base", help="Count for a review from this revision"),
     head: str | None = typer.Option(None, "--head", help="Default: the working tree"),
     include_untracked: bool = typer.Option(False, "--include-untracked", help=UNTRACKED_HELP),
+    exclude: list[str] | None = typer.Option(None, "--exclude", help=EXCLUDE_HELP),
     max_files: int | None = typer.Option(
         None, "--max-files", min=1, help="The limit `prepare` will use (default 50000)"
     ),
@@ -101,13 +105,19 @@ def map_size(
     """Count the source files `prepare` would read and estimate how long it takes.
 
     Reads file names only and returns in seconds. Run it before `prepare` on a project
-    you have not prepared, and tell the user when it says `tell_user`.
+    you have not prepared, with the flags you will give `prepare`, and tell the user
+    when it says `tell_user`.
     """
     from .size import estimate
 
     try:
         result = estimate(
-            repo, base=base, head=head, include_untracked=include_untracked, max_files=max_files
+            repo,
+            base=base,
+            head=head,
+            include_untracked=include_untracked,
+            exclude=tuple(exclude or ()),
+            max_files=max_files,
         )
     except (ValueError, OSError) as error:
         raise _map_failure(error) from error
@@ -120,12 +130,7 @@ def map_prepare(
     base: str | None = typer.Option(None, "--base", help="Compare against this revision"),
     head: str | None = typer.Option(None, "--head", help="Default: the working tree"),
     include_untracked: bool = typer.Option(False, "--include-untracked", help=UNTRACKED_HELP),
-    exclude: list[str] | None = typer.Option(
-        None,
-        "--exclude",
-        help="Leave out a file or folder, by its path from the repository root. "
-        "Repeatable. No wildcards",
-    ),
+    exclude: list[str] | None = typer.Option(None, "--exclude", help=EXCLUDE_HELP),
     engine: Engine = typer.Option(
         Engine.auto,
         "--engine",
@@ -139,6 +144,14 @@ def map_prepare(
         min=1,
         help="Read up to this many source files (default 50000); `map size` counts them",
     ),
+    entries_from: Path | None = typer.Option(
+        None,
+        "--entries-from",
+        help="Start from the entries the agent proposed in this business-map.json, and from "
+        "its flows of several entries, by its path from the repository root or absolute, "
+        "instead of from the latest map that proposed entries or grouped several in one "
+        "flow. Python engine only",
+    ),
 ) -> None:
     """Freeze a snapshot and open a session. Calls no model.
 
@@ -148,6 +161,8 @@ def map_prepare(
     A repository with many Python files is analyzed in several worker processes. Set
     GENESIS_WORKERS to choose how many; 1 keeps everything in one process.
     """
+    from .business_map.loop import LoopError
+
     options = {
         "base": base,
         "head": head,
@@ -155,16 +170,24 @@ def map_prepare(
         "exclude": tuple(exclude or ()),
         "max_files": max_files,
     }
+    python_only = (
+        "Only the Python engine supports --entries-from: the agent engine keeps no entries "
+        "from a map. Run prepare without it."
+    )
     try:
         result = None
+        if engine == Engine.agent and entries_from is not None:
+            raise LoopError("invalid_input", python_only)
         if engine != Engine.agent:
             from .business_map.session import UnsupportedRepository, prepare
 
             try:
-                result = prepare(repo, **options)
-            except UnsupportedRepository:
+                result = prepare(repo, **options, entries_from=entries_from)
+            except UnsupportedRepository as error:
                 if engine == Engine.python:
                     raise
+                if entries_from is not None:
+                    raise LoopError("invalid_input", f"{error} {python_only}") from error
         if result is None:
             from .agent_map import prepare
 
@@ -315,9 +338,11 @@ def map_render(
     map with each change shown on the step it belongs to; `change-report.json` holds
     the same changes as data.
     """
+    from genesis_contracts.business_map import BusinessMap
+
     from .business_map.render import render_html, render_summary
     from .business_map.source_links import github_source_links
-    from .business_map.store import load, load_report, publish, session_root
+    from .business_map.store import load, load_report, map_source, publish, session_root
     from .business_map.view import render_view
     from .snapshot_store import load_snapshot
 
@@ -327,7 +352,6 @@ def map_render(
         missing = stored.get("files_over_size_limit")
         if missing:
             # Part of the project was never read: the result says so and is partial.
-            from genesis_contracts.business_map import BusinessMap
             from genesis_contracts.change_report import ChangeReport
 
             from .size import limitation
@@ -355,6 +379,14 @@ def map_render(
                     }
                 )
         snapshot = load_snapshot(session_root(repo, session) / "snapshot")
+        # What the map was read from, so that a reader can tell whether it still matches.
+        source = map_source(
+            stored, snapshot.capture, business_map.side.value, session_root(repo, session)
+        )
+        if source is not None:
+            business_map = BusinessMap.model_validate(
+                {**business_map.model_dump(mode="json", exclude_none=True), "source": source}
+            )
         source_links = github_source_links(
             repo,
             snapshot.capture,

@@ -608,13 +608,24 @@ def document(snapshot_id, ev, **fields):
         "schema_version": "0.1.0",
         "snapshot_id": snapshot_id,
         "side": "head",
+        "mode": "map",
         **fields,
         "evidence": ev.catalog(),
     }
     return BusinessMap.model_validate(data).model_dump(mode="json", exclude_none=True)
 
 
-def complete(snapshot_id, sources=None, threshold="amount >= THRESHOLD"):
+def source(sources, revision):
+    """What `map render` records about the code a map was read from: no source text."""
+    return {
+        "revision": hashlib.sha1(revision.encode()).hexdigest(),
+        "worktree_dirty": False,
+        "integrity_status": "complete",
+        "files": {path: digest(text) for path, text in sorted(sources.items())},
+    }
+
+
+def complete(snapshot_id, sources=None, threshold="amount >= THRESHOLD", mode="map", **fields):
     ev = Evidence(snapshot_id, sources)
     f = facts(ev, threshold)
     observation = {
@@ -640,7 +651,9 @@ def complete(snapshot_id, sources=None, threshold="amount >= THRESHOLD"):
     return document(
         snapshot_id,
         ev,
+        mode=mode,
         analysis_status="complete",
+        **fields,
         domains=[
             {
                 "domain_id": "domain_expense",
@@ -942,7 +955,7 @@ def change_sample():
     for side, sources in sides.items():
         for path, text in sources.items():
             write(out / side.value / path, text)
-    head_map = complete(snapshot.snapshot_id, HEAD_SOURCES, NEW_THRESHOLD)
+    head_map = complete(snapshot.snapshot_id, HEAD_SOURCES, NEW_THRESHOLD, mode="change")
     report = change_report(snapshot.snapshot_id, head_map)
     documents = {
         "snapshot": snapshot.model_dump(mode="json"),
@@ -969,7 +982,13 @@ def main():
     for path, text in SOURCES.items():
         write(OUT / "head" / path, text)
     write(OUT / "snapshot.json", json.dumps(snapshot.model_dump(mode="json"), indent=2) + "\n")
-    samples = {"complete": complete, "skeleton": skeleton, "partial": partial}
+    samples = {
+        "complete": lambda snapshot_id: complete(
+            snapshot_id, source=source(SOURCES, "fixture-expense-head")
+        ),
+        "skeleton": skeleton,
+        "partial": partial,
+    }
     for name, build in samples.items():
         text = json.dumps(build(snapshot.snapshot_id), ensure_ascii=False, indent=2) + "\n"
         write(OUT / f"expense-{name}.json", text)

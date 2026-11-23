@@ -252,6 +252,8 @@ export interface ChangeRisk {
   severity: Severity
   category?: RiskCategory
   change_ids: string[]
+  /** Changed files Genesis did not analyze that the risk comes from. */
+  paths?: string[]
   evidence_ids?: string[]
 }
 

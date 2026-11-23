@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 from genesis_contracts.models import EvidenceKind, EvidenceSide
@@ -11,12 +12,13 @@ from genesis_contracts.snapshot import SnapshotLimits, SnapshotSpec
 
 from genesis_ci.business_map.store import (
     OTHER_CHANGE_LIMIT,
+    keep_commit_digests,
     keep_private,
     other_changes,
     session_root,
     write_json,
 )
-from genesis_ci.git_snapshot import _Git, capture_snapshot
+from genesis_ci.git_snapshot import _Git, capture_snapshot, may_capture
 from genesis_ci.size import left_out as size_left_out
 from genesis_ci.snapshot_store import save_snapshot
 
@@ -51,8 +53,20 @@ def _is_source(path: str) -> bool:
     return name.rpartition(".")[2] in SOURCE_SUFFIXES and ".min." not in name
 
 
-def source_paths(repo: Path, base: str | None, head: str | None, untracked: bool) -> list[str]:
-    """Every source path either side of the comparison has, by name alone."""
+def _reads(spec: SnapshotSpec) -> Callable[[str], bool]:
+    """The engine's rule for what it reads: source, by name, that a capture can read."""
+    return lambda path: _is_source(path) and may_capture(path, spec)
+
+
+def source_paths(
+    repo: Path,
+    base: str | None,
+    head: str | None,
+    untracked: bool,
+    exclude: tuple[str, ...] = (),
+) -> list[str]:
+    """Every source path either side of the comparison has that a capture can read, by
+    name alone: none in `.genesis/`, a dependency, build or cache folder, or `exclude`."""
     git = _Git(repo, SnapshotLimits())
     found: set[str] = set()
     for ref in (base, head):
@@ -66,7 +80,7 @@ def source_paths(repo: Path, base: str | None, head: str | None, untracked: bool
             found.update(
                 raw.decode("utf-8", "replace") for raw in git.run(*listing).split(b"\0") if raw
             )
-    return sorted(path for path in found if _is_source(path))
+    return sorted(filter(_reads(SnapshotSpec(exclude_paths=exclude)), found))
 
 
 def prepare(
@@ -80,7 +94,7 @@ def prepare(
 ) -> dict:
     """Freeze the source of both sides and open a session. No model is called."""
     repo = repo.expanduser().resolve(strict=True)
-    paths = source_paths(repo, base, head, include_untracked)
+    paths = source_paths(repo, base, head, include_untracked, exclude)
     spec = SnapshotSpec(
         base=base,
         head=head,
@@ -92,7 +106,9 @@ def prepare(
             for path in paths
         ],
     )
-    snapshot = capture_snapshot(repo, spec)
+    # The working tree is listed from the index, so a file removed with `git rm` is not
+    # among the inputs; the capture still tells that the commit has it.
+    snapshot = capture_snapshot(repo, spec, reads=_reads(spec))
     manifest = snapshot.capture.manifest
     frozen = [item.path for item in manifest.files if item.side == EvidenceSide.head]
     if not frozen:
@@ -110,27 +126,35 @@ def prepare(
         "mode": "map" if base is None else "change",
         "base_revision": manifest.base_revision,
         "head_revision": manifest.head_revision,
+        "worktree_dirty": snapshot.worktree_dirty,
         "integrity_status": manifest.integrity_status,
     }
     missing = size_left_out(snapshot.capture)
     if missing:
         session["files_over_size_limit"] = missing
     if base is not None:
-        others = other_changes(
+        others, left_out = other_changes(
             repo,
             manifest.base_revision,
             snapshot.capture.head_commit if head is not None else None,
             {item.path for item in manifest.files},
+            spec,
+            {item.path: item.reason for item in snapshot.capture.omissions},
         )
         session.update(base_ref=base, head_ref=head)
         write_json(
             root / "changed-files.json",
-            {"total": len(others), "files": others[:OTHER_CHANGE_LIMIT]},
+            {
+                "total": len(others),
+                "files": others[:OTHER_CHANGE_LIMIT],
+                **({"left_out": left_out} if left_out else {}),
+            },
         )
     if not (root / "snapshot").exists():
         # Later commands read source only from this frozen copy, never from the live tree.
         save_snapshot(snapshot, root / "snapshot")
     write_json(root / "session.json", session)
+    keep_commit_digests(root, snapshot)
     from .workspace import Workspace
 
     workspace = Workspace(repo, session_id)

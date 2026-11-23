@@ -2,7 +2,18 @@
   "schema_version": "0.1.0",
   "snapshot_id": "sha256:002d490916cd70745776b621dfe942b5a9dd6a7d5a37104709904da308ef9bf7",
   "side": "head",
+  "mode": "map",
   "analysis_status": "complete",
+  "source": {
+    "revision": "482afac67b068a2eee9dfa7da5d8189034225faf",
+    "worktree_dirty": false,
+    "integrity_status": "complete",
+    "files": {
+      "src/expense/api.py": "sha256:041b0ffe5ea9b8037efd9dcb13f0d69bf1e89fc241806d09e9318efad4fc6c38",
+      "src/expense/review.py": "sha256:7c3c94a43cfafe825e92934fd2a938c69eecfc30ccf7dd3d849e6ff0c269b0b6",
+      "src/expense/store.py": "sha256:47306b4a2a626119bd2453b22d55fdb2fd53d3f4aaf12cec1132b01b0f0953be"
+    }
+  },
   "domains": [
     {
       "domain_id": "domain_expense",

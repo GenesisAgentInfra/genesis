@@ -28,8 +28,9 @@ the agent compares with the point where your branch started.
 Uncommitted work is a review of its own, compared with your last commit: ask for it,
 as in the third example above. New files Git does not track yet are included when the
 agent judges they belong to the change. In a Python project the report names any it
-left out. In other languages it does not: the agent checks for new files itself before
-it starts.
+left out, except new files in a dependency, build or cache folder no tracked file is
+in, such as a virtual environment: it counts those by folder. In other languages it
+does not: the agent checks for new files itself before it starts.
 
 When there is nothing to compare (no change since that revision, or a revision your
 local repository does not have), the agent says so. It suggests another revision, a
@@ -47,6 +48,12 @@ with the most changes. When more are affected, it names the others, which stay d
 from the code alone, and offers to describe them. If you ask for a quick answer, it
 skips the flows. In other languages it describes the flows the changed code belongs to
 before it explains the changes, because that is how a change gets its place on the map.
+In a Python project mapped before, the review starts from the latest map in which the
+agent found entry points of its own or grouped several into one flow: from the entry
+points that map used and the way it grouped them into flows. So a change lands on the
+flow the map showed, as long as the code that starts that flow is all still there. Ask
+it to start from a committed copy of a map instead, such as the one Genesis EDD keeps
+with a spec, and every clone of the project gets the same flows.
 
 ## Map the project
 
@@ -69,8 +76,21 @@ Genesis writes into `.genesis/out/latest/` inside your project:
 | `view.html` | The page to open. Each flow as a diagram, with the changes on it. |
 | `summary.md` | The same result as text, ready to paste into a pull request. |
 | `graph.html` | A plain outline of the same map that needs no scripts. |
-| `business-map.json` | The map as data. |
+| `business-map.json` | The map as data. Its `mode` is `change` for a review. A review's map covers what the review analyzed, only the planned flows once it has a plan: it is not a map of the whole project. A map written by an earlier version has no `mode` and may be either kind. |
 | `change-report.json` | The changes and their verdicts as data. Written for a review only. |
+
+`business-map.json` also records, under `source`, the code it was read from: the
+commit (`revision`), whether uncommitted changes were read with it (`worktree_dirty`),
+whether files it would have read were left out, such as one over the size limit
+(`integrity_status`), and every file read (`files`), each with the SHA-256 digest of
+its content but not its text. The digest is that of the file as the commit stores it,
+which is what `git show <revision>:<path>` prints, even when your checkout converts
+its line endings; a file with uncommitted changes has the digest of what was read. To
+tell whether the map still matches a later commit, compare the digests with that
+commit's files the same way: a file whose digest differs, or that is gone, has
+changed since. A file added later is not listed. A file that a Git filter such as
+git-crypt converts counts as uncommitted when Git's index cannot vouch for it; run
+`git status` once, which updates the index, and prepare again.
 
 `latest` holds the most recent run only: a review replaces an earlier map there, and a
 map replaces an earlier review. Every run also keeps its result, with the same files,
@@ -106,6 +126,8 @@ there is no browser for it to open. Copy `view.html` to your own machine, or rea
   named in `summary.md` and `graph.html`, not on the page.
 - Changes that belong to no step, and flows a change removed, are in the block
   `Outside the flows`. `summary.md` lists those changes under "Changes not on the map".
+- A risk that names only changed files Genesis did not analyze, such as a Dockerfile,
+  is not on the page: `summary.md` and `graph.html` list it with those files.
 - When you select a change, `May affect` marks the results further along its flow that
   the change can lead to. It follows the arrows of the flow and is not a finding.
 - A domain folds its lookup and upkeep flows into one row, such as
@@ -200,7 +222,8 @@ longer need the results; the next run creates it again.
 [Genesis EDD](https://github.com/GenesisAgentInfra/genesis-edd) makes one copy on
 purpose: it copies the `business-map.json` a spec was written against into the spec's
 folder, to be committed with the spec. That file has no source excerpts, but where a
-flow is not described yet its steps are named by lines of code.
+flow is not described yet its steps are named by lines of code, and it lists the paths
+of the files the map was read from, each with a digest of its content.
 
 ## Languages
 
@@ -218,7 +241,9 @@ map, in the changed files for a review. When those are the majority, the agent r
 Genesis again the other way, which covers every language, Python
 included, without the Python analysis. Otherwise the result covers the Python files,
 and changed files in other languages are listed as not analyzed. You can always ask
-for one way or the other.
+for one way or the other. Neither way reads Genesis's own `.genesis/` folder or a
+folder you asked to leave out: their files are not counted, and a review gives the
+number of changed files in them, folder by folder.
 
 Genesis reads source files in these languages: C, C++, C#, Clojure, Dart, Elixir,
 Erlang, Go, Java, JavaScript, Julia, Kotlin, Lua, Objective-C, Perl, PHP, Python, R,
@@ -248,7 +273,8 @@ first: raise the limit and wait longer, or leave folders out, for example to loo
 the backend only. A source file larger than 1 MB is not read: it is nearly always
 generated or vendored code. When a limit leaves files out, the result says how many
 and is marked partial. Folders you chose to leave out are not counted that way: the
-result covers the rest of the project and does not list them.
+result covers the rest of the project, and a review gives the number of changed files
+in them, folder by folder.
 
 ## What Genesis does not do
 
