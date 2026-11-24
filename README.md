@@ -11,6 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License: Apache-2.0"></a>
   <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square" alt="GitHub stars"></a>
+  <a href="https://discord.gg/gvMxA4X7bv"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join the Genesis Discord"></a>
 </p>
 
 <p align="center"><strong>English</strong> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a></p>
@@ -109,6 +110,8 @@ ask in plain language.
 In Codex the skill is `$genesis`. When it finishes, open `.genesis/out/latest/view.html`
 in a browser. The `summary.md` next to it is ready to paste into a pull request. The
 [usage guide](docs/usage.md) explains the page and the other files.
+
+Tried Genesis on a pull request? Tell us what it caught or missed in [#feedback on Discord](https://discord.gg/gvMxA4X7bv).
 
 ## What you get
 
