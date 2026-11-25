@@ -12,6 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="许可证：Apache-2.0"></a>
   <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square" alt="GitHub stars"></a>
   <a href="https://discord.gg/gvMxA4X7bv"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="加入 Genesis Discord"></a>
+  <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX_DO-Community-F0B90B?style=flat-square" alt="LINUX DO 社区"></a>
 </p>
 
 <p align="center"><a href="README.md">English</a> &nbsp;·&nbsp; <strong>简体中文</strong></p>
@@ -129,6 +130,10 @@ CLI 不调用任何模型，不往外发任何东西，也不会运行你的代�
 - [AGENTS.md](AGENTS.md)：写给 coding agent，用户让它安装、使用或修改 Genesis 时先读这里。
 
 有问题或发现 bug，请到 [GitHub issues](https://github.com/GenesisAgentInfra/genesis/issues) 提。安全问题请按 [SECURITY.md](SECURITY.md) 的说明私下报告。
+
+## 社区
+
+我们支持 [LINUX DO](https://linux.do/) 社区，认同真诚、友善、团结、专业的社区理念。
 
 ## 许可证
 
