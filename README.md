@@ -12,6 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License: Apache-2.0"></a>
   <a href="https://github.com/GenesisAgentInfra/genesis/stargazers"><img src="https://img.shields.io/github/stars/GenesisAgentInfra/genesis?style=flat-square" alt="GitHub stars"></a>
   <a href="https://discord.gg/gvMxA4X7bv"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join the Genesis Discord"></a>
+  <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX_DO-Community-F0B90B?style=flat-square" alt="LINUX DO community"></a>
 </p>
 
 <p align="center"><strong>English</strong> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a></p>
@@ -177,6 +178,11 @@ The CLI calls no model, sends nothing anywhere, and never runs your code.
 
 Questions and bug reports go to [GitHub issues](https://github.com/GenesisAgentInfra/genesis/issues).
 Report a security problem privately, as [SECURITY.md](SECURITY.md) describes.
+
+## Community
+
+We support the [LINUX DO](https://linux.do/) community and its values of sincerity,
+friendliness, solidarity, and professionalism.
 
 ## License
 
