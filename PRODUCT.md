@@ -63,7 +63,11 @@ for each change and the risks the agent raised.
   Python and other languages is read one way per run. The pages are the same either way.
 - Changes are projected onto the current (head) map. There is no map of the base side,
   apart from removed flows and the names of removed steps.
-- Test verdicts come from reading source. The page must never imply that a test ran.
+- Test verdicts come from reading source. Show covered as "Assessed as covered" and
+  identify the agent's judgment separately from citation validation. The detail panel
+  shows the scenario, assertion and detection reasoning when present; older reports
+  remain readable without them. The page must never imply that a test ran or that
+  the CLI proved behavioral coverage.
 - Risks are the agent's own reading; the CLI has no rules that detect them, and an
   agent's risk is never rated high. A change is marked as a risk when it brings one: an
   observation the agent recorded about lines the change wrote, or a risk in the report

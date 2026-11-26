@@ -26,7 +26,7 @@ def test_the_rules_judge_a_verdict_by_whether_a_test_would_fail(change):  # noqa
     assert "would fail if the change were undone" in VERDICT_LEGEND
 
 
-def test_covered_names_the_tests_that_would_fail(change):  # noqa: F811
+def test_covered_needs_specific_checks_after_naming_tests(change):  # noqa: F811
     condition = by_kind(change.stored_report(), "condition_modified").change_id
     entry = {"change_id": condition, "summary": "阈值改为包含 100。", "verdict": "covered"}
     entry["note"] = "参数化测试覆盖了这个条件。"
@@ -34,7 +34,10 @@ def test_covered_names_the_tests_that_would_fail(change):  # noqa: F811
     assert result["status"] == "rejected"
     assert codes(result) == [("changes[0].test_ids", "covered_names_tests")]
     entry["test_ids"] = [SUBMIT_TEST]
-    assert change.submit(CHANGE_TASK, {"changes": [entry]})["status"] == "accepted"
+    result = change.submit(CHANGE_TASK, {"changes": [entry]})
+    assert result["status"] == "rejected"
+    assert codes(result) == [("changes[0].checks", "covered_needs_checks")]
+    assert by_kind(change.stored_report(), "condition_modified").tests.basis == ("static_fact",)
 
 
 def test_a_static_result_is_not_shown_as_tests_missing_the_path(change):  # noqa: F811

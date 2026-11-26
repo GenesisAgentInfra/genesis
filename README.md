@@ -128,10 +128,10 @@ things on the way. Genesis draws the checkout flow and puts all four changes on 
 | A card charge that times out is retried up to 3 times, with no idempotency key. A shopper can be charged twice. | 🔴 No coverage found. No test makes the payment time out. |
 | Stock is no longer held while the card is charged. Two shoppers can pay for the last unit. | 🟡 Behavior not checked. Tests run this code but none buys the last unit twice. |
 | Shoppers can check out as a guest by leaving an email. | ⚪ Coverage unclear. The guest tests take their cases from a package outside the repository, so reading them does not show what they check. |
-| Free shipping starts above $35 instead of $50. | ✅ Behavior checked. Tests place orders at $34.99, $35.00 and $35.01. |
+| Free shipping starts above $35 instead of $50. | ✅ Assessed as covered. Tests place orders at $34.99, $35.00 and $35.01. |
 
 These are the labels on the page. `summary.md` calls the same verdicts not reached,
-reached only, unknown and covered; the [usage guide](docs/usage.md#test-verdicts) lists
+reached only, unknown and assessed as covered; the [usage guide](docs/usage.md#test-verdicts) lists
 both.
 
 Click a step to see what changed there, the test verdict with the note that explains
@@ -153,10 +153,12 @@ project, the page also shows "Partial" at the top. A review's page does not, so 
 
 In a review, Genesis finds the changes itself by comparing the two versions of the code,
 so the list does not depend on the agent. What each change means, its test verdict and
-its risks are the agent's reading. The CLI refuses a verdict only in plain cases: Behavior checked (covered) with no cited
-test that asserts anything, or, for Python, No coverage found (not reached) when a test
-calls the changed function directly. In other languages, whether a cited test asserts
-anything is the agent's word.
+its risks are the agent's reading. A new covered submission must name the test, quote
+its assertion, describe its actual input/setup, and explain why undoing the change
+would break that assertion. The CLI checks the quoted assertion against the captured
+Python test, or against cited head-side source in other languages. It does not prove
+that the agent's reasoning is correct. For Python it also rejects No coverage found
+(not reached) when a test calls the changed function directly.
 
 The CLI calls no model, sends nothing anywhere, and never runs your code.
 

@@ -72,7 +72,7 @@ PLANNED_TEXT = (
     "structure, not business steps."
 )
 VERDICT_TEXT = {
-    "covered": "covered",
+    "covered": "assessed as covered",
     "reached_only": "reached only",
     "not_reached": "not reached",
     "unknown": "unknown",
@@ -82,8 +82,9 @@ VERDICT_TEXT = {
 SAID_ABOVE = '<p class="muted">Explained together with the change above.</p>'
 STATIC_REACHED = "called by tests, not assessed"
 VERDICT_LEGEND = (
-    "Test verdicts come from reading source, never from running tests. covered: a test runs "
-    "the change and would fail if the change were undone. reached only: tests run the code "
+    "Test verdicts come from reading source, never from running tests. Assessed as covered: "
+    "the agent judges that a test would fail if the change were undone. The CLI checks "
+    "cited assertions, not behavioral correctness. reached only: tests run the code "
     "but would not fail if the change were undone; they miss its path or check nothing it "
     f"affects. {STATIC_REACHED}: static analysis found tests that call the code, and nobody "
     "has read them yet. not reached: no test gets to it. unknown: could not be told."
@@ -211,6 +212,13 @@ def _said(item, refs, excerpts) -> str:
         )
         if tests.note:
             body += f'<p class="muted">{escape(tests.note)}</p>'
+        for check in tests.checks:
+            body += (
+                f"<p>Agent check: {escape(check.test_id)}</p>"
+                f"<p>Scenario: {escape(check.scenario)}</p>"
+                + (f"<pre>{escape(check.assertion)}</pre>" if excerpts else "")
+                + f"<p>Why it detects the change: {escape(check.detects)}</p>"
+            )
         for case in tests.items:
             named = _tag("named") if "assessed" in case.tags else ""
             body += f'<p class="muted" style="margin:2px 0 0 0">{escape(case.test_id)}{named}</p>'
@@ -608,6 +616,15 @@ def _change_lines(business_map: BusinessMap, report: ChangeReport) -> list[str]:
             lines.append(item.tests.note)
         if item.tests and item.tests.items:
             lines.append(f"tests: {tests_line(item.tests)}")
+        if item.tests:
+            for check in item.tests.checks:
+                lines.extend(
+                    (
+                        f"agent check ({check.test_id}): {check.scenario}",
+                        f"assertion: {check.assertion}",
+                        f"why it detects the change: {check.detects}",
+                    )
+                )
         return tuple(lines)
 
     def together(found) -> list[list]:

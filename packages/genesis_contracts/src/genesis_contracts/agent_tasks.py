@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .business_map import EntryKind, FlowTier, Identifier, Name, Text
+from .change_report import BehaviorCheck
 from .map_tasks import EvidenceCite, PlanDomain, _missing, _refuse, _repeated
 from .models import ContractModel
 
@@ -66,11 +67,12 @@ class AgentPlan(ContractModel):
 
 
 class CitedTest(ContractModel):
-    """A test the agent read. `asserts` says it checks what the changed code produces."""
+    """A test the agent read. A covered claim needs a check within its head-side citation."""
 
     name: str = Field(min_length=1, max_length=200)
     evidence: tuple[EvidenceCite, ...] = Field(min_length=1)
     asserts: bool = False
+    check: BehaviorCheck | None = None
 
 
 class AgentChangeAssessment(ContractModel):

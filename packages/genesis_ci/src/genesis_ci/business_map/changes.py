@@ -36,7 +36,7 @@ from .carried import read_carried
 from .fact_diff import BASE, HEAD, FactDiff, RawChange, _innermost, diff_facts
 from .loop import CHANGE_TASK
 from .python_entries import entry_id
-from .python_facts import canonical_python
+from .python_facts import canonical_python, vacuous_assertion
 from .skeleton import _evaluation_order, _short, shown_facts, skeleton_flow
 from .store import left_out_limitation, untracked_folders_limitation
 
@@ -135,7 +135,11 @@ RULES = (
     "outcome for that input (the same exception, the same value, the same call), the test "
     "still passes and does not make the change covered; a test that checks only an "
     "exception type or a field name often passes on both sides. covered needs a test whose "
-    "input gets a different outcome on the two sides.",
+    "input gets a different outcome on the two sides. Keep the head-side test, setup "
+    "and assertion fixed and undo only the change being assessed. The current outcome "
+    "must satisfy that assertion and the undone outcome must fail it: even different "
+    "results may both pass a broad assertion such as price > 0. Do not substitute an "
+    "older test or a failure caused by reverting another change.",
     "For removed code, the changed path is the input the removed code used to handle. "
     "covered: a test gives such an input and would fail if the removed code were put back. "
     "reached_only: tests run the function but never with such an input. Code that replaces "
@@ -150,6 +154,19 @@ RULES = (
     "`test_ids` names the tests your verdict rests on; the tests static analysis linked "
     "stay listed after them. You may name a test static analysis did not link, for example "
     "one that goes through an HTTP client.",
+    "For covered, supply `checks`: each has a named `test_id`, the exact `assertion` "
+    "from that test, its actual input/setup in `scenario`, and the observed outcome with "
+    "and without this change in `detects`, explaining why the same assertion accepts "
+    "the current outcome and rejects the undone one. Include a check for every named test. "
+    "Choose the verdict after reading relevant fixtures, parameter values and mocks, "
+    "tracing the changed path, and identifying the checked observation. If necessary "
+    "evidence remains unresolved, use unknown and name it; revise a verdict contradicted "
+    "by those facts. "
+    "An unchanged assertion outcome or an unrelated assertion is not coverage. The CLI "
+    "checks assertion provenance and rejects simple always-true literals such as True or "
+    "1 == 1. It does not establish the correctness of your behavioral reasoning. A failure "
+    "guard, exception, state check or mock assertion can also observe the changed outcome; "
+    "follow the actual input through the changed path to that observation.",
     "A verdict answers only whether a test would fail. What the tests leave unchecked goes "
     "in its `note`, not into `risks`.",
     "No test was run. Never state that a test passed or that a path executed.",
@@ -1545,6 +1562,61 @@ class ChangeAnalysis:
                     "named here contains an assertion. Use reached_only and say what is missing.",
                 )
             )
+        elif verdict.verdict == "covered":
+            checked = set()
+            checks = []
+            for index, check in enumerate(verdict.checks):
+                test_id = check.test_id
+                known = test_id if test_id in self.tests else f"head::{test_id}"
+                where = f"checks[{index}]"
+                if known not in named:
+                    problems.append(
+                        (where + ".test_id", "check_names_test", "Name a test from `test_ids`.")
+                    )
+                    continue
+                assertion = check.assertion.strip().removeprefix("assert ")
+                canonical = canonical_python(assertion)
+                matching = [
+                    value
+                    for value in self.tests[known].assertions
+                    if canonical_python(value) == canonical
+                ]
+                if not matching:
+                    problems.append(
+                        (
+                            where + ".assertion",
+                            "assertion_not_found",
+                            "This assertion is not captured in the named head-side test. "
+                            "Copy its assertion from the test context or read its evidence.",
+                        )
+                    )
+                # Captured assertions are truncated at 400 characters. A literal
+                # prefix alone cannot establish that the full assertion is vacuous.
+                elif all(len(value) < 400 for value in matching) and vacuous_assertion(assertion):
+                    problems.append(
+                        (
+                            where + ".assertion",
+                            "vacuous_assertion",
+                            "This assertion is a literal expression that is always true. "
+                            "Cite an assertion that can fail on a changed result, state or "
+                            "interaction, or use reached_only if the test only reaches the change.",
+                        )
+                    )
+                checked.add(known)
+                checks.append({**check.model_dump(mode="json"), "test_id": known})
+            if set(named) - checked:
+                problems.append(
+                    (
+                        "checks",
+                        "covered_needs_checks",
+                        "covered needs a check for every named test: test_id, exact assertion, "
+                        "scenario (actual input/setup), and detects (why undoing this change "
+                        "breaks the assertion). If it would still pass, use reached_only; "
+                        "if you cannot tell, use unknown.",
+                    )
+                )
+            if checks:
+                result["checks"] = checks
         if verdict.verdict == "reached_only" and not items:
             problems.append(
                 (

@@ -978,6 +978,64 @@ After the risk pass of step 4, submit the risks on their own:
   `not_reached`: no test reaches it. `unknown`: you could not tell; `note` says why.
   Every verdict needs a `note`. Leave `verdict` out to keep the static result, which
   the report shows as "called by tests, not assessed".
+- Choose the verdict after tracing the test, in this order:
+  1. Read the head-side test's actual input and setup, including fixtures, parameter
+     values and mocks needed to understand this case. A test name or linked call
+     does not establish its input. Read the relevant definitions when they are missing.
+  2. Follow that input to the changed behavior. Identify which condition it meets
+     and whether a mock replaces the implementation being assessed.
+  3. Find the exact assertion and what it observes. The observation may be a state
+     change, exception, mock call, or failure guard such as
+     `if wrong_result: assert False`; it need not directly assert a return value.
+  4. Keep this head-side test, setup and assertion fixed. Reason from source about
+     the observed outcome with the change and with only this change undone.
+     `covered` needs the current outcome to satisfy that assertion and the undone
+     outcome to fail it. Different outcomes alone are insufficient: a broad assertion
+     can accept both. Do not use a different input, an old version of the test, or a
+     failure caused by reverting some other change to justify coverage.
+  If the test reaches the code but the same assertion accepts both outcomes, use
+  `reached_only`. If a necessary input, path or observation remains unresolved after
+  reading the relevant source, use `unknown` and name the missing evidence. Do this
+  by reading source; do not execute either version.
+- A `covered` submission needs `checks`, with at least one check for every test in
+  `test_ids`. Each check has `test_id`, `assertion` (copy the expression from the test
+  context, or the exact assertion from the test), `scenario` (actual input/setup),
+  and `detects` (the observed outcome with and without this change, and why the same
+  assertion accepts the first and rejects the second). State those concrete facts;
+  saying that the test calls the function or checks the result does not explain
+  detection. If those facts do not support `covered`, revise the verdict. For example:
+
+  ```json
+  {
+    "changes": [{
+      "change_id": "chg_price_fee",
+      "summary": "Odd quantities incur a fee of one.",
+      "verdict": "covered",
+      "note": "The odd-quantity test checks the fee.",
+      "test_ids": ["head::tests/test_price.py#test_odd_quantity"],
+      "checks": [{
+        "test_id": "head::tests/test_price.py#test_odd_quantity",
+        "assertion": "price(1, 5) == 6",
+        "scenario": "The test orders one unit priced at 5.",
+        "detects": "The added odd-quantity fee changes the result from 5 to 6; undoing it makes this equality fail."
+      }]
+    }]
+  }
+  ```
+
+  For an added `quantity % 2` fee, these existing assertions lead to different verdicts:
+
+  | Existing assertion | With fee / without fee | Assessment |
+  | --- | --- | --- |
+  | `price(2, 5) == 10` | 10 / 10; both satisfy the assertion | `reached_only` |
+  | `price(1, 5) > 0` | 6 / 5; both satisfy the assertion | `reached_only` |
+  | `price(1, 5) == 6` | 6 / 5; only the current result satisfies it | `covered` |
+
+  Use tests that actually exist; do not invent a distinguishing input. The CLI
+  checks that the assertion belongs to the named test and rejects simple always-true
+  literals such as `assert True` and `assert 1 == 1`. This is a limited Python syntax
+  check; acceptance does not establish that your reasoning is correct. Describe an
+  accepted `covered` verdict as your source assessment.
 - A statement that runs on every call, such as an added `add_argument` or an
   assignment, is `covered` by a test that runs the code and would fail without it.
   An input value no test uses is not a missed path.
@@ -1017,7 +1075,9 @@ After the risk pass of step 4, submit the risks on their own:
   pages list it with the other tests you named. `not_reached` names no tests:
   describe near misses in `note`.
 - The CLI refuses a verdict the test sources contradict: `covered` with no `test_ids`,
-  or when none of the named tests contains an assertion, `reached_only` when no test
+  missing `checks`, a quoted assertion absent from its named test, a recognized
+  always-true literal assertion (`vacuous_assertion`), or when none of
+  the named tests contains an assertion, `reached_only` when no test
   is linked and none is named, `not_reached` when a test calls the changed function
   itself or requests its route, an unknown `change_id` or test. A refusal changes
   nothing already accepted.

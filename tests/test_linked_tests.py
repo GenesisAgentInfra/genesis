@@ -97,6 +97,14 @@ def test_naming_tests_keeps_the_static_links_after_them(source_repo):
         "verdict": "covered",
         "note": "test_voice 传了 --pretty 并断言输出，去掉这个分支会失败。",
         "test_ids": [VOICE],
+        "checks": [
+            {
+                "test_id": VOICE.removeprefix("head::"),
+                "assertion": 'assert main(["voice", "--pretty"]) == "pretty"',
+                "scenario": "The voice command selects --pretty.",
+                "detects": "Removing the branch returns plain, which fails the equality.",
+            }
+        ],
     }
     assert workspace.submit(CHANGE_TASK, {"changes": [entry]})["status"] == "accepted"
     tests = by_kind(workspace.stored_report(), "condition_added").tests

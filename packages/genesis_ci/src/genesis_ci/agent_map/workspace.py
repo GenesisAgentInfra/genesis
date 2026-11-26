@@ -84,6 +84,18 @@ CHANGE_RULES = (
     "gets there) or `unknown` (could not be told).",
     "Cite each test you rely on under `tests` with its name and its lines; set `asserts` "
     "when it checks what the changed code produces.",
+    "For covered, every test with `asserts: true` needs a `check`: exact `assertion` "
+    "text within its head-side evidence, actual input/setup in `scenario`, and why "
+    "undoing this change breaks that assertion in `detects`. Choose the verdict after "
+    "reading relevant fixtures, parameter values and mocks, tracing the changed path, "
+    "and identifying the checked observation. Keep the head-side test, setup and "
+    "assertion fixed; reason from source with only this change undone. State the two "
+    "observed outcomes and why that assertion accepts the current one and rejects the "
+    "undone one. Different results may both pass a broad assertion such as price > 0; "
+    "then use reached_only. If necessary evidence remains unresolved, use unknown and "
+    "name it. Do not substitute an older test or a failure due to another reverted "
+    "change. Revise a verdict contradicted by the facts. Citation checks do not prove "
+    "this reasoning.",
     "A change to a test file gets a `summary` and no verdict.",
     "Verdicts come from reading the tests. Never say a test ran or passed.",
 )
@@ -973,6 +985,40 @@ class Workspace:
                 }
                 for position, test in enumerate(item.tests)
             ]
+            for position, (test, stored) in enumerate(zip(item.tests, tests, strict=True)):
+                at = f"{where}.tests[{position}].check"
+                if item.verdict == "covered" and test.asserts and test.check is None:
+                    problems.append(
+                        problem(
+                            at,
+                            "covered_needs_checks",
+                            "Supply assertion, scenario and detects for each asserting test. "
+                            "Use reached_only if its assertion would still pass without the change.",
+                        )
+                    )
+                if test.check is None:
+                    continue
+                if item.verdict != "covered" or not test.asserts:
+                    problems.append(
+                        problem(
+                            at, "check_not_allowed", "A check supports an asserting covered test."
+                        )
+                    )
+                    continue
+                refs = [self.evidence(key) for key in stored["evidence_ids"]]
+                if not any(
+                    ref.side == HEAD
+                    and test.check.assertion in self.source.slice(ref.side, ref.path, ref.range)
+                    for ref in refs
+                ):
+                    problems.append(
+                        problem(
+                            at + ".assertion",
+                            "assertion_not_found",
+                            "Copy the assertion exactly from this test's cited head-side lines.",
+                        )
+                    )
+                stored["check"] = test.check.model_dump(mode="json")
             trouble = None
             if change.is_test:
                 if item.verdict is not None:

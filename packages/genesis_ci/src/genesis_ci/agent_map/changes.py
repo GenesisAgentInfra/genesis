@@ -147,6 +147,11 @@ def coverage(assessment: dict) -> dict | None:
         "basis": ["agent_assessment"],
         "execution_data": "not_collected",
         "note": assessment["note"],
+        "checks": [
+            {"test_id": test["name"], **test["check"]}
+            for test in assessment.get("tests", ())
+            if test.get("check")
+        ],
         "items": [
             {
                 "test_id": test["name"],

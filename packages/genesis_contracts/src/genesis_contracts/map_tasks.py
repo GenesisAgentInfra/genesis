@@ -32,6 +32,7 @@ from .business_map import (
     SymbolId,
     Text,
 )
+from .change_report import TestCheck
 from .models import ContractModel, EvidenceSide, Severity, any_named, validate_repo_path
 
 MAX_STEPS = 60
@@ -264,7 +265,8 @@ class ChangeAssessment(ContractModel):
     Leave `verdict` out to keep the static result. A verdict says whether a test would
     fail if the change were undone, and needs a `note` that says what the tests do or do
     not exercise. `test_ids` names the tests the verdict rests on; the report keeps the
-    other tests static analysis linked after them.
+    other tests static analysis linked after them. New covered submissions require
+    `checks` for the named tests, validated against the frozen test source by the CLI.
     """
 
     change_id: Identifier | None = None
@@ -275,6 +277,7 @@ class ChangeAssessment(ContractModel):
     verdict: Literal["covered", "reached_only", "not_reached", "unknown"] | None = None
     note: Text | None = None
     test_ids: tuple[str, ...] = ()
+    checks: tuple[TestCheck, ...] = ()
 
     @model_validator(mode="after")
     def verdict_is_explained(self) -> ChangeAssessment:
@@ -285,6 +288,8 @@ class ChangeAssessment(ContractModel):
             raise ValueError("a coverage verdict needs a note explaining it")
         if self.verdict is None and self.test_ids:
             raise ValueError("test ids belong to a coverage verdict")
+        if self.checks and self.verdict != "covered":
+            raise ValueError("checks belong to a covered verdict")
         return self
 
     def places(self) -> tuple[tuple[tuple, str], ...]:

@@ -555,13 +555,13 @@ def test_the_change_task_takes_explanations_and_checks_verdicts(change):
         "change_id": approve,
         "summary": "审批不再写入 reviewed 状态。",
         "effect": "状态直接变为 approved。",
-        "verdict": "covered",
-        "note": "存储测试断言了最终状态。",
+        "verdict": "reached_only",
+        "note": "存储测试断言了最终状态，但不检查被删的中间状态写入。",
         "test_ids": [STORE_TEST],
     }
     assert change.submit(CHANGE_TASK, {"changes": [named]})["status"] == "accepted"
     gone = by_kind(change.stored_report(), "call_removed", "#approve_report")
-    assert gone.tests.verdict == "covered" and gone.tests.basis == ("agent_assessment",)
+    assert gone.tests.verdict == "reached_only" and gone.tests.basis == ("agent_assessment",)
     assert gone.tests.items[0].tags == ("agent_identified", "assessed", "assertion_found")
     assert gone.explanation.effect == "状态直接变为 approved。"
     # Earlier assessments of other changes are kept.
@@ -723,7 +723,7 @@ def test_cli_runs_a_change_session_end_to_end(source_repo, tmp_path, monkeypatch
     assert "    - tests: " + SUBMIT_TEST in summary and "    - 测试只用了 50 和 500" in summary
     assert "    - placement: This step's code refers to `THRESHOLD`" in summary
     assert "- 提交报销 (7 steps, synthesized, changed)" in summary
-    assert "covered: a test runs the change and would fail if the change were undone" in summary
+    assert "the agent judges that a test would fail if the change were undone" in summary
     assert "Compared base (" in page and "1 changed file outside the supported languages" in page
     # The changes come before the map they are placed on.
     assert summary.index("## Changes on") < summary.index("# Map") < summary.index("## 报销")

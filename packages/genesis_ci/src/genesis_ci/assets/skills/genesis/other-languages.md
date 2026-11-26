@@ -253,7 +253,10 @@ genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change
       "tests": [
         {"name": "free shipping starts above 35", "asserts": true,
          "evidence": [{"path": "tests/checkout.test.ts", "start_line": 8, "end_line": 13,
-                       "quote": "toBe(40.99)"}]}
+                       "quote": "expect(total(35.01)).toBe(35.01)"}],
+         "check": {"assertion": "expect(total(35.01)).toBe(35.01)",
+                   "scenario": "An order of 35.01 qualifies for free shipping.",
+                   "detects": "With the old threshold of 50, shipping is added and the total is above 35.01, failing this assertion."}}
       ]
     },
     {
@@ -269,8 +272,8 @@ genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change
 - `summary` says what is different for a user or another system, not which lines moved.
 - Every change outside test files needs a `verdict` and a `note`. Find the tests
   yourself and read them:
-  - `covered`: a cited test takes the changed path and asserts on the result. At least
-    one cited test has `"asserts": true`.
+  - `covered`: a cited test takes the changed path and would fail if this change were
+    undone. At least one cited test has `"asserts": true`.
   - `reached_only`: tests run the code but miss the changed path, or assert nothing
     about it. Cite them; the note says what is missing.
   - `not_reached`: no test gets there. Cite none.
@@ -278,6 +281,24 @@ genesis map submit  --repo /absolute/app --session SESSION_ID --task task_change
 - `asserts` is true for a test that checks what the changed code produces, and
   false for one that only runs it. The tests cited for `reached_only` usually have
   it false.
+- For `covered`, each test with `asserts: true` needs a `check`: copy the exact
+  `assertion` from its cited head-side lines, describe the actual input/setup in
+  `scenario`, and explain why undoing this particular change breaks the assertion
+  in `detects`. Choose the verdict after reading the actual fixtures, parameter
+  values and mocks, tracing that input into the changed behavior, and finding the
+  exact observation checked. Read relevant definitions when this context is missing.
+  Keep the head-side test, setup and assertion fixed; reason from source about the
+  outcome with the change and with only this change undone. In `detects`, state those
+  outcomes and why the same assertion accepts the current one and rejects the undone
+  one. State, exception, mock and conditional failure checks can also qualify.
+  Different results alone are insufficient: a test asserting a positive price accepts
+  both 5 and 6, so it does not detect an added fee. An even-quantity test misses a fee
+  that applies only to odd quantities. Both are `reached_only`. Do not substitute
+  an invented input, an older test or a failure due to some other reverted change.
+  If necessary evidence remains unresolved, use `unknown` and name what is missing.
+  Revise the verdict when the concrete facts do not support it. Do not execute either
+  version. The CLI checks the assertion text exists in the citation; it cannot
+  establish that it is an assertion or prove your reasoning.
 - One change can hold several values, such as two constants on neighbouring lines.
   `covered` needs, for each value, a test that would fail if that value were
   undone. When only some have one, use `reached_only` and name the others in the
