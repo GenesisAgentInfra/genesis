@@ -56,3 +56,7 @@ jobs:
         run: |
           npm run build
           git diff --exit-code -- ../packages/genesis_ci/src/genesis_ci/assets/viewer/index.html
+      - name: Check readability of the built standalone viewer in Chromium
+        run: |
+          npx --no-install playwright install --with-deps --only-shell chromium
+          npm run test:browser

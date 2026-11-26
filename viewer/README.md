@@ -19,6 +19,8 @@ the 22 line, or 24 and later (the versions Vite 8 and ESLint 10 accept), with it
 | `npm run dev` | Dev server. Pick a sample with `?sample=expense`, `refund`, `map` or `empty` (files in `dev/`). |
 | `npm run build` | Type-check, then write the single HTML file into the CLI package. Commit the result. |
 | `npm test` | Unit tests for the model and layout (`tests/`). |
+| `npm run test:browser` | Open the built HTML with synthetic maps in Chromium and check its rendered layout. |
+| `npm run check:map -- /path/to/view.html` | Check an actual local export at desktop and phone widths. You can pass several files, including share exports. |
 | `npm run typecheck` | Type-check the page and `vite.config.ts` (`tsc -b`), as the build does first. |
 | `npm run lint` · `npm run format` | ESLint, Prettier. |
 
@@ -29,6 +31,8 @@ Then run the Python tests again from the repository root
 (`uv run --all-packages --frozen pytest -q`), since `tests/test_view.py` reads the built
 page. CI runs the same commands on Node.js 22 and fails when the committed page differs
 from the one the source builds.
+
+For the browser checks, install Chromium once with `npx playwright install --only-shell chromium`, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an existing Chromium executable. CI runs `npm run test:browser` after building. The file checker opens the supplied HTML offline, checks its overview and opens each change listed in the viewer. A failure identifies the affected viewport and element.
 
 The Python scripts below run from the repository root with the workspace packages
 (`--all-packages`), as in [CONTRIBUTING.md](../CONTRIBUTING.md).

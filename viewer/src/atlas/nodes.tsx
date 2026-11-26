@@ -26,8 +26,6 @@ import { coverageKind, shortSummary } from "@/presentation"
 import { statusOf } from "@/model"
 import type { EntryKind } from "@/types"
 import {
-  CARD_HEAD,
-  HEAD_H,
   OFF_MAP,
   type BoxNode,
   type FlowCardNode,
@@ -37,18 +35,11 @@ import {
   type RowNode,
 } from "./build"
 
-/**
- * A heading keeps its size on screen however far the reader zooms out: its row is scaled
- * back up by the inverse of the zoom (up to twice), and narrowed by as much so it still
- * ends on its frame's right edge.
- */
-const LIFT: React.CSSProperties = {
-  transform: "scale(var(--lift, 1))",
-  width: "calc(100% / var(--lift, 1))",
+/** Lift headings at low zoom only while their text and controls fit in the reserved space. */
+function headingStyle(limit: number): React.CSSProperties {
+  const scale = `min(var(--lift, 1), ${limit})`
+  return { transform: `scale(${scale})`, width: `calc(100% / ${scale})` }
 }
-
-/** How far a module's heading stands above its first flow. */
-const HEAD_CLEAR = 14
 
 /** The card whose details are open, ringed in its own colour the way a picked change is. */
 const PICKED = "border-solid ring-tone"
@@ -80,10 +71,18 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
     >
       {/* The row stands on a line 14px above the module's first card and grows upward. */}
       <div
-        className="pointer-events-auto absolute left-0 flex origin-bottom-left items-center gap-m"
-        style={{ ...LIFT, bottom: `calc(100% - ${HEAD_H - HEAD_CLEAR}px)` }}
+        className="pointer-events-auto absolute left-0 flex origin-bottom-left flex-wrap items-center gap-x-m gap-y-xs"
+        style={{
+          ...headingStyle(data.heading.lift),
+          bottom: `calc(100% - ${data.heading.height - 14}px)`,
+        }}
       >
-        <h2 className="min-w-0 truncate font-display text-body-xl font-medium text-ink">
+        <h2
+          className={cn(
+            "min-w-0 font-display text-body-xl font-medium [overflow-wrap:anywhere] text-ink",
+            data.heading.stacked && "basis-full"
+          )}
+        >
           {data.title}
         </h2>
         <span
@@ -163,30 +162,37 @@ export function FlowCardView({ data }: NodeProps<FlowCardNode>) {
     >
       <CardHeader
         className="flex shrink-0 items-center"
-        style={{ height: CARD_HEAD }}
+        style={{ height: data.heading.height }}
       >
         <div
-          className="pointer-events-auto flex min-w-0 origin-left cursor-pointer items-center gap-m"
-          style={LIFT}
+          className="pointer-events-auto flex min-w-0 origin-left cursor-pointer flex-wrap items-center gap-x-m gap-y-xs"
+          style={headingStyle(data.heading.lift)}
         >
-          {data.tone && (
-            // The most pressing change on the flow, in its one colour.
-            <span
-              aria-hidden
-              className="size-1.5 shrink-0 corner-full bg-tone"
-            />
-          )}
-          <CardTitle
-            title={data.name}
+          <div
             className={cn(
-              "min-w-0 truncate text-body-m font-medium text-ink",
-              data.code && "font-data text-body-m font-regular",
-              data.struck &&
-                "text-ink-2 line-through decoration-ink decoration-[1.5px]"
+              "flex min-w-0 items-center gap-m",
+              data.heading.stacked && "basis-full"
             )}
           >
-            {data.name}
-          </CardTitle>
+            {data.tone && (
+              // The most pressing change on the flow, in its one colour.
+              <span
+                aria-hidden
+                className="size-1.5 shrink-0 corner-full bg-tone"
+              />
+            )}
+            <CardTitle
+              title={data.name}
+              className={cn(
+                "min-w-0 text-body-m font-medium [overflow-wrap:anywhere] text-ink",
+                data.code && "font-data text-body-m font-regular",
+                data.struck &&
+                  "text-ink-2 line-through decoration-ink decoration-[1.5px]"
+              )}
+            >
+              {data.name}
+            </CardTitle>
+          </div>
           {data.code && (
             <span className="shrink-0 corner-s bg-field px-xs pb-xxs text-body-s text-ink-3">
               {t.skeletonTag}

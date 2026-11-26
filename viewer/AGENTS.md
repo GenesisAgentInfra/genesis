@@ -28,5 +28,7 @@ A change to the page is finished only when `npm run build` has rewritten
 with the source change, and the Python tests pass again after the build
 (`uv run --all-packages --frozen pytest -q` from the repository root), since
 `tests/test_view.py` reads the built page. CI tests, lints and builds the viewer and fails
-when the committed page is not the one the source builds; the commands are in
-[README.md](README.md).
+when the committed page differs from the build. Run `npm run test:browser` after
+building to check the exported page in Chromium. For a reported layout problem,
+check the affected HTML with `npm run check:map -- /path/to/view.html`. See
+[README.md](README.md) for setup.

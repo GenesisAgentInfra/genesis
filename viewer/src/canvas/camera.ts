@@ -1,4 +1,4 @@
-import { HEAD_H, flowIdOf, type Atlas, type AtlasNode } from "@/atlas/build"
+import { flowIdOf, type Atlas, type AtlasNode } from "@/atlas/build"
 
 /**
  * Where the camera looks. A shot names what should be in frame; `viewOf` works out the
@@ -64,8 +64,8 @@ const READ_FLOOR = 0.66
 const STEPS_FLOOR = 0.5
 /** A walk follows its flow from this close. */
 const WALK_ZOOM = 0.85
-/** A flow this near its module's top is framed with the module's name over it. */
-const NAME_REACH = HEAD_H + 80
+/** How far below its heading a flow can start and still bring the module name into frame. */
+const NAME_REACH = 80
 /** The glide from one place to the next. */
 export const GLIDE_MS = 520
 /** One press of a zoom button. */
@@ -254,7 +254,9 @@ export function viewOf(shot: Shot, scene: Scene): Viewport | undefined {
       return view
     }
     case "flow": {
-      const module = find(scene.focused)
+      const parent = atlas.nodes.find((node) => node.id === scene.focused)
+      const module = parent && boxOf(parent)
+      const heading = parent?.type === "module" ? parent.data.heading.height : 0
       const bounds =
         around(
           atlas.nodes
@@ -265,7 +267,7 @@ export function viewOf(shot: Shot, scene: Scene): Viewport | undefined {
       const under = module ? bounds.y - module.y : Infinity
       return frame(
         // At the top of its module, the module's name comes along.
-        module && under < NAME_REACH
+        module && under < heading + NAME_REACH
           ? {
               x: module.x,
               y: module.y,

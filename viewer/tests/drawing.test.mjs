@@ -15,6 +15,9 @@ const { buildModel } = await server.ssrLoadModule("/src/model.ts")
 const { buildAtlas } = await server.ssrLoadModule("/src/atlas/build.ts")
 const { buildGraph } = await server.ssrLoadModule("/src/canvas/graph.ts")
 const { STRINGS } = await server.ssrLoadModule("/src/i18n.ts")
+const { readingArea, viewOf } = await server.ssrLoadModule(
+  "/src/canvas/camera.ts"
+)
 
 const PORT = 3.5
 const samples = {}
@@ -288,4 +291,58 @@ test("short flows spend spare width on long titles and keep their ports aligned"
   view.flow.steps[0].name = "Read option"
   view.flow.steps[1].name = "Set width"
   assert.equal(draw(1800).nodes[0].data.width, 240)
+})
+
+test("long module and flow names wrap above their controls and their steps", () => {
+  const payload = structuredClone(samples.map)
+  const flow = payload.map.flows[0]
+  const domain = payload.map.domains[0]
+  payload.map.flows = [flow]
+  payload.map.domains = [domain]
+  domain.flow_ids = [flow.flow_id]
+  flow.steps = flow.steps.slice(0, 1)
+  flow.edges = []
+  flow.steps[0].name = "Confirm the refund"
+  const layout = () => {
+    const atlas = buildAtlas(buildModel(payload), STRINGS.en)
+    return {
+      atlas,
+      module: atlas.nodes.find((node) => node.type === "module"),
+      card: atlas.nodes.find((node) => node.type === "flow"),
+      step: stepsOf(atlas)[0],
+    }
+  }
+
+  domain.name = "Refunds"
+  flow.name = "Settle"
+  const short = layout()
+  for (const title of [
+    "Partner settlement and reconciliation for a rejected transaction ".repeat(
+      4
+    ),
+    "支付请求的处理路径及对应退款流程".repeat(9),
+    "resolve_partner_account_settlement_currency_".repeat(6),
+  ]) {
+    domain.name = flow.name = title
+    const { atlas, module, card, step } = layout()
+    assert.ok(module.width <= 480)
+    for (const [node, before] of [
+      [module, short.module],
+      [card, short.card],
+    ]) {
+      assert.ok(node.data.heading.stacked)
+      assert.equal(node.data.heading.lift, 1)
+      assert.ok(node.data.heading.height > before.data.heading.height)
+    }
+    assert.ok(card.position.y >= module.position.y + module.data.heading.height)
+    assert.ok(step.position.y >= card.position.y + card.data.heading.height)
+    assert.ok(step.position.y + step.data.slot <= card.position.y + card.height)
+
+    const screen = { width: 1280, height: 720, headline: 48, narrow: false }
+    const scene = { atlas, panel: false, focused: module.id, screen }
+    const view = viewOf({ of: "flow", flowId: flow.flow_id }, scene)
+    assert.ok(
+      near(module.position.y * view.zoom + view.y, readingArea(screen, false).y)
+    )
+  }
 })

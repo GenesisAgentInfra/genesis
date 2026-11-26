@@ -7,7 +7,11 @@ import {
   type FlowEdge,
   type StepNode,
 } from "@/canvas/graph"
-import { wrappedHeight } from "@/canvas/text-size"
+import {
+  singleLineWidth,
+  wrappedHeight,
+  type TextSize,
+} from "@/canvas/text-size"
 import { shortSummary } from "@/presentation"
 import type { FlowGraph } from "@/flow-graph"
 import type { Strings } from "@/i18n"
@@ -24,9 +28,9 @@ import type { EntryKind } from "@/types"
 export const SEP = "::"
 const P = 0
 /** The room a module's heading takes over its first flow. */
-export const HEAD_H = 60
+const HEAD_H = 60
 /** A drawn flow sits on a card of its own: its name in the head, its steps inset below. */
-export const CARD_HEAD = 48
+const CARD_HEAD = 48
 const CARD_X = 20
 const CARD_T = 14
 const CARD_B = 20
@@ -59,7 +63,39 @@ export const OFF_MAP = "__offmap"
 /** The frame that holds them, with the flows that are gone. */
 export const APART = moduleNodeId("__apart")
 
+/** Space reserved in the diagram and how far the heading can grow when zooming out. */
+interface Heading {
+  height: number
+  lift: number
+  stacked: boolean
+}
+
+function fitHeading(
+  title: string,
+  size: TextSize,
+  width: number,
+  controls: number,
+  minimum: number,
+  inset: number,
+  marker = 0
+): Heading {
+  const natural = singleLineWidth(title, size) + marker + controls
+  const stacked = controls > 0 && natural > width
+  const titleWidth = width - marker - (stacked ? 0 : controls)
+  const row = Math.max(24, wrappedHeight(title, titleWidth, size))
+  const height = Math.max(minimum, row + (stacked ? 28 : 0) + inset)
+  return {
+    height,
+    stacked,
+    lift: Math.max(
+      1,
+      Math.min(2, width / Math.max(1, natural), (height - inset) / row)
+    ),
+  }
+}
+
 export interface ModuleData extends Record<string, unknown> {
+  heading: Heading
   title: string
   changes: number
   flows: number
@@ -73,6 +109,7 @@ export interface ModuleData extends Record<string, unknown> {
 }
 /** The card a drawn flow sits on, with its name at the head. */
 export interface FlowCardData extends Record<string, unknown> {
+  heading: Heading
   flowId: string
   name: string
   code: boolean
@@ -445,6 +482,7 @@ export function buildAtlas(
     drawn: boolean
     need: number
     build: (inner: number) => {
+      heading: Heading
       nodes: AtlasNode[]
       edges: AtlasEdge[]
       h: number
@@ -484,9 +522,41 @@ export function buildAtlas(
         : []
     const rows = every.filter((flow) => !folded.includes(flow))
     const cards = Math.min(offMap.length, 3)
+    const changes = changesOn(views) + offMap.length
+    const countLabel = changes
+      ? t.moduleChanges(changes)
+      : t.moduleFlows(views.length)
+    const toggle =
+      id === open
+        ? t.closeModule
+        : drawn.length || apart
+          ? t.openModule
+          : t.openShort
+    // Padding, two gaps and the disclosure icon beside the count and button labels.
+    const moduleControls =
+      72 +
+      singleLineWidth(countLabel, "body-s") +
+      singleLineWidth(toggle, "body-s")
+    const flowControls = (view: FlowView) =>
+      (codeNamed(view) ? 20 + singleLineWidth(t.skeletonTag, "body-s") : 0) +
+      (!view.removed && !model.stops.length
+        ? 52 + singleLineWidth(t.runFlow, "body-s")
+        : 0)
     const need = Math.max(
       ROW_W,
-      ...drawn.map((flow) => flow.w + 2 * CARD_X),
+      ...drawn.map((flow) =>
+        Math.max(
+          flow.w + 2 * CARD_X,
+          // A one-step flow can use a little more width for its headings. Longer names wrap.
+          Math.min(
+            480,
+            singleLineWidth(flow.view.flow.name, "body-m") +
+              flowControls(flow.view) +
+              64
+          ),
+          Math.min(480, singleLineWidth(title, "body-xl") + moduleControls)
+        )
+      ),
       cards * (OFFMAP_W + OFFMAP_GAP) - OFFMAP_GAP
     )
     const rowOf = (flow: PlacedFlow, width: number): RowNode & SizedNode => {
@@ -542,12 +612,30 @@ export function buildAtlas(
     const build = (inner: number) => {
       const nodes: AtlasNode[] = []
       const edges: AtlasEdge[] = []
-      let y = HEAD_H
+      const heading = fitHeading(
+        title,
+        "body-xl",
+        inner,
+        moduleControls,
+        HEAD_H,
+        14
+      )
+      let y = heading.height
       let gap = 0
       for (const flow of drawn) {
         y += gap
         const view = flow.view
-        const height = CARD_HEAD + CARD_T + flow.h + CARD_B
+        const tone = worst(view.coupons.map((coupon) => coupon.tone))
+        const flowHeading = fitHeading(
+          view.flow.name,
+          "body-m",
+          inner - 48,
+          flowControls(view),
+          CARD_HEAD,
+          16,
+          tone ? 14 : 0
+        )
+        const height = flowHeading.height + CARD_T + flow.h + CARD_B
         nodes.push({
           id: `flow${SEP}${view.flow.flow_id}`,
           type: "flow",
@@ -563,12 +651,13 @@ export function buildAtlas(
             code: codeNamed(view),
             struck: view.removed,
             changes: model.stopsOn.get(view.flow.flow_id)?.length ?? 0,
-            tone: worst(view.coupons.map((coupon) => coupon.tone)),
+            tone,
+            heading: flowHeading,
           },
         })
         // The flow keeps its drawing in its own coordinates; the card gets a copy in place.
         const dx = P + CARD_X
-        const dy = y + CARD_HEAD + CARD_T
+        const dy = y + flowHeading.height + CARD_T
         for (const node of [...flow.boxes, ...flow.nodes])
           nodes.push(movedNode(node, dx, dy))
         for (const edge of flow.edges) edges.push(movedEdge(edge, dx, dy))
@@ -638,13 +727,13 @@ export function buildAtlas(
         })
         y += MORE_H
       }
-      return { nodes, edges, h: y + P }
+      return { nodes, edges, heading, h: y + P }
     }
     return {
       id,
       title,
       apart,
-      changes: changesOn(views) + offMap.length,
+      changes,
       flows: views.length,
       tone: worst([
         ...views.flatMap((view) => view.coupons.map((coupon) => coupon.tone)),
@@ -703,6 +792,7 @@ export function buildAtlas(
       ...FIXED,
       data: {
         title: block.title,
+        heading: inside.heading,
         changes: block.changes,
         flows: block.flows,
         apart: block.apart,
