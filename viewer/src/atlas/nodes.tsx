@@ -75,7 +75,7 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
       className={cn(
         "group @container pointer-events-none relative h-full w-full transition-opacity duration-160",
         walking && "opacity-80",
-        away && "opacity-35"
+        away && "opacity-85"
       )}
     >
       {/* The row stands on a line 14px above the module's first card and grows upward. */}
@@ -83,7 +83,7 @@ export function ModuleView({ id, data }: NodeProps<ModuleNode>) {
         className="pointer-events-auto absolute left-0 flex origin-bottom-left items-center gap-m"
         style={{ ...LIFT, bottom: `calc(100% - ${HEAD_H - HEAD_CLEAR}px)` }}
       >
-        <h2 className="min-w-0 truncate font-display text-body-xxl font-heavy text-ink">
+        <h2 className="min-w-0 truncate font-display text-body-xl font-medium text-ink">
           {data.title}
         </h2>
         <span
@@ -158,7 +158,7 @@ export function FlowCardView({ data }: NodeProps<FlowCardNode>) {
       data-tone={data.tone}
       className={cn(
         "pointer-events-none h-full w-full gap-0 rounded-3xl bg-(--flow) py-0 shadow-none ring-0 transition-opacity duration-160",
-        away && "opacity-35"
+        away && "opacity-85"
       )}
     >
       <CardHeader
@@ -179,7 +179,7 @@ export function FlowCardView({ data }: NodeProps<FlowCardNode>) {
           <CardTitle
             title={data.name}
             className={cn(
-              "min-w-0 truncate text-body-m font-heavy text-ink",
+              "min-w-0 truncate text-body-m font-medium text-ink",
               data.code && "font-data text-body-m font-regular",
               data.struck &&
                 "text-ink-2 line-through decoration-ink decoration-[1.5px]"
@@ -239,20 +239,20 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
       size="sm"
       data-tone={data.coupon.tone}
       className={cn(
-        "relative h-full w-full cursor-pointer justify-between gap-0 overflow-visible rounded-3xl border border-dashed border-tone/60 p-3 ring-0 transition-[opacity,box-shadow,border-color] duration-160",
+        "relative h-full w-full cursor-pointer justify-start gap-2 overflow-visible rounded-2xl border border-dashed border-tone/60 p-3 ring-0 transition-[opacity,box-shadow,border-color] duration-160",
         "hover:shadow-[var(--shadow-node-hover)]",
         picked && PICKED,
-        away && "opacity-35"
+        away && "opacity-85"
       )}
     >
       <NumberDisc
         no={data.coupon.no}
         className="absolute -top-2 -left-2 z-[7]"
       />
-      {(data.coupon.risky || status !== "tested") && (
+      {data.coupon.risky && (
         <ReviewBadge risky={data.coupon.risky} status={status} t={t} />
       )}
-      <p className="line-clamp-2 text-body-m text-tone-ink">
+      <p className="text-body-m [overflow-wrap:anywhere] text-ink">
         {shortSummary(change) ?? t.changeKind[change.kind]}
       </p>
       <StatusMark
@@ -267,7 +267,6 @@ export function OffMapView({ id, data }: NodeProps<OffMapNode>) {
 /** A flow as one row: the change leaves it alone, or it is gone after it. */
 export function RowView({ id, data }: NodeProps<RowNode>) {
   const canvas = useCanvas()
-  const { t } = canvas
   const away = canvas.away(data.flowId)
   const Icon = (data.entry && ENTRY_ICON[data.entry]) || Workflow
   return (
@@ -276,11 +275,11 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
       // A flow that is gone carries no verdict: it rings in the plain colour.
       data-tone={data.struck ? "unsure" : undefined}
       className={cn(
-        "relative h-full w-full cursor-pointer flex-row items-center gap-m overflow-visible rounded-2xl border border-line py-0 pr-xl pl-s shadow-none ring-0 transition-[opacity,box-shadow] duration-160",
+        "relative h-full w-full cursor-pointer flex-row items-center gap-2 overflow-visible rounded-2xl border border-line px-3 py-2 shadow-none ring-0 transition-[opacity,box-shadow] duration-160",
         "hover:shadow-[var(--shadow-node-hover)]",
         data.struck && "border-dashed",
         canvas.apart === id && PICKED,
-        away && "opacity-35"
+        away && "opacity-85"
       )}
     >
       {data.no !== undefined && (
@@ -313,7 +312,7 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
         <span
           title={data.name}
           className={cn(
-            "truncate text-body-m text-ink",
+            "text-body-m [overflow-wrap:anywhere] text-ink",
             data.code && "font-data text-body-m text-ink-2",
             data.struck &&
               "text-ink-2 line-through decoration-ink decoration-[1.5px]"
@@ -324,34 +323,14 @@ export function RowView({ id, data }: NodeProps<RowNode>) {
         {data.summary && (
           <span
             title={data.summary}
-            className="truncate text-body-s text-ink-3"
+            className="text-body-s [overflow-wrap:anywhere] text-ink-3"
           >
             {data.summary}
           </span>
         )}
-      </span>
-      {data.code && data.passing && !data.struck && (
-        // Its name is still code, and the right of the row no longer says why.
-        <span className="shrink-0 corner-s bg-field px-xs text-body-s text-ink-3">
-          {t.skeletonTag}
+        <span className="text-body-s [overflow-wrap:anywhere] text-ink-2">
+          {data.note}
         </span>
-      )}
-      <span
-        className={cn(
-          "shrink-0 text-body-s",
-          data.passing && !data.struck ? "font-medium text-ink-2" : "text-ink-3"
-        )}
-      >
-        {data.struck
-          ? t.removed
-          : data.passing
-            ? t.changesPass(data.passing)
-            : data.pending
-              ? // The tile already shows what starts it; the room goes to its name.
-                t.notDescribed
-              : data.code
-                ? t.skeletonTag
-                : null}
       </span>
     </Card>
   )
@@ -368,7 +347,7 @@ export function MoreView({ data }: NodeProps<MoreNode>) {
         "text-body-m",
         "cursor-pointer border-line text-ink-2 transition-[opacity,color,border-color] duration-160",
         "hover:border-ink-3/50 hover:text-ink",
-        focusedModule && "opacity-35"
+        focusedModule && "opacity-85"
       )}
     >
       <ChevronDown aria-hidden className="size-3.5 shrink-0" />
@@ -393,7 +372,7 @@ export function BoxView({ data }: NodeProps<BoxNode>) {
           "relative h-full w-full",
           "corner-xl bg-ink/[0.035] ring-1 ring-line",
           "pointer-events-none transition-opacity duration-160",
-          away && "opacity-35"
+          away && "opacity-85"
         )}
       >
         <span
@@ -418,7 +397,7 @@ export function BoxView({ data }: NodeProps<BoxNode>) {
         "relative h-full w-full",
         "corner-xl edge-m border-dashed",
         "pointer-events-none border-edge-exception/50 transition-opacity duration-160",
-        away && "opacity-35"
+        away && "opacity-85"
       )}
     >
       <span className="absolute top-2 left-3.5 text-body-s font-medium text-ink-3">

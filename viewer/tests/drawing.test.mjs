@@ -13,6 +13,7 @@ const server = await createServer({
 after(() => server.close())
 const { buildModel } = await server.ssrLoadModule("/src/model.ts")
 const { buildAtlas } = await server.ssrLoadModule("/src/atlas/build.ts")
+const { buildGraph } = await server.ssrLoadModule("/src/canvas/graph.ts")
 const { STRINGS } = await server.ssrLoadModule("/src/i18n.ts")
 
 const PORT = 3.5
@@ -210,4 +211,81 @@ test("placing a flow leaves its own drawing where it was", () => {
       const onCanvas = first.nodes.find((item) => item.id === node.id)
       assert.notEqual(onCanvas, node)
     }
+})
+
+test("long step names and legacy change summaries expand the lanes that contain them", () => {
+  const payload = structuredClone(samples.refund)
+  const flow = payload.map.flows[0]
+  const change = payload.report.changes[0]
+  const entry = flow.steps.find((step) => step.kind === "trigger")
+  const changed = change.projection.step_id
+  const slots = () => {
+    const atlas = buildAtlas(buildModel(payload), STRINGS.zh)
+    return new Map(
+      stepsOf(atlas).map((node) => [node.data.step.step_id, node.data.slot])
+    )
+  }
+  const before = slots()
+  entry.name = "normalize_requested_line_length_".repeat(10)
+  change.explanation.summary = "检查格式化宽度并说明与配置的差异。".repeat(12)
+  const after = slots()
+  assert.ok(after.get(entry.step_id) > before.get(entry.step_id) + 80)
+  assert.ok(after.get(changed) > before.get(changed) + 80)
+})
+
+test("changes outside the map and removed flows fit their full text on separate rows", () => {
+  const payload = structuredClone(samples.refund)
+  const build = () =>
+    buildAtlas(buildModel(payload), STRINGS.zh, undefined, 340)
+  const before = build()
+  const change = payload.report.changes.find(
+    (item) => item.projection.status === "unassigned"
+  )
+  change.explanation.short_summary = "跨越多个模块的变更说明。".repeat(18)
+  payload.report.removed_flows[0].name =
+    "previous_refund_delivery_status_".repeat(8)
+
+  const after = build()
+  const card = after.nodes.find((node) => node.type === "offmap")
+  const row = after.nodes.find(
+    (node) => node.type === "row" && node.data.struck
+  )
+  for (const node of [card, row]) {
+    const original = before.nodes.find((item) => item.id === node.id)
+    assert.ok(node.height > original.height)
+  }
+  assert.ok(row.position.y >= card.position.y + card.height)
+})
+
+test("short flows spend spare width on long titles and keep their ports aligned", () => {
+  const payload = structuredClone(samples.map)
+  const flow = payload.map.flows[0]
+  flow.steps = flow.steps.slice(0, 2)
+  flow.steps[0].name = "Read the corresponding blackd header"
+  flow.edges = [
+    {
+      source: flow.steps[0].step_id,
+      target: flow.steps[1].step_id,
+      relation: "sequence",
+      support: "static_fact",
+      resolution: "resolved",
+    },
+  ]
+  const model = buildModel(payload)
+  const view = model.flows.find((item) => item.flow.flow_id === flow.flow_id)
+  const draw = (span) => buildGraph(view, model.findingStatus, false, span)
+  const compact = draw(500)
+  const wide = draw(1800)
+  assert.equal(compact.nodes[0].data.width, 240)
+  assert.equal(wide.nodes[0].data.width, 304)
+  assert.ok(wide.nodes[0].data.slot <= compact.nodes[0].data.slot)
+  for (const graph of [compact, wide]) {
+    const [from, to] = graph.nodes
+    const points = graph.edges[0].data.points
+    assert.ok(near(points[0].x, from.position.x + from.data.width + PORT))
+    assert.ok(near(points.at(-1).x, to.position.x - PORT))
+  }
+  view.flow.steps[0].name = "Read option"
+  view.flow.steps[1].name = "Set width"
+  assert.equal(draw(1800).nodes[0].data.width, 240)
 })
