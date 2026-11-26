@@ -25,7 +25,7 @@ import { statusOf, type TestStatus } from "@/model"
 import type { StepKind } from "@/types"
 import { coverageKind, shortSummary } from "@/presentation"
 import { useCanvas } from "./context"
-import type { StepNode as StepNodeType } from "./graph"
+import { riskCount, type StepNode as StepNodeType } from "./graph"
 
 /** One glyph per kind of step. */
 const TILE: Record<StepKind, typeof Play> = {
@@ -145,8 +145,6 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     coupons,
     echoes = [],
     isNew,
-    risk,
-    alerts = [],
     ghost,
     loops,
     removedFlow,
@@ -217,7 +215,8 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
     display: "flex",
     flexDirection: "column" as const,
     justifyContent: "center",
-    "--step-opacity": look.away ? 0.35 : quiet ? 0.58 : context ? 0.82 : 1,
+    // Keep nearby branches legible while the ring and edges identify the selection.
+    "--step-opacity": look.away || quiet ? 0.85 : context ? 0.94 : 1,
     "--lit-delay": `${look.delay}ms`,
   } as React.CSSProperties
   const changed = coupons.length > 0 && !removedFlow
@@ -289,21 +288,9 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
         {t.removed}
       </Badge>
     )
-  // The badge speaks for the change the card shows and for the step itself: a risk of
-  // another change on the card waits with that change. A stage block counts all of them.
-  const ownIds = new Set([
-    ...(step.finding_ids ?? []),
-    ...(change?.finding_ids ?? []),
-  ])
-  const ownAlerts = stage
-    ? alerts
-    : alerts.filter((finding) => ownIds.has(finding.finding_id))
-  if (ownAlerts.length || shown?.risky || risk !== undefined)
-    badges.push(<ReviewBadge key="risk" risky t={t} count={ownAlerts.length} />)
-  else if (change && status && status !== "tested")
-    badges.push(
-      <ReviewBadge key="validation" risky={false} status={status} t={t} />
-    )
+  const risks = riskCount(data, shown)
+  if (risks !== undefined)
+    badges.push(<ReviewBadge key="risk" risky t={t} count={risks} />)
   if (step.resolution !== "resolved")
     badges.push(
       <span key="res">
@@ -353,7 +340,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
           }
           className={cn(
             card,
-            "h-full flex-row items-center gap-m rounded-2xl py-0 pr-xl pl-s"
+            "h-full flex-row items-center gap-m corner-m px-l py-s"
           )}
         >
           {ring}
@@ -382,12 +369,12 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
               kind={step.kind}
               small
               stage={Boolean(stage)}
-              className={cn(quiet && "grayscale")}
+              className={cn("size-6", quiet && "grayscale")}
             />
             <span
               title={step.name}
               className={cn(
-                "line-clamp-2 min-w-0 text-body-m font-medium [overflow-wrap:anywhere] text-ink",
+                "min-w-0 text-body-m font-medium [overflow-wrap:anywhere] text-ink",
                 skeleton && "font-data text-body-m font-regular",
                 removedFlow &&
                   "text-ink-2 line-through decoration-ink decoration-[1.5px]"
@@ -417,7 +404,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
         data-changed={changed ? "" : undefined}
         data-highlight={isCurrent ? "current" : reached ? "impact" : undefined}
         data-tone={tone}
-        className={cn(card, "rounded-3xl p-3")}
+        className={cn(card, "corner-m p-l")}
       >
         {ring}
         {tag}
@@ -447,11 +434,12 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
           />
         )}
         <div>
-          <CardHeader className="flex items-center gap-l px-0">
+          <CardHeader className="flex items-center gap-m px-0">
             <KindTile
               kind={step.kind}
               stage={Boolean(stage)}
               className={cn(
+                "size-6",
                 (ghost || quiet) && "grayscale",
                 ghost && "opacity-70"
               )}
@@ -460,7 +448,7 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
               <CardTitle
                 title={title}
                 className={cn(
-                  "line-clamp-2 text-body-m font-medium [overflow-wrap:anywhere] text-ink",
+                  "text-body-m font-medium [overflow-wrap:anywhere] text-ink",
                   titleIsCode && "font-data text-body-m font-regular",
                   ghost &&
                     !summary &&
@@ -472,48 +460,41 @@ export function StepNode({ id, data }: NodeProps<StepNodeType>) {
               >
                 {title}
               </CardTitle>
-              {badges.length > 0 && (
-                <div className="mt-xs flex flex-wrap items-center gap-s text-body-s text-ink-3">
-                  {badges}
-                </div>
-              )}
             </div>
           </CardHeader>
 
-          {change && (
-            <div className="mt-m">
-              {!(ghost && summary) && (
-                <p
-                  className={cn(
-                    "mb-m line-clamp-2 text-body-m font-medium text-ink"
-                  )}
-                >
-                  {summary ?? t.changeKind[change.kind]}
-                </p>
-              )}
-              <div className="flex flex-wrap items-center justify-between gap-xs text-body-s text-ink-2">
-                {status ? (
-                  <StatusMark
-                    status={status}
-                    label={t.coverage[coverageKind(change.tests)]}
-                  />
-                ) : (
-                  <span />
-                )}
-                {coupons.length > 1 && (
-                  <span>{t.moreChanges(coupons.length - 1)}</span>
-                )}
-              </div>
+          {change && !(ghost && summary) && (
+            <p className="mt-m text-body-s [overflow-wrap:anywhere] text-ink-2">
+              {summary ?? t.changeKind[change.kind]}
+            </p>
+          )}
+          {badges.length > 0 && (
+            <div className="mt-m flex flex-wrap items-center gap-xs text-body-s text-ink-2">
+              {badges}
             </div>
           )}
-
+          {status && change && (
+            <div className="mt-m flex text-body-s text-ink-2">
+              <StatusMark
+                status={status}
+                label={t.coverage[coverageKind(change.tests)]}
+              />
+            </div>
+          )}
+          {coupons.length > 1 && (
+            <div className="mt-xs text-body-s text-ink-2">
+              {t.moreChanges(coupons.length - 1)}
+            </div>
+          )}
           {loops.map((loop, index) => (
             <div
               key={index}
               className="mt-m flex items-center gap-s text-body-s text-ink-3"
             >
-              <Repeat2 aria-hidden className="size-3.5" />
-              <span className="line-clamp-1">{loop.label || t.repeats}</span>
+              <Repeat2 aria-hidden className="size-3.5 shrink-0" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                {loop.label || t.repeats}
+              </span>
             </div>
           ))}
         </div>

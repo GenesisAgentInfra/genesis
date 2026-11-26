@@ -42,6 +42,13 @@ what the user says.
 
 A question about an existing map or review: see "Later requests" at the end.
 
+When naming flows and steps, read neighboring cards together. Put the action and
+the term that distinguishes each path early, for example “Read CLI timeout” and
+“Read header timeout”. Give a flow the name of the outcome its steps achieve. Use
+branch labels for conditions and group consecutive steps into stages when they form
+a meaningful part of that outcome. Preserve the decisions, exceptions and evidence
+as you shorten the wording.
+
 Genesis does not import or run the project's code, installs nothing, never needs the
 project's dependencies and does not use the network. `prepare` reads files and Git
 objects; with `--head` nothing is checked out. It writes its results under `.genesis/`
@@ -622,6 +629,22 @@ none is more than seven blocks across; 2 means a usable partial map. Complete do
 mean everything is certain: candidate and unknown items stay in a complete map and are
 listed under "Uncertain" in `summary.md`.
 
+Before handing over a map or review, check the actual file you will deliver. If
+you have a Genesis source checkout with viewer dependencies and Chromium installed,
+run `npm run check:map -- <absolute-path-to-html>` from its `viewer/` directory.
+Resolve and recheck any reported layout failure before marking that page visually
+verified.
+
+With a browser available, open or reload the local `view.html` (or `view.share.html`
+for a share export) at its default zoom. Follow a described flow from entry to
+outcome, or inspect the available entries in a skeleton. Check that neighboring
+steps read distinctly, visible card text fits, and opening a card leaves its
+details readable. For a review, open a change and check its effect and test
+evidence when present. If your wording obscures a path, revise the submission,
+render again and recheck that path. Report any remaining display problem. If you
+cannot preview the page, check the names and paths in `business-map.json` and the
+summary in `summary.md`, and say that you did not visually verify the page.
+
 Give the user the paths of `view.html` and `summary.md` under `.genesis/out/latest/`;
 `graph.html` beside them shows the same map as a plain outline. The page does not
 refresh itself: if section 1 opened it, tell the user to reload it. Then explain in
@@ -1093,9 +1116,9 @@ only when the user also asked for the whole map.
 
 ### Rendering and reporting a review
 
-Render as in section 4; step 6 says what the exit code means. In a change session both
-pages are the map with the changes on it: each change on the step it belongs to, with
-your explanation and what the tests say about it. `graph.html` also prints both sides
+Render and check the page as in section 4. Step 6 says what the exit code means. In a
+change session both pages show each change on the step it belongs to, with your
+explanation and what the tests say about it. `graph.html` also prints both sides
 of every change, keeps the flows that changed open and indexed at the top, and lists
 what has no step after the map. `summary.md` lists the same changes by flow and step,
 and `change-report.json` holds them as data. The rest of the map may still be a static

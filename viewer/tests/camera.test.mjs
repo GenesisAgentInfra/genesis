@@ -10,7 +10,7 @@ const server = await createServer({
   appType: "custom",
 })
 after(() => server.close())
-const { MAX_ZOOM, PANEL_W, readingArea, readingSpan, settlePan, viewOf } =
+const { MAX_ZOOM, panelWidth, readingArea, readingSpan, settlePan, viewOf } =
   await server.ssrLoadModule("/src/canvas/camera.ts")
 const { buildModel } = await server.ssrLoadModule("/src/model.ts")
 const { atlasDrawer } = await server.ssrLoadModule("/src/atlas/build.ts")
@@ -52,6 +52,7 @@ const edgesOf = (scene, view) => {
     left: Math.min(...boxes.map((box) => box.left)),
     top: Math.min(...boxes.map((box) => box.top)),
     right: Math.max(...boxes.map((box) => box.right)),
+    bottom: Math.max(...boxes.map((box) => box.bottom)),
   }
 }
 
@@ -62,13 +63,23 @@ test("the reading area is clear of the headline, the controls and the panel", ()
     width: 1408,
     height: 760,
   })
-  assert.equal(readingArea(desk, true).width, 1440 - 16 - PANEL_W - 40)
+  for (const [width, inspector] of [
+    [800, 304],
+    [1280, 384],
+    [1920, 420],
+  ]) {
+    assert.equal(panelWidth(width), inspector)
+    assert.equal(
+      readingArea({ ...desk, width }, true).width,
+      width - 16 - inspector - 40
+    )
+  }
   // A taller headline pushes the map down, and only that.
   const tall = readingArea({ ...desk, headline: 72 }, false)
   assert.deepEqual([tall.y, tall.height, tall.width], [112, 724, 1408])
 })
 
-test("a map that reads whole starts right under the headline, filling the screen across", async () => {
+test("a map that reads whole starts under the headline and uses available width up to native scale", async () => {
   const expense = buildModel(
     JSON.parse(
       await readFile(new URL("../dev/sample-expense.json", import.meta.url))
@@ -82,10 +93,72 @@ test("a map that reads whole starts right under the headline, filling the screen
   const view = viewOf({ of: "place" }, scene)
   const area = readingArea(desk, false)
   const map = edgesOf(scene, view)
-  assert.ok(near(map.top, area.y))
-  assert.ok(near(map.left, area.x))
-  assert.ok(near(map.right, area.x + area.width))
-  assert.ok(view.zoom > 0.66 && view.zoom <= MAX_ZOOM)
+  const spareHeight = Math.max(0, area.height - (map.bottom - map.top))
+  assert.ok(near(map.top, area.y + spareHeight / 3))
+  const natural = edgesOf(scene, { x: 0, y: 0, zoom: 1 })
+  assert.ok(
+    near(
+      map.right - map.left,
+      Math.min(area.width, natural.right - natural.left)
+    )
+  )
+  assert.ok(near((map.left + map.right) / 2, area.x + area.width / 2))
+  assert.ok(view.zoom > 0.66 && view.zoom <= 1)
+})
+
+test("automatic framing of a sparse map keeps its native size with or without the inspector", () => {
+  const node = {
+    id: "start",
+    type: "row",
+    position: { x: 5, y: 10 },
+    width: 220,
+    height: 80,
+  }
+  for (const panel of [false, true]) {
+    const scene = { ...sceneOf(), atlas: { nodes: [node] }, panel }
+    const view = viewOf({ of: "place" }, scene)
+    const area = readingArea(scene.screen, panel)
+    const box = onScreen(scene, view, node.id)
+    assert.equal(view.zoom, 1)
+    assert.ok(
+      near(box.top, area.y + (panel ? 0 : (area.height - node.height) / 3))
+    )
+    assert.ok(near((box.left + box.right) / 2, area.x + area.width / 2))
+    assert.equal(viewOf({ of: "steps", ids: [node.id] }, scene).zoom, 1)
+    const magnified = { ...view, zoom: MAX_ZOOM }
+    assert.equal(settlePan(magnified, scene).zoom, 1.6)
+  }
+})
+
+test("a small desktop overview settles back to its reading position in a tall window", () => {
+  const node = {
+    id: "width",
+    type: "row",
+    position: { x: 8, y: 12 },
+    width: 910,
+    height: 380,
+  }
+  for (const [width, height] of [
+    [1280, 720],
+    [1813, 1752],
+  ]) {
+    const screen = { ...desk, width, height }
+    const scene = { screen, panel: false, atlas: { nodes: [node] } }
+    const area = readingArea(screen, false)
+    const view = viewOf({ of: "place" }, scene)
+    const above = onScreen(scene, view, node.id).top - area.y
+    const spare = area.height - node.height * view.zoom
+    assert.ok(above > spare * 0.3 && above < spare * 0.4)
+    for (const zoom of [0.8, view.zoom]) {
+      const settled = settlePan({ x: -4000, y: -4000, zoom }, scene)
+      assert.ok(
+        near(
+          onScreen(scene, settled, node.id).top,
+          area.y + (area.height - node.height * zoom) / 3
+        )
+      )
+    }
+  }
 })
 
 test("a flow drawn wider than the screen keeps the map at reading size", () => {
@@ -112,11 +185,35 @@ test("a map too wide to read whole keeps its size and runs on past the right edg
   assert.ok(map.right > area.x + area.width)
 })
 
+test("a narrow overview keeps text readable and reveals the selected step above its sheet", () => {
+  const screen = { width: 390, height: 844, headline: 48, narrow: true }
+  const area = readingArea(screen, true)
+  const node = (id, x) => ({
+    id,
+    type: "row",
+    position: { x, y: 0 },
+    width: 240,
+    height: 88,
+  })
+  const scene = {
+    screen,
+    panel: true,
+    subject: "last",
+    atlas: { nodes: [node("first", 0), node("last", 1200)] },
+  }
+  const view = viewOf({ of: "place" }, scene)
+  assert.equal(view.zoom, 0.85)
+  const box = onScreen(scene, view, "last")
+  assert.ok(box.left >= area.x && box.right <= area.x + area.width)
+  assert.ok(box.top >= area.y && box.bottom <= area.y + area.height)
+})
+
 test("what the panel is about ends up in view beside it, wherever it sits on the map", () => {
   for (const screen of [
     desk,
     { ...desk, width: 1000 },
     { ...desk, height: 520 },
+    { ...desk, width: 390, height: 844, narrow: true },
   ]) {
     const area = readingArea(screen, true)
     for (const focused of [undefined, REFUNDS]) {

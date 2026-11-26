@@ -1,4 +1,4 @@
-import { HEAD_H, flowIdOf, type Atlas, type AtlasNode } from "@/atlas/build"
+import { flowIdOf, type Atlas, type AtlasNode } from "@/atlas/build"
 
 /**
  * Where the camera looks. A shot names what should be in frame; `viewOf` works out the
@@ -50,23 +50,22 @@ export interface Scene {
   screen: Screen
 }
 
-/** The panel's width beside the map. */
-export const PANEL_W = 420
-/** The most the canvas zooms in, so a small map does not make its cards oversized. */
+/** One width for the inspector, the canvas clip, and the camera that frames beside it. */
+export const panelWidth = (width: number) =>
+  Math.max(304, Math.min(420, Math.round(width * 0.3)))
+/** Readers can magnify the canvas beyond the natural size used for automatic framing. */
 export const MAX_ZOOM = 1.6
 /** The size the map is laid out to be read at across the screen. */
 const READ_ZOOM = 0.8
 /** The least the whole map or a module is framed at, so its words stay readable: a map
  *  wider than that runs on past the right edge and is reached by panning. */
 const READ_FLOOR = 0.66
-/** Without room beside the panel there is no size that reads: the map just fits. */
-const NARROW_FLOOR = 0.05
 /** The least some steps asked for by name are framed at. */
 const STEPS_FLOOR = 0.5
 /** A walk follows its flow from this close. */
 const WALK_ZOOM = 0.85
-/** A flow this near its module's top is framed with the module's name over it. */
-const NAME_REACH = HEAD_H + 80
+/** How far below its heading a flow can start and still bring the module name into frame. */
+const NAME_REACH = 80
 /** The glide from one place to the next. */
 export const GLIDE_MS = 520
 /** One press of a zoom button. */
@@ -82,7 +81,7 @@ export function readingArea(screen: Screen, panel: boolean): Box {
   const { narrow, width, height } = screen
   const inset = narrow ? 12 : 16
   const top = inset + screen.headline + (narrow ? 16 : 24)
-  const right = narrow ? 12 : panel ? PANEL_W + 40 : inset
+  const right = narrow ? 12 : panel ? panelWidth(width) + 40 : inset
   const bottom = 64 + (narrow && panel ? height * 0.52 : 0)
   return {
     x: inset,
@@ -118,6 +117,13 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
 }
 
+/** The desktop overview sits a little above centre when its entire drawing fits. */
+function overviewInset(scene: Scene, spareX: number, spareY: number) {
+  if (scene.screen.narrow || scene.focused || scene.panel || spareX < 0)
+    return 0
+  return Math.max(0, spareY) / 3
+}
+
 /** Where a manual pan can settle at its current zoom. */
 export function settlePan(view: Viewport, scene: Scene): Viewport {
   const bounds = around(scene.atlas.nodes.map(boxOf))
@@ -129,7 +135,10 @@ export function settlePan(view: Viewport, scene: Scene): Viewport {
   const left = area.x - bounds.x * zoom
   const top = area.y - bounds.y * zoom
   const x = spareX >= 0 ? left + spareX / 2 : clamp(view.x, left + spareX, left)
-  const y = spareY >= 0 ? top : clamp(view.y, top + spareY, top)
+  const y =
+    spareY >= 0
+      ? top + overviewInset(scene, spareX, spareY)
+      : clamp(view.y, top + spareY, top)
   const bounded = { x, y, zoom }
 
   // The outer rectangle can contain empty space between modules. In that case,
@@ -184,7 +193,7 @@ function frame(
 ): Viewport {
   const across = area.width / bounds.width
   const zoom = Math.min(
-    MAX_ZOOM,
+    1, // A sparse map stays at its native type size even when there is room to spare.
     Math.max(
       fit.min,
       fit.fromTop ? across : Math.min(across, area.height / bounds.height)
@@ -221,7 +230,9 @@ function frame(
 export function viewOf(shot: Shot, scene: Scene): Viewport | undefined {
   const { atlas, screen } = scene
   const area = readingArea(screen, scene.panel)
-  const floor = screen.narrow ? NARROW_FLOOR : READ_FLOOR
+  // A narrow screen reads one section at a time. A whole-flow thumbnail would make the
+  // labels illegible; pan the rest into view, or frame the selected step above its sheet.
+  const floor = screen.narrow ? WALK_ZOOM : READ_FLOOR
   const find = (id?: string) => {
     const node = id ? atlas.nodes.find((item) => item.id === id) : undefined
     return node && boxOf(node)
@@ -229,17 +240,23 @@ export function viewOf(shot: Shot, scene: Scene): Viewport | undefined {
   switch (shot.of) {
     case "place": {
       const bounds = find(scene.focused) ?? around(atlas.nodes.map(boxOf))
-      return (
-        bounds &&
-        frame(bounds, area, {
-          min: floor,
-          fromTop: true,
-          reveal: scene.panel ? find(scene.subject) : undefined,
-        })
+      if (!bounds) return undefined
+      const view = frame(bounds, area, {
+        min: floor,
+        fromTop: true,
+        reveal: scene.panel ? find(scene.subject) : undefined,
+      })
+      view.y += overviewInset(
+        scene,
+        area.width - bounds.width * view.zoom,
+        area.height - bounds.height * view.zoom
       )
+      return view
     }
     case "flow": {
-      const module = find(scene.focused)
+      const parent = atlas.nodes.find((node) => node.id === scene.focused)
+      const module = parent && boxOf(parent)
+      const heading = parent?.type === "module" ? parent.data.heading.height : 0
       const bounds =
         around(
           atlas.nodes
@@ -250,7 +267,7 @@ export function viewOf(shot: Shot, scene: Scene): Viewport | undefined {
       const under = module ? bounds.y - module.y : Infinity
       return frame(
         // At the top of its module, the module's name comes along.
-        module && under < NAME_REACH
+        module && under < heading + NAME_REACH
           ? {
               x: module.x,
               y: module.y,

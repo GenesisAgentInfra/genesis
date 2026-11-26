@@ -176,7 +176,7 @@ export function DetailPanel({
           </Button>
         </CardAction>
       </CardHeader>
-      <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0">
+      <Tabs defaultValue="overview" className="min-h-0 flex-auto gap-0">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-m px-xxl">
           {contract && (
             <TabsList>
@@ -191,7 +191,7 @@ export function DetailPanel({
             </Button>
           )}
         </div>
-        <ScrollArea className="min-h-0 flex-1">
+        <ScrollArea className="flex min-h-0 flex-auto flex-col *:data-[slot=scroll-area-viewport]:h-auto *:data-[slot=scroll-area-viewport]:min-h-0 *:data-[slot=scroll-area-viewport]:flex-auto">
           <div className="min-w-0 p-xxl">
             <TabsContent value="overview" className="min-w-0 space-y-xl">
               {active && (

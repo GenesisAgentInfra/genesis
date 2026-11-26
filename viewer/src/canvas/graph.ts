@@ -2,9 +2,11 @@ import type { Edge, Node } from "@xyflow/react"
 
 import { drawnGraph, edgeLabel, type Line } from "@/flow-graph"
 import { cutFlow } from "./focus"
+import { wrappedHeight } from "./text-size"
+import { STRINGS, type Strings } from "@/i18n"
 import { removedNodeId, type Coupon, type FlowView } from "@/model"
 import type { FindingChange, MapFinding, MapStep } from "@/types"
-import { sortAlerts } from "@/presentation"
+import { shortSummary, sortAlerts } from "@/presentation"
 
 /**
  * A flow drawn left to right in lanes: a step the change leaves alone is a small pill, a
@@ -17,13 +19,11 @@ import { sortAlerts } from "@/presentation"
  * of them; a dotted line stands for the steps left out in between (see `cutFlow`).
  */
 
-/** Every step, pill or card, takes a column of this width, so a flow reads as a grid. */
-const CARD_W = 192
+/** Short labels and busy flows keep a compact grid. Longer names can use a wider
+ * column where the viewport has room, without scaling up their type. */
+const CARD_W = 240
+const MAX_CARD_W = 304
 const PILL_H = 44
-/** A pill whose name needs a second line. */
-const PILL_TALL = 60
-/** Room for a pill's name on one line: the column less its tile and padding. */
-const PILL_TEXT = CARD_W - 58
 /** Between two rows: room for a line running between them, or a label. */
 const ROW_GAP = 28
 /** The least between two columns. */
@@ -132,14 +132,58 @@ const labelWidth = (text: string) =>
 export const isLongEdgeLabel = (text: string) =>
   fullLabelWidth(text) > EDGE_LABEL_LIMIT
 
-function heightOf(data: StepNodeData): number {
-  if (data.stub) return PILL_H
-  if (data.compact)
-    return textWidth(data.step.name) > PILL_TEXT ? PILL_TALL : PILL_H
-  let height = 68
-  if (data.coupons.length) height += 80
-  if (data.loops.length) height += 24
-  return height
+/** A step can carry several changes. Only a risk belonging to the visible change or
+ * to the step is shown; a folded stage represents all its members. */
+export function riskCount(
+  data: StepNodeData,
+  coupon?: Coupon
+): number | undefined {
+  const ids = new Set([
+    ...(data.step.finding_ids ?? []),
+    ...(coupon?.change.finding_ids ?? []),
+  ])
+  const alerts = data.alerts ?? []
+  const count = data.stage
+    ? alerts.length
+    : alerts.filter((alert) => ids.has(alert.finding_id)).length
+  return count || coupon?.risky || data.risk !== undefined ? count : undefined
+}
+
+function heightOf(data: StepNodeData, t: Strings): number {
+  // Border and 12px padding on each side, a 24px icon and an 8px gap.
+  const inner = data.width - 26
+  const nameWidth = inner - 32
+  const nameHeight = (name: string) =>
+    Math.max(24, wrappedHeight(name, nameWidth))
+  if (data.compact) return Math.max(PILL_H, nameHeight(data.step.name) + 18)
+
+  // Reserve the tallest change upfront: moving to the next change on the same card
+  // keeps its ports, neighbors and any branch labels in their original positions.
+  const variants = data.coupons.length ? data.coupons : [undefined]
+  return Math.max(
+    ...variants.map((coupon) => {
+      const change = coupon?.change
+      const summary = change ? shortSummary(change) : undefined
+      const title = data.ghost && summary ? summary : data.step.name
+      let height = 26 + nameHeight(title)
+      if (change && !(data.ghost && summary))
+        height +=
+          8 +
+          wrappedHeight(summary || t.changeKind[change.kind], inner, "body-s")
+      const badges =
+        Number(data.isNew) +
+        Number(data.ghost) +
+        Number(riskCount(data, coupon) !== undefined) +
+        Number(data.step.resolution !== "resolved")
+      if (badges) height += 8 + (badges <= 2 ? 20 : 44)
+      if (change && !data.removedFlow) height += 8 + 17
+      if (data.coupons.length > 1) height += 4 + 17
+      for (const loop of data.loops)
+        height +=
+          8 + wrappedHeight(loop.label || t.repeats, inner - 20, "body-s")
+      return height
+    })
+  )
 }
 
 export function buildGraph(
@@ -155,7 +199,8 @@ export function buildGraph(
    */
   words?: CutWords,
   /** With `words`: the stages the reader has opened. Every other stage is one block. */
-  opened: ReadonlySet<string> = new Set()
+  opened: ReadonlySet<string> = new Set(),
+  t: Strings = STRINGS.en
 ): {
   nodes: StepNode[]
   edges: FlowEdge[]
@@ -241,7 +286,6 @@ export function buildGraph(
       hasOut: outgoing.length > 0,
       slot: 0,
     }
-    data.slot = heightOf(data)
     // What a screen reader says for the card: the step, then the change written on it.
     const said = coupons[0]?.change.explanation?.summary
     return {
@@ -323,7 +367,6 @@ export function buildGraph(
       slot: 0,
       stage: members.length,
     }
-    data.slot = heightOf(data)
     // The block takes the place of its first step, so the flow reads in the same order.
     nodes = nodes.flatMap((node) =>
       node.id === members[0].id
@@ -456,8 +499,9 @@ export function buildGraph(
   }
 
   const gone = view.removedSteps.filter((coupon) => coupon.place.removed_step)
-  const run = gone.length * (CARD_W + 20) - 20
-  const size = arrange(nodes, flowEdges)
+  const size = arrange(nodes, flowEdges, max, t)
+  const { cardWidth } = size
+  const run = gone.length * (cardWidth + 20) - 20
 
   // Steps the change removed have no place among the current ones: they wait after the
   // end of the flow when there is room beside its last band, else in a row below.
@@ -485,15 +529,15 @@ export function buildGraph(
       removedFlow: false,
       skeleton: false,
       compact: false,
-      width: CARD_W,
+      width: cardWidth,
       hasIn: false,
       hasOut: false,
       slot: 0,
     }
-    data.slot = heightOf(data)
+    data.slot = heightOf(data, t)
     const at = beside
       ? {
-          x: size.tail.x + 40 + index * (CARD_W + 20),
+          x: size.tail.x + 40 + index * (cardWidth + 20),
           y: Math.max(
             0,
             Math.min(
@@ -502,7 +546,7 @@ export function buildGraph(
             )
           ),
         }
-      : { x: index * (CARD_W + 20), y: below }
+      : { x: index * (cardWidth + 20), y: below }
     nodes.push({
       id: removedNodeId(removed.step_id, coupon.no),
       type: "step",
@@ -512,7 +556,7 @@ export function buildGraph(
       data,
     })
     h = Math.max(h, at.y + data.slot)
-    w = Math.max(w, at.x + CARD_W)
+    w = Math.max(w, at.x + cardWidth)
   })
   return {
     nodes,
@@ -552,15 +596,24 @@ export function graphOfDrawing(nodes: StepNode[], edges: FlowEdge[]) {
  */
 function arrange(
   nodes: StepNode[],
-  edges: FlowEdge[]
+  edges: FlowEdge[],
+  span: number,
+  t: Strings
 ): {
+  cardWidth: number
   w: number
   h: number
   tail: { x: number; top: number; bottom: number }
   boxes: ErrorBox[]
 } {
   if (!nodes.length)
-    return { w: 0, h: 0, tail: { x: 0, top: 0, bottom: 0 }, boxes: [] }
+    return {
+      cardWidth: CARD_W,
+      w: 0,
+      h: 0,
+      tail: { x: 0, top: 0, bottom: 0 },
+      boxes: [],
+    }
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const graph = graphOfDrawing(nodes, edges)
   const { out, into } = graph
@@ -698,22 +751,6 @@ function arrange(
   const rows = Math.max(0, ...row.values()) + 1
   const boxed = error.size > 0
 
-  const rowH = Array.from({ length: rows }, () => PILL_H)
-  for (const node of nodes) {
-    const r = row.get(node.id)!
-    rowH[r] = Math.max(rowH[r], node.data.slot)
-  }
-  const rowTop: number[] = []
-  let y = 0
-  for (let r = 0; r < rows; r++) {
-    if (r) y += ROW_GAP
-    if (boxed && r === errorRow) y += BOX_HEAD
-    rowTop[r] = y
-    y += rowH[r]
-  }
-  const height = y + (boxed ? BOX_PAD : 0)
-  const mid = (r: number) => rowTop[r] + rowH[r] / 2
-
   // How each line gets to its step: straight along its row, turning just after it leaves
   // (then along the row it arrives on), turning just before it arrives (after running
   // along the row it leaves), or through the gap between two rows when both are taken.
@@ -838,11 +875,46 @@ function arrange(
     gap[way.cs] = Math.max(gap[way.cs], room)
   }
 
+  // Choose the width only after folding stages, cutting steps and placing edge labels:
+  // each of these changes how much room remains for this flow's actual columns.
+  const gaps = gap.slice(0, -1).reduce((sum, value) => sum + value, 0)
+  const roomPerColumn = Math.floor((span - gaps) / cols)
+  const longestName = Math.max(
+    ...nodes.map(({ data }) =>
+      data.stub ? 0 : 58 + textWidth(data.step.name, 14, 8.5)
+    )
+  )
+  const cardWidth = Math.max(
+    CARD_W,
+    Math.min(MAX_CARD_W, roomPerColumn, Math.ceil(longestName))
+  )
+  for (const { data } of nodes) {
+    if (data.stub) continue
+    data.width = cardWidth
+    data.slot = heightOf(data, t)
+  }
+
+  const rowH = Array.from({ length: rows }, () => PILL_H)
+  for (const node of nodes) {
+    const r = row.get(node.id)!
+    rowH[r] = Math.max(rowH[r], node.data.slot)
+  }
+  const rowTop: number[] = []
+  let y = 0
+  for (let r = 0; r < rows; r++) {
+    if (r) y += ROW_GAP
+    if (boxed && r === errorRow) y += BOX_HEAD
+    rowTop[r] = y
+    y += rowH[r]
+  }
+  const height = y + (boxed ? BOX_PAD : 0)
+  const mid = (r: number) => rowTop[r] + rowH[r] / 2
+
   const colX: number[] = []
   let x = 0
   for (let c = 0; c < cols; c++) {
     colX[c] = x
-    x += CARD_W + gap[c]
+    x += cardWidth + gap[c]
   }
   for (const node of nodes)
     node.position = {
@@ -867,7 +939,7 @@ function arrange(
     between.set(at, k + 1)
     return at + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 7
   }
-  const cell = (c: number) => colX[c] + CARD_W / 2
+  const cell = (c: number) => colX[c] + cardWidth / 2
   // Labels already set down, so a line running beside another puts its own label clear of
   // theirs: along its run, from the end it sets out from.
   const set: { x: number; y: number; w: number }[] = []
@@ -919,7 +991,7 @@ function arrange(
       y: mid(way.rs),
     }
     const end: Point = { x: target.position.x, y: mid(way.rt) }
-    const out = colX[way.cs] + CARD_W + TURN + (way.left ?? 0) * LANE
+    const out = colX[way.cs] + cardWidth + TURN + (way.left ?? 0) * LANE
     const back = colX[Math.max(way.ct, 0)] - TURN - (way.right ?? 0) * LANE
     const passes = way.ct - way.cs >= 2
     const half = way.width / 2
@@ -1086,11 +1158,12 @@ function arrange(
     boxes.push({
       x: left,
       y: top + lift,
-      w: colX[Math.max(...members)] + CARD_W + BOX_PAD - left,
+      w: colX[Math.max(...members)] + cardWidth + BOX_PAD - left,
       h: height - top,
     })
   }
   return {
+    cardWidth,
     w: width,
     h: low,
     tail: { x: width, top: 0, bottom: low },

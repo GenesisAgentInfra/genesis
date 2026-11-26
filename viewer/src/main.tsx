@@ -24,7 +24,10 @@ async function load(): Promise<Payload | null> {
 }
 
 const root = createRoot(document.getElementById("root")!)
-load().then((payload) => {
+// Layout measures card text on first render. A failed embedded font can still use
+// the system fallback at its actual width.
+const canvasFont = document.fonts.load('500 14px "Geist Mono"').catch(() => [])
+Promise.all([load(), canvasFont]).then(([payload]) => {
   if (!payload) {
     const t =
       STRINGS[detectLang([navigator.language.startsWith("zh") ? "中文" : "en"])]

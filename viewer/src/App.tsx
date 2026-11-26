@@ -29,9 +29,9 @@ import { Separator } from "@/components/ui/separator"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   MAX_ZOOM,
-  PANEL_W,
   ZOOM_MS,
   easeOut,
+  panelWidth,
   readingArea,
   readingSpan,
   settlePan,
@@ -618,7 +618,7 @@ function Viewer({ model, theme, toggleTheme }: ViewerProps) {
           )}
           style={
             {
-              "--panel-w": `${PANEL_W}px`,
+              "--panel-w": `${panelWidth(width)}px`,
               "--morph": `${MORPH_MS}ms`,
               "--viewer-bar-height": `${headlineHeight}px`,
             } as React.CSSProperties
@@ -828,10 +828,10 @@ function Viewer({ model, theme, toggleTheme }: ViewerProps) {
               }}
               className={cn(
                 "absolute z-20",
-                // A stable desktop inspector fits both tabs and leaves controls below it.
+                // Short details take their natural height; longer content scrolls inside the card.
                 narrow
                   ? "inset-x-2 bottom-2 h-[52dvh] [--panel-from:0_var(--space-xxl)]"
-                  : "top-[calc(var(--viewer-bar-height)+var(--space-xl))] right-4 h-[min(720px,calc(100dvh-var(--viewer-bar-height)-var(--space-xxl)*2))] w-(--panel-w) [--panel-from:var(--space-xl)_0]",
+                  : "top-[calc(var(--viewer-bar-height)+var(--space-xl))] right-4 max-h-[calc(100dvh-var(--viewer-bar-height)-var(--space-xl)*2)] w-(--panel-w) [--panel-from:var(--space-xl)_0]",
                 panel.leaving ? "panel-out" : "panel-in"
               )}
             >
