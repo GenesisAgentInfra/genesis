@@ -162,6 +162,24 @@ class CaseEvidence(ContractModel):
         return self
 
 
+class BehaviorCheck(ContractModel):
+    """Source evidence and an agent's reasoning, not independent behavioral proof."""
+
+    assertion: str = Field(min_length=1, max_length=400)
+    scenario: Text
+    detects: Text
+
+    @model_validator(mode="after")
+    def check_is_substantive(self) -> BehaviorCheck:
+        if not all(value.strip() for value in (self.assertion, self.scenario, self.detects)):
+            raise ValueError("assertion, scenario and detects must not be blank")
+        return self
+
+
+class TestCheck(BehaviorCheck):
+    test_id: str = Field(min_length=1)
+
+
 class CoverageAssessment(ContractModel):
     """Whether existing tests cover one change, graded and shown with its basis."""
 
@@ -170,11 +188,20 @@ class CoverageAssessment(ContractModel):
     execution_data: Literal["imported", "not_collected"]
     note: Text | None = None
     items: tuple[CaseEvidence, ...] = ()
+    # Optional so reports saved before structured checks remain readable.
+    checks: tuple[TestCheck, ...] = ()
 
     @model_validator(mode="after")
     def verdict_matches_evidence(self) -> CoverageAssessment:
         _unique(self.basis, "coverage basis")
         _unique((item.test_id for item in self.items), "tests in one assessment")
+        if self.checks and (
+            self.verdict != CoverageVerdict.covered
+            or any(
+                check.test_id not in {item.test_id for item in self.items} for check in self.checks
+            )
+        ):
+            raise ValueError("checks must name tests listed in a covered assessment")
         executed = [item for item in self.items if item.executed]
         if self.execution_data == "not_collected":
             if any(item.executed is not None for item in self.items):

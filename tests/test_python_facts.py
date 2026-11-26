@@ -1,7 +1,7 @@
 """Python adapter: language-neutral facts with position-independent fingerprints."""
 
 import pytest
-from genesis_ci.business_map.python_facts import canonical_python, python_facts
+from genesis_ci.business_map.python_facts import canonical_python, python_facts, vacuous_assertion
 from genesis_ci.git_snapshot import capture_snapshot
 from genesis_ci.python import extract_python
 from genesis_contracts.facts import CodeFact, FactSet
@@ -11,6 +11,60 @@ from pydantic import ValidationError
 from test_git_snapshot import commit, git, write
 
 BASE, HEAD = EvidenceSide.base, EvidenceSide.head
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "True",
+        "1",
+        "'ok'",
+        "[0, False]",
+        "((),)",
+        "1 == 1",
+        "1 != 2 == 2",
+        "2 * 3 == 6",
+        "(1 + 2) * 3 >= 9",
+    ],
+)
+def test_literal_assertions_that_cannot_fail_are_vacuous(expression):
+    assert vacuous_assertion(expression)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "False",
+        "0",
+        "None",
+        "''",
+        "[]",
+        "()",
+        "1 == 2",
+        "1 == 1 != 1",
+        "observed == observed",
+        "[observe()]",
+        "(1 / 0,)",
+        "{[]}",
+        "{[]: 1}",
+        "pytest.raises(ValueError)",
+        "recorded.assert_called_once()",
+        "2 < 3 < 1",
+        "1 / 0",
+        "True or observe()",
+        "(2 or 3) == 1",
+        "(2 and 3) == 1",
+        "'x' * 1000000000",
+        "[0] * 1000000000",
+        "2 ** 1000000000",
+        "9999999999999999999 * 9999999999999999999",
+        "1 < 'one'",
+        "incomplete(",
+    ],
+)
+def test_failing_or_unsupported_assertions_stay_undecided(expression):
+    assert not vacuous_assertion(expression)
+
 
 APP = """from helpers import review, save
 

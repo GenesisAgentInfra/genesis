@@ -162,11 +162,13 @@ def test_bundled_skill_examples_match_the_contracts_and_the_cli(user_home):
         "edges",
         "changes",
         "risks",
+        "changes",
     ]
     MapPlan.model_validate(examples[0])
     FlowSubmission.model_validate(examples[1])
     ChangeSubmission.model_validate(examples[2])
     ChangeSubmission.model_validate(examples[3])
+    ChangeSubmission.model_validate(examples[4])
     commands = set(re.findall(r"genesis map ([a-z]+)", text))
 
     def help_of(*command):

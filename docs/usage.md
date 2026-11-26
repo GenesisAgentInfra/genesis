@@ -136,7 +136,7 @@ there is no browser for it to open. Copy `view.html` to your own machine, or rea
   to show them.
 - A step can carry a badge: `Risk` when the agent recorded a risk on the step or on the
   change shown on it. Otherwise a changed step shows `Needs validation` whenever its
-  test verdict is anything other than `Behavior checked`.
+  test verdict is anything other than `Assessed as covered`.
 - `Unconfirmed` or `Unknown` on a step means the evidence does not fully support it.
   `summary.md` lists these steps with the reason under "Uncertain". This is not the
   test verdict `Coverage unclear`.
@@ -149,11 +149,17 @@ there is no browser for it to open. Copy `view.html` to your own machine, or rea
 ### Test verdicts
 
 Genesis reads your tests. It never runs them, so a verdict is never a statement that a
-test passed.
+test passed. The detail panel shows the test scenario, quoted assertion, and the
+agent's reason for expecting it to detect the change when supplied. The CLI verifies
+assertion provenance and, for Python, rejects simple always-true literal assertions
+such as `assert True` and `assert 1 == 1` with `vacuous_assertion`. These checks do not
+establish that an assertion would detect the change. That remains the agent's source
+assessment. Older reports remain readable but may lack these details. The JSON verdict
+remains `covered`.
 
 | On the page | In `summary.md` | Meaning |
 | --- | --- | --- |
-| Behavior checked | covered | A test runs the changed code and would fail if the change were undone. |
+| Assessed as covered | assessed as covered | The agent judges that a test would fail if the change were undone. |
 | Behavior not checked | reached only | Tests run the code but would not fail if the change were undone: they miss its path or check nothing it affects. |
 | No coverage found | not reached | No test gets to it. |
 | Coverage unclear | unknown | It could not be told. Either your agent read the tests and could not decide, or nobody assessed the change and static analysis had nothing to go on: it found no test that calls the code, or the code was removed. A test may still reach it in a way static analysis does not follow. On the page, the note under the verdict says which. |
@@ -161,7 +167,7 @@ test passed.
 
 The page's own labels exist in English and Chinese only. The page picks Chinese when
 your agent wrote the result in Chinese, and English otherwise, whatever language you
-read this guide in. In Chinese the four verdicts read 有行为验证, 缺少行为验证,
+read this guide in. In Chinese the four verdicts read Agent 判断有覆盖, 缺少行为验证,
 未找到覆盖 and 覆盖待确认. `summary.md` and `graph.html` always use English labels.
 
 Risks and flow names are your agent's reading of the code. No rule engine produced

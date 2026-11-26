@@ -30,6 +30,10 @@ const zh = {
   needsValidation: "待验证",
   severityLabel: "严重程度",
   testEvidence: "测试依据",
+  testScenario: "测试场景",
+  testDetects: "判断能检出改动的理由",
+  assessmentBasis: "覆盖是否充分由 Agent 阅读源码判断，CLI 只核对引用依据。",
+  executionImported: "已导入执行数据；它本身不证明断言能检出改动。",
   ioContract: "输入 / 输出",
   changeOverview: "改动说明",
   githubCode: "在 GitHub 查看",
@@ -51,7 +55,7 @@ const zh = {
     unclassified: "待分类",
   },
   coverage: {
-    asserted: "有行为验证",
+    asserted: "Agent 判断有覆盖",
     related: "缺少行为验证",
     uncovered: "未找到覆盖",
     unknown: "覆盖待确认",
@@ -60,7 +64,7 @@ const zh = {
     risk: "新风险",
     untested: "缺少验证",
     unsure: "待确认",
-    tested: "有验证",
+    tested: "Agent 判断有覆盖",
   } satisfies Record<Tone, string>,
   listTitle: "这次的改动",
   removedFlowRow: "流程被删除",
@@ -117,7 +121,7 @@ const zh = {
   mapSize: (modules: number, flows: number) =>
     `${modules} 个模块 · ${flows} 条流程`,
   status: {
-    tested: "有行为验证",
+    tested: "Agent 判断有覆盖",
     untested: "缺少行为验证",
     unsure: "覆盖待确认",
   } satisfies Record<TestStatus, string>,
@@ -205,6 +209,12 @@ const en: Strings = {
   needsValidation: "Needs validation",
   severityLabel: "Severity",
   testEvidence: "Test evidence",
+  testScenario: "Test scenario",
+  testDetects: "Why the agent expects it to detect the change",
+  assessmentBasis:
+    "Coverage is assessed by the agent from source; the CLI checks cited evidence.",
+  executionImported:
+    "Execution data was imported; it alone does not prove that assertions detect the change.",
   ioContract: "Input / output",
   changeOverview: "Overview",
   githubCode: "View on GitHub",
@@ -226,7 +236,7 @@ const en: Strings = {
     unclassified: "Unclassified",
   },
   coverage: {
-    asserted: "Behavior checked",
+    asserted: "Assessed as covered",
     related: "Behavior not checked",
     uncovered: "No coverage found",
     unknown: "Coverage unclear",
@@ -235,7 +245,7 @@ const en: Strings = {
     risk: "New risk",
     untested: "Missing checks",
     unsure: "Unclear",
-    tested: "Has checks",
+    tested: "Assessed as covered",
   },
   listTitle: "Changes in this comparison",
   removedFlowRow: "Flow removed",
@@ -289,7 +299,7 @@ const en: Strings = {
   mapSize: (modules, flows) =>
     `${modules} module${modules === 1 ? "" : "s"} · ${flows} flow${flows === 1 ? "" : "s"}`,
   status: {
-    tested: "Behavior checked",
+    tested: "Assessed as covered",
     untested: "Behavior not checked",
     unsure: "Coverage unclear",
   },

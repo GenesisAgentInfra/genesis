@@ -13,6 +13,7 @@ value belongs to the enclosing scope, so it carries no guards of the decorated f
 
 from __future__ import annotations
 
+import ast
 import io
 import keyword
 import re
@@ -96,6 +97,74 @@ def canonical_python(text: str) -> str:
     except (tokenize.TokenError, SyntaxError, IndentationError):
         return " ".join(text.split())
     return " ".join(_without_trailing_commas(tokens))
+
+
+_UNKNOWN_LITERAL = object()
+
+
+def _literal_scalar(node: ast.AST):
+    """Read a scalar literal or fold bounded integer addition/subtraction/multiplication."""
+    if isinstance(node, ast.Constant):
+        return node.value
+    if not isinstance(node, ast.BinOp):
+        return _UNKNOWN_LITERAL
+    left, right = _literal_scalar(node.left), _literal_scalar(node.right)
+    if not all(type(value) is int and value.bit_length() <= 64 for value in (left, right)):
+        return _UNKNOWN_LITERAL
+    if isinstance(node.op, ast.Add):
+        value = left + right
+    elif isinstance(node.op, ast.Sub):
+        value = left - right
+    elif isinstance(node.op, ast.Mult):
+        value = left * right
+    else:
+        return _UNKNOWN_LITERAL
+    return value if value.bit_length() <= 64 else _UNKNOWN_LITERAL
+
+
+def vacuous_assertion(text: str) -> bool:
+    """Recognize a limited set of literal assertions that are always true.
+
+    Never execute analyzed source. Names, calls and unsupported syntax stay undecided.
+    False literals remain eligible: `if wrong_result: assert False` checks a runtime
+    outcome through its condition. This guard does not prove relevance.
+    """
+    try:
+        expression = ast.parse(text.strip(), mode="eval").body
+    except (SyntaxError, ValueError):
+        return False
+    if isinstance(expression, (ast.Tuple, ast.List)):
+        literal_syntax = (ast.Constant, ast.Tuple, ast.List, ast.Load)
+        return bool(expression.elts) and all(
+            isinstance(node, literal_syntax) for node in ast.walk(expression)
+        )
+    if isinstance(expression, ast.Compare):
+        values = [_literal_scalar(node) for node in (expression.left, *expression.comparators)]
+        if any(value is _UNKNOWN_LITERAL for value in values):
+            return False
+        try:
+            for left, operation, right in zip(values, expression.ops, values[1:]):
+                if isinstance(operation, ast.Eq):
+                    matches = left == right
+                elif isinstance(operation, ast.NotEq):
+                    matches = left != right
+                elif isinstance(operation, ast.Lt):
+                    matches = left < right
+                elif isinstance(operation, ast.LtE):
+                    matches = left <= right
+                elif isinstance(operation, ast.Gt):
+                    matches = left > right
+                elif isinstance(operation, ast.GtE):
+                    matches = left >= right
+                else:
+                    return False
+                if not matches:
+                    return False
+        except TypeError:
+            return False
+        return True
+    value = _literal_scalar(expression)
+    return value is not _UNKNOWN_LITERAL and bool(value)
 
 
 def python_source_roots(paths) -> tuple[str, ...]:

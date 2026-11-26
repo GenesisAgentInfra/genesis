@@ -403,11 +403,41 @@ function ChangeDetail({
           label={t.coverage[coverageKind(tests)]}
           className="text-body-m text-ink-2"
         />
+        {tests && (
+          <p className="text-body-s text-ink-3">
+            {tests.basis?.includes("agent_assessment") &&
+              `${t.assessmentBasis} `}
+            {tests.execution_data === "imported"
+              ? t.executionImported
+              : t.basis}
+          </p>
+        )}
         {tests?.note && (
           <p className="text-body-m [overflow-wrap:anywhere] text-ink-2">
             {localizeNote(tests.note, model.lang)}
           </p>
         )}
+        {tests?.checks?.map((check, index) => (
+          <div
+            key={`${check.test_id}-${index}`}
+            className="space-y-s corner-m bg-field p-l"
+          >
+            <p className="text-body-s [overflow-wrap:anywhere] text-ink-3">
+              {check.test_id}
+            </p>
+            <p className="text-body-m [overflow-wrap:anywhere]">
+              {t.testScenario}: {check.scenario}
+            </p>
+            {check.assertion && (
+              <pre className="max-w-full overflow-x-auto text-body-s">
+                <code>{check.assertion}</code>
+              </pre>
+            )}
+            <p className="text-body-m [overflow-wrap:anywhere] text-ink-2">
+              {t.testDetects}: {check.detects}
+            </p>
+          </div>
+        ))}
       </section>
       {hasLocalCode && (
         <Collapsible>

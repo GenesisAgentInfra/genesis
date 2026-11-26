@@ -216,6 +216,12 @@ export interface CoverageAssessment {
   basis?: ("static_fact" | "agent_assessment" | "imported_coverage")[]
   execution_data: "imported" | "not_collected"
   note?: string
+  checks?: {
+    test_id: string
+    assertion?: string
+    scenario: string
+    detects: string
+  }[]
   items?: {
     test_id: string
     tags?: string[]
