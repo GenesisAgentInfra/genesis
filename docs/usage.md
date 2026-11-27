@@ -152,10 +152,22 @@ Genesis reads your tests. It never runs them, so a verdict is never a statement 
 test passed. The detail panel shows the test scenario, quoted assertion, and the
 agent's reason for expecting it to detect the change when supplied. The CLI verifies
 assertion provenance and, for Python, rejects simple always-true literal assertions
-such as `assert True` and `assert 1 == 1` with `vacuous_assertion`. These checks do not
-establish that an assertion would detect the change. That remains the agent's source
-assessment. Older reports remain readable but may lack these details. The JSON verdict
-remains `covered`.
+such as `assert True` and `assert 1 == 1` with `vacuous_assertion`.
+
+For a small set of Python return changes, the CLI also rejects a cited assertion with
+`assertion_does_not_distinguish` when a source calculation shows that the same comparison
+accepts both the current return and the return with that change undone. This guard uses
+the frozen head test: a single comparison, a direct call with fixed integer inputs,
+and a function containing only a return expression. It models bounded integer arithmetic
+and a few built-ins, including `round` on integers at nonnegative precision. It abstains
+for unsupported syntax or setup, including fixtures, mocks, `conftest.py`, floating point,
+and side effects. It never runs the project or its tests.
+
+A rejection applies to the cited evidence and preserves the previously accepted report.
+The agent can cite another assertion or revise its assessment; the CLI does not assign a
+replacement verdict. Passing these limited checks does not prove that an assertion would
+detect the change. That remains the agent's source assessment. Older reports remain
+readable but may lack these details. The JSON verdict remains `covered`.
 
 | On the page | In `summary.md` | Meaning |
 | --- | --- | --- |
