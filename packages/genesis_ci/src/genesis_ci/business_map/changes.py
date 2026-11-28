@@ -33,6 +33,7 @@ from genesis_contracts.map_tasks import ChangeAssessment, ChangeSubmission
 from pydantic import ValidationError
 
 from .carried import read_carried
+from .coverage_guard import CoverageGuard
 from .fact_diff import BASE, HEAD, FactDiff, RawChange, _innermost, diff_facts
 from .loop import CHANGE_TASK
 from .python_entries import entry_id
@@ -164,7 +165,11 @@ RULES = (
     "by those facts. "
     "An unchanged assertion outcome or an unrelated assertion is not coverage. The CLI "
     "checks assertion provenance and rejects simple always-true literals such as True or "
-    "1 == 1. It does not establish the correctness of your behavioral reasoning. A failure "
+    "1 == 1. For simple Python comparisons with fixed integer inputs, it also rejects "
+    "evidence that accepts both returns with assertion_does_not_distinguish. Cite another "
+    "existing assertion or revise your assessment; changing only the explanation cannot "
+    "fix contradictory evidence. Unsupported source or setup leaves this guard undecided. "
+    "Acceptance does not establish the correctness of your behavioral reasoning. A failure "
     "guard, exception, state check or mock assertion can also observe the changed outcome; "
     "follow the actual input through the changed path to that observation.",
     "A verdict answers only whether a test would fail. What the tests leave unchecked goes "
@@ -1324,6 +1329,10 @@ class ChangeAnalysis:
         return {item.test_id: item for item in self.workspace.facts.tests if item.side == HEAD}
 
     @cached_property
+    def coverage_guard(self) -> CoverageGuard:
+        return CoverageGuard(self)
+
+    @cached_property
     def _routes(self) -> list[tuple[str | None, re.Pattern, str]]:
         """HTTP routes of the head side: method, a pattern for request paths, the handler."""
         found = []
@@ -1600,6 +1609,19 @@ class ChangeAnalysis:
                             "This assertion is a literal expression that is always true. "
                             "Cite an assertion that can fail on a changed result, state or "
                             "interaction, or use reached_only if the test only reaches the change.",
+                        )
+                    )
+                elif self.coverage_guard.refutes(change, self.tests[known], assertion):
+                    problems.append(
+                        (
+                            where + ".assertion",
+                            "assertion_does_not_distinguish",
+                            "For this test's fixed integer inputs, the cited comparison accepts "
+                            "both the current return and the return with this change undone. "
+                            "This is a limited source calculation; no test ran. Cite a different "
+                            "assertion that detects this change, or revise the assessment: "
+                            "reached_only if tests reach it without checking the change, "
+                            "unknown if the necessary evidence is unresolved.",
                         )
                     )
                 checked.add(known)

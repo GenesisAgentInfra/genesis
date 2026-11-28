@@ -1033,9 +1033,13 @@ After the risk pass of step 4, submit the risks on their own:
 
   Use tests that actually exist; do not invent a distinguishing input. The CLI
   checks that the assertion belongs to the named test and rejects simple always-true
-  literals such as `assert True` and `assert 1 == 1`. This is a limited Python syntax
-  check; acceptance does not establish that your reasoning is correct. Describe an
-  accepted `covered` verdict as your source assessment.
+  literals such as `assert True` and `assert 1 == 1`. For simple Python comparisons
+  with fixed integer inputs, it can also reject evidence that accepts both return
+  values with `assertion_does_not_distinguish`. On that error, cite another existing
+  assertion that detects this change or revise your assessment; changing only the
+  explanation cannot fix contradictory evidence. These checks abstain when the source
+  or setup is unsupported and never run tests. Acceptance does not establish that your
+  reasoning is correct. Describe an accepted `covered` verdict as your source assessment.
 - A statement that runs on every call, such as an added `add_argument` or an
   assignment, is `covered` by a test that runs the code and would fail without it.
   An input value no test uses is not a missed path.
@@ -1076,7 +1080,8 @@ After the risk pass of step 4, submit the risks on their own:
   describe near misses in `note`.
 - The CLI refuses a verdict the test sources contradict: `covered` with no `test_ids`,
   missing `checks`, a quoted assertion absent from its named test, a recognized
-  always-true literal assertion (`vacuous_assertion`), or when none of
+  always-true literal assertion (`vacuous_assertion`), a supported integer comparison
+  that accepts both returns (`assertion_does_not_distinguish`), or when none of
   the named tests contains an assertion, `reached_only` when no test
   is linked and none is named, `not_reached` when a test calls the changed function
   itself or requests its route, an unknown `change_id` or test. A refusal changes
